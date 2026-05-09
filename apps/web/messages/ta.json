@@ -1,0 +1,51 @@
+{
+  "system": {
+    "language": "மொழி",
+    "switchToDark": "இருண்ட தீமுக்கு மாற்று",
+    "switchToLight": "ஒளி தீமுக்கு மாற்று"
+  },
+  "auth": {
+    "login": {
+      "title": "GSTFY-க்கு வரவேற்கிறோம்",
+      "stepOneDescription": "உங்கள் வணிக மின்னஞ்சல் அல்லது இந்திய மொபைல் எண்ணை உள்ளிடுங்கள்.",
+      "stepTwoDescription": "தொடர உங்கள் கடவுச்சொல்லை உறுதிப்படுத்துங்கள்.",
+      "identifierLabel": "மின்னஞ்சல் அல்லது தொலைபேசி எண்",
+      "emailPlaceholder": "owner@gstfy.in",
+      "phonePlaceholder": "9876543210",
+      "checkingAccount": "கணக்கை சரிபார்க்கிறது...",
+      "continue": "தொடரவும்",
+      "or": "அல்லது",
+      "createAccount": "புதிய கணக்கு உருவாக்கவும்",
+      "registerHint": "GSTFY-க்கு புதிதா? பதிவில் இருந்து தொடங்குங்கள்.",
+      "gstStatusActive": "செயலில்",
+      "passwordLabel": "கடவுச்சொல்",
+      "passwordPlaceholder": "உங்கள் கடவுச்சொல்லை உள்ளிடுங்கள்",
+      "forgotPassword": "கடவுச்சொல்லை மறந்துவிட்டீர்களா?",
+      "showPassword": "கடவுச்சொல்லைக் காண்பி",
+      "hidePassword": "கடவுச்சொல்லை மறை",
+      "blockedMessage": "அங்கீகார API இன்னும் இணைக்கப்படவில்லை. UI ஓட்டம் தயாராக உள்ளது.",
+      "signingIn": "உள்நுழைகிறது...",
+      "login": "உள்நுழை",
+      "useDifferentIdentifier": "வேறு மின்னஞ்சல் அல்லது தொலைபேசி எண்ணைப் பயன்படுத்துங்கள்",
+      "sampleHint": "`{primaryEmail}`, `{secondaryEmail}`, `{demoEmail}`, `{primaryPhone}`, `{secondaryPhone}`, அல்லது `{demoPhone}`-ஐ முயற்சிக்கவும்.",
+      "termsNotice": "தொடருவதன் மூலம், எங்கள் <terms>சேவை விதிமுறைகள்</terms> மற்றும் <privacy>தனியுரிமைக் கொள்கைக்கு</privacy> நீங்கள் இணங்குகிறீர்கள்.",
+      "errors": {
+        "identifierRequired": "உங்கள் மின்னஞ்சல் அல்லது தொலைபேசி எண்ணை உள்ளிடுங்கள்.",
+        "invalidPhone": "சரியான 10 இலக்க இந்திய மொபைல் எண்ணை உள்ளிடுங்கள்.",
+        "invalidEmail": "சரியான மின்னஞ்சல் முகவரியை உள்ளிடுங்கள்.",
+        "accountNotFound": "அந்த மின்னஞ்சல் அல்லது தொலைபேசி எண்ணுக்கு கணக்கை கண்டுபிடிக்க முடியவில்லை.",
+        "passwordRequired": "உங்கள் கடவுச்சொல்லை உள்ளிடுங்கள்."
+      }
+    },
+    "register": {
+      "title": "உங்கள் GSTFY கணக்கை உருவாக்குங்கள்",
+      "description": "பதிவு UI அடுத்ததாக சேர்க்கப்படும். உள்நுழைவு பக்கத்திலிருந்து வரும் பயனர்கள் தொடர்ந்து செல்ல இந்த பாதை தயாராக உள்ளது.",
+      "backToLogin": "மீண்டும் உள்நுழைவு"
+    },
+    "forgotPassword": {
+      "title": "கடவுச்சொல்லை மறந்துவிட்டீர்களா",
+      "description": "இந்த மீட்பு படி இப்போது UI மட்டும். பின்னர் backend reset இணைப்பை சேர்க்கலாம்.",
+      "backToLogin": "மீண்டும் உள்நுழைவு"
+    }
+  }
+}

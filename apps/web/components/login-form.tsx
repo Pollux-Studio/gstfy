@@ -11,7 +11,8 @@ import {
   GalleryVerticalEndIcon,
   LockKeyholeIcon,
 } from "lucide-react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import { Trans, useTranslation } from "react-i18next"
 import { useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
 
@@ -62,43 +63,15 @@ const mockAccounts = [
   },
 ] as const
 
-const identifierSchema = z.object({
-  identifier: z
-    .string()
-    .trim()
-    .min(1, "Enter your email or phone number.")
-    .superRefine((value, ctx) => {
-      if (isPhoneMode(value)) {
-        if (!/^[6-9]\d{9}$/.test(normalizePhone(value))) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Enter a valid 10-digit Indian mobile number.",
-          })
-        }
-        return
-      }
-
-      if (!z.email().safeParse(value.trim().toLowerCase()).success) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Enter a valid email address.",
-        })
-      }
-    }),
-})
-
-const passwordSchema = z.object({
-  password: z.string().min(1, "Enter your password."),
-})
-
-type IdentifierValues = z.infer<typeof identifierSchema>
-type PasswordValues = z.infer<typeof passwordSchema>
+type IdentifierValues = { identifier: string }
+type PasswordValues = { password: string }
 type Account = (typeof mockAccounts)[number]
 
 export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
+  const { t } = useTranslation()
   const shouldReduceMotion = useReducedMotion()
   const [step, setStep] = useState<"identifier" | "password">("identifier")
   const [lookupState, setLookupState] = useState<"idle" | "loading" | "not-found">(
@@ -109,6 +82,43 @@ export function LoginForm({
   )
   const [account, setAccount] = useState<Account | null>(null)
   const [showPassword, setShowPassword] = useState(false)
+
+  const identifierSchema = useMemo(
+    () =>
+      z.object({
+        identifier: z
+          .string()
+          .trim()
+          .min(1, t("auth.login.errors.identifierRequired"))
+          .superRefine((value, ctx) => {
+            if (isPhoneMode(value)) {
+              if (!/^[6-9]\d{9}$/.test(normalizePhone(value))) {
+                ctx.addIssue({
+                  code: z.ZodIssueCode.custom,
+                  message: t("auth.login.errors.invalidPhone"),
+                })
+              }
+              return
+            }
+
+            if (!z.email().safeParse(value.trim().toLowerCase()).success) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: t("auth.login.errors.invalidEmail"),
+              })
+            }
+          }),
+      }),
+    [t]
+  )
+
+  const passwordSchema = useMemo(
+    () =>
+      z.object({
+        password: z.string().min(1, t("auth.login.errors.passwordRequired")),
+      }),
+    [t]
+  )
 
   const identifierForm = useForm<IdentifierValues>({
     resolver: zodResolver(identifierSchema),
@@ -222,11 +232,11 @@ export function LoginForm({
           </div>
           <span className="sr-only">GSTFY</span>
         </div>
-        <h1 className="text-xl font-bold">Welcome to GSTFY</h1>
+        <h1 className="text-xl font-bold">{t("auth.login.title")}</h1>
         <FieldDescription>
           {step === "identifier"
-            ? "Enter your business email or Indian mobile number."
-            : "Confirm your password to continue."}
+            ? t("auth.login.stepOneDescription")
+            : t("auth.login.stepTwoDescription")}
         </FieldDescription>
       </div>
 
@@ -243,7 +253,9 @@ export function LoginForm({
           >
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="identifier">Email or phone number</FieldLabel>
+                <FieldLabel htmlFor="identifier">
+                  {t("auth.login.identifierLabel")}
+                </FieldLabel>
                 <InputGroup>
                   {phoneMode ? (
                     <InputGroupAddon>
@@ -264,7 +276,11 @@ export function LoginForm({
                     type="text"
                     value={rawIdentifier}
                     inputMode={phoneMode ? "numeric" : "email"}
-                    placeholder={phoneMode ? "9876543210" : "owner@gstfy.in"}
+                    placeholder={
+                      phoneMode
+                        ? t("auth.login.phonePlaceholder")
+                        : t("auth.login.emailPlaceholder")
+                    }
                     autoComplete="username"
                     aria-invalid={!!identifierForm.formState.errors.identifier}
                     onChange={(event) =>
@@ -274,14 +290,17 @@ export function LoginForm({
                 </InputGroup>
                 <FieldError errors={[identifierForm.formState.errors.identifier]} />
                 {lookupState === "not-found" ? (
-                  <FieldError>
-                    We couldn&apos;t find an account for that email or phone
-                    number.
-                  </FieldError>
+                  <FieldError>{t("auth.login.errors.accountNotFound")}</FieldError>
                 ) : null}
                 <FieldDescription>
-                  Try `owner@gstfy.in`, `meera@shreemart.in`, `demo@gstfy.in`, `9876543210`,
-                  `9123456789`, or `9988776655`.
+                  {t("auth.login.sampleHint", {
+                    primaryEmail: "owner@gstfy.in",
+                    secondaryEmail: "meera@shreemart.in",
+                    demoEmail: "demo@gstfy.in",
+                    primaryPhone: "9876543210",
+                    secondaryPhone: "9123456789",
+                    demoPhone: "9988776655",
+                  })}
                 </FieldDescription>
               </Field>
 
@@ -291,21 +310,24 @@ export function LoginForm({
                   className="w-full"
                   disabled={!canContinue}
                 >
-                  {lookupState === "loading" ? "Checking account..." : "Continue"}
+                  {lookupState === "loading"
+                    ? t("auth.login.checkingAccount")
+                    : t("auth.login.continue")}
                 </Button>
               </Field>
-              <FieldSeparator>or</FieldSeparator>
+              <FieldSeparator>{t("auth.login.or")}</FieldSeparator>
               <Field className="gap-3">
                 <Button
                   type="button"
+                  nativeButton={false}
                   variant="outline"
                   className="w-full"
                   render={<Link href="/register" />}
                 >
-                  Create a new account
+                  {t("auth.login.createAccount")}
                 </Button>
                 <FieldDescription className="text-center">
-                  New to GSTFY? Start with registration.
+                  {t("auth.login.registerHint")}
                 </FieldDescription>
               </Field>
             </FieldGroup>
@@ -333,7 +355,7 @@ export function LoginForm({
                       </p>
                       <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
                         <CheckIcon className="size-3.5" />
-                        {account?.gstStatus}
+                        {t("auth.login.gstStatusActive")}
                       </Badge>
                     </div>
                     <p className="font-mono text-xs tracking-[0.16em] text-muted-foreground uppercase">
@@ -345,12 +367,14 @@ export function LoginForm({
 
               <Field>
                 <div className="flex items-center justify-between gap-3">
-                  <FieldLabel htmlFor="password">Password</FieldLabel>
+                  <FieldLabel htmlFor="password">
+                    {t("auth.login.passwordLabel")}
+                  </FieldLabel>
                   <Link
                     href="/forgot-password"
                     className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                   >
-                    Forgot password?
+                    {t("auth.login.forgotPassword")}
                   </Link>
                 </div>
                 <InputGroup>
@@ -360,7 +384,7 @@ export function LoginForm({
                   <InputGroupInput
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="Enter your password"
+                    placeholder={t("auth.login.passwordPlaceholder")}
                     autoComplete="current-password"
                     aria-invalid={!!passwordForm.formState.errors.password}
                     {...passwordRegistration}
@@ -374,7 +398,11 @@ export function LoginForm({
                   />
                   <InputGroupAddon align="inline-end">
                     <InputGroupButton
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={
+                        showPassword
+                          ? t("auth.login.hidePassword")
+                          : t("auth.login.showPassword")
+                      }
                       onClick={() => setShowPassword((current) => !current)}
                     >
                       {showPassword ? (
@@ -388,7 +416,7 @@ export function LoginForm({
                 <FieldError errors={[passwordForm.formState.errors.password]} />
                 {authState === "blocked" ? (
                   <FieldDescription className="text-destructive">
-                    Authentication API is not connected yet. The UI flow is ready.
+                    {t("auth.login.blockedMessage")}
                   </FieldDescription>
                 ) : null}
               </Field>
@@ -399,7 +427,9 @@ export function LoginForm({
                   className="w-full"
                   disabled={!canLogin}
                 >
-                  {authState === "submitting" ? "Signing in..." : "Login"}
+                  {authState === "submitting"
+                    ? t("auth.login.signingIn")
+                    : t("auth.login.login")}
                 </Button>
                 <Button
                   type="button"
@@ -407,7 +437,7 @@ export function LoginForm({
                   className="w-full"
                   onClick={handleResetToIdentifier}
                 >
-                  Use a different email or phone
+                  {t("auth.login.useDifferentIdentifier")}
                 </Button>
               </Field>
             </FieldGroup>
@@ -416,8 +446,13 @@ export function LoginForm({
       </AnimatePresence>
 
       <FieldDescription className="px-6 text-center">
-        By clicking continue, you agree to our <a href="#">Terms of Service</a>{" "}
-        and <a href="#">Privacy Policy</a>.
+        <Trans
+          i18nKey="auth.login.termsNotice"
+          components={{
+            terms: <a href="#" />,
+            privacy: <a href="#" />,
+          }}
+        />
       </FieldDescription>
     </div>
   )

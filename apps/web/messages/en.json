@@ -1,0 +1,51 @@
+{
+  "system": {
+    "language": "Language",
+    "switchToDark": "Switch to dark mode",
+    "switchToLight": "Switch to light mode"
+  },
+  "auth": {
+    "login": {
+      "title": "Welcome to GSTFY",
+      "stepOneDescription": "Enter your business email or Indian mobile number.",
+      "stepTwoDescription": "Confirm your password to continue.",
+      "identifierLabel": "Email or phone number",
+      "emailPlaceholder": "owner@gstfy.in",
+      "phonePlaceholder": "9876543210",
+      "checkingAccount": "Checking account...",
+      "continue": "Continue",
+      "or": "OR",
+      "createAccount": "Create a new account",
+      "registerHint": "New to GSTFY? Start with registration.",
+      "gstStatusActive": "Active",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Enter your password",
+      "forgotPassword": "Forgot password?",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
+      "blockedMessage": "Authentication API is not connected yet. The UI flow is ready.",
+      "signingIn": "Signing in...",
+      "login": "Login",
+      "useDifferentIdentifier": "Use a different email or phone",
+      "sampleHint": "Try `{primaryEmail}`, `{secondaryEmail}`, `{demoEmail}`, `{primaryPhone}`, `{secondaryPhone}`, or `{demoPhone}`.",
+      "termsNotice": "By clicking continue, you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.",
+      "errors": {
+        "identifierRequired": "Enter your email or phone number.",
+        "invalidPhone": "Enter a valid 10-digit Indian mobile number.",
+        "invalidEmail": "Enter a valid email address.",
+        "accountNotFound": "We couldn't find an account for that email or phone number.",
+        "passwordRequired": "Enter your password."
+      }
+    },
+    "register": {
+      "title": "Create your GSTFY account",
+      "description": "Registration UI will be added next. This route is ready so users coming from login have a valid place to continue.",
+      "backToLogin": "Back to login"
+    },
+    "forgotPassword": {
+      "title": "Forgot password",
+      "description": "This recovery step is UI-only for now. Backend reset wiring can be added later.",
+      "backToLogin": "Back to login"
+    }
+  }
+}

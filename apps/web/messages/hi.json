@@ -1,0 +1,51 @@
+{
+  "system": {
+    "language": "भाषा",
+    "switchToDark": "डार्क मोड पर जाएं",
+    "switchToLight": "लाइट मोड पर जाएं"
+  },
+  "auth": {
+    "login": {
+      "title": "GSTFY में आपका स्वागत है",
+      "stepOneDescription": "अपना व्यावसायिक ईमेल या भारतीय मोबाइल नंबर दर्ज करें।",
+      "stepTwoDescription": "जारी रखने के लिए अपना पासवर्ड पुष्टि करें।",
+      "identifierLabel": "ईमेल या फोन नंबर",
+      "emailPlaceholder": "owner@gstfy.in",
+      "phonePlaceholder": "9876543210",
+      "checkingAccount": "खाता जाँचा जा रहा है...",
+      "continue": "जारी रखें",
+      "or": "या",
+      "createAccount": "नया खाता बनाएं",
+      "registerHint": "GSTFY में नए हैं? पंजीकरण से शुरू करें।",
+      "gstStatusActive": "सक्रिय",
+      "passwordLabel": "पासवर्ड",
+      "passwordPlaceholder": "अपना पासवर्ड दर्ज करें",
+      "forgotPassword": "पासवर्ड भूल गए?",
+      "showPassword": "पासवर्ड दिखाएं",
+      "hidePassword": "पासवर्ड छुपाएं",
+      "blockedMessage": "Authentication API अभी कनेक्ट नहीं है। UI फ्लो तैयार है।",
+      "signingIn": "साइन इन हो रहा है...",
+      "login": "लॉग इन",
+      "useDifferentIdentifier": "कोई दूसरा ईमेल या फोन नंबर इस्तेमाल करें",
+      "sampleHint": "`{primaryEmail}`, `{secondaryEmail}`, `{demoEmail}`, `{primaryPhone}`, `{secondaryPhone}`, या `{demoPhone}` आज़माएं।",
+      "termsNotice": "जारी रखकर, आप हमारी <terms>सेवा की शर्तों</terms> और <privacy>गोपनीयता नीति</privacy> से सहमत होते हैं।",
+      "errors": {
+        "identifierRequired": "अपना ईमेल या फोन नंबर दर्ज करें।",
+        "invalidPhone": "सही 10 अंकों वाला भारतीय मोबाइल नंबर दर्ज करें।",
+        "invalidEmail": "सही ईमेल पता दर्ज करें।",
+        "accountNotFound": "उस ईमेल या फोन नंबर के लिए कोई खाता नहीं मिला।",
+        "passwordRequired": "अपना पासवर्ड दर्ज करें।"
+      }
+    },
+    "register": {
+      "title": "अपना GSTFY खाता बनाएं",
+      "description": "पंजीकरण UI अगला जोड़ा जाएगा। लॉगिन से आने वाले उपयोगकर्ताओं के लिए यह रूट आगे बढ़ने के लिए तैयार है।",
+      "backToLogin": "लॉगिन पर वापस जाएं"
+    },
+    "forgotPassword": {
+      "title": "पासवर्ड भूल गए",
+      "description": "यह रिकवरी चरण अभी केवल UI है। बाद में backend reset wiring जोड़ी जा सकती है।",
+      "backToLogin": "लॉगिन पर वापस जाएं"
+    }
+  }
+}
