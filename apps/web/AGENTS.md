@@ -30,10 +30,15 @@ This app is still early-stage. The current homepage is starter content and much 
 - `public/`: static assets
 
 ## Current Architecture Notes
-- `app/layout.tsx` defines the root layout and app metadata.
-- `app/page.tsx` is still the default starter landing page and should not be treated as finalized product UI.
+- `app/layout.tsx` defines the root layout, app metadata, theme provider, and tooltip provider.
+- `app/page.tsx` redirects to the auth entry route.
 - `app/globals.css` defines theme tokens and shared Tailwind-driven styling.
+- App-wide fonts are loaded via `next/font/google`: Plus Jakarta Sans for UI and Geist Mono for numeric/mono usage.
+- Auth routes currently live at `app/login`, `app/register`, and `app/forgot-password`.
+- `app/ui` is the internal design-system route, built from the official shadcn dashboard block shell, and should stay non-production.
 - `components/ui/` is the real UI layer for the web app today.
+- `components/login-form.tsx`, `components/register-form.tsx`, and `components/forgot-password-form.tsx` drive the current auth UI.
+- `components/app-sidebar.tsx`, `components/site-header.tsx`, and `components/ui-review.tsx` drive the internal block-based `/ui` review route.
 - `packages/ui` exists in the monorepo, but it is still a Turbo starter package and is not yet the source of the UI used here.
 
 ## Working Rules
@@ -43,12 +48,17 @@ This app is still early-stage. The current homepage is starter content and much 
 - Use `@/*` imports for local modules when appropriate.
 - Keep documentation honest about current implementation status. Do not describe unbuilt product areas as if they already exist.
 - Treat `packages/ui` as separate from the live app UI unless the repo is explicitly refactored to unify them.
+- Review token or typography changes on `/ui` before applying them broadly to product screens.
+- When the user asks for shadcn fidelity, prefer official shadcn blocks as the structural baseline instead of custom marketing layouts.
+- Preserve the current auth UX split:
+  - login and forgot-password stay centered
+  - register uses a split layout with the visual panel on the left and the form on the right
 
 ## Known Constraints
-- Lint is not clean right now:
-  - `pnpm --filter web lint` fails on `hooks/use-mobile.ts` because of a `react-hooks/set-state-in-effect` error.
-- Build is environment-sensitive right now:
-  - `pnpm --filter web build` can fail in restricted or offline environments because `app/layout.tsx` loads Geist fonts through `next/font/google`.
+- `pnpm --filter web lint` currently passes.
+- `pnpm --filter web build` currently passes.
+- Auth flows are UI-only for now. They use local validation and mocked success states until backend integration is added.
+- `/ui` is for internal design review and should resolve to not-found in production.
 
 If you touch either area, verify whether the constraint still exists and update docs accordingly.
 
@@ -56,6 +66,7 @@ If you touch either area, verify whether the constraint still exists and update 
 - `pnpm --filter web dev`
 - `pnpm --filter web lint`
 - `pnpm --filter web build`
+- `pnpm --filter web add <package>`
 - `rg -n "<pattern>" apps/web`
 
 Run targeted checks after changes instead of assuming the app is healthy.

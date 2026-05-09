@@ -20,7 +20,7 @@ This repository does not yet contain the full target platform described in the o
 - Package manager: `pnpm`
 - Build orchestration: Turborepo
 - Frontend stack in `apps/web`: Next.js 16, React 19, Tailwind CSS 4, local shadcn-style components
-- The web app is still scaffold-heavy and uses starter content in `app/page.tsx`.
+- `app/page.tsx` redirects to `/login`.
 - `apps/web/components/ui` contains the active UI component set used by the app today.
 - `packages/ui` still contains starter example components and is not yet the single source of truth for shared UI.
 
@@ -38,14 +38,17 @@ The current `apps/web` app is the practical starting point for all near-term wor
 
 ### What exists
 - App Router structure under `apps/web/app`
+- Auth UI routes for login, register, and forgot password
+- An internal design-system review route at `apps/web/app/ui`, rebuilt on an official shadcn dashboard block shell
 - Global styling in `apps/web/app/globals.css`
 - A local UI layer under `apps/web/components/ui`
+- App-specific auth form components at the top level of `apps/web/components`
 - Helper utilities under `apps/web/lib`
 - One responsive helper hook under `apps/web/hooks`
 
 ### Known development issues
-- `pnpm --filter web lint` currently fails due to a React hooks lint error in `apps/web/hooks/use-mobile.ts`.
-- `pnpm --filter web build` currently fails in restricted/offline environments because `apps/web/app/layout.tsx` uses `next/font/google` for Geist fonts.
+- The auth flows are currently UI-only and use local state plus mocked transitions.
+- Backend authentication, OTP reset, GSTIN verification, and onboarding redirects are not integrated yet.
 
 These are repo truths and should be treated as current constraints until fixed.
 

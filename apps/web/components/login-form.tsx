@@ -1,0 +1,456 @@
+"use client"
+
+import Image from "next/image"
+import Link from "next/link"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
+import {
+  CheckIcon,
+  EyeIcon,
+  EyeOffIcon,
+  GalleryVerticalEndIcon,
+  LockKeyholeIcon,
+} from "lucide-react"
+import { useState } from "react"
+import { useForm, useWatch } from "react-hook-form"
+import { z } from "zod"
+
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldSeparator,
+} from "@/components/ui/field"
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group"
+import { cn } from "@/lib/utils"
+
+const mockAccounts = [
+  {
+    email: "owner@gstfy.in",
+    phone: "9876543210",
+    displayName: "Aarav Traders",
+    gstin: "24ABCDE1234F1Z5",
+    avatarFallback: "AT",
+    gstStatus: "Active",
+  },
+  {
+    email: "meera@shreemart.in",
+    phone: "9123456789",
+    displayName: "Shree Mart",
+    gstin: "27PQRSM4321L1Z2",
+    avatarFallback: "SM",
+    gstStatus: "Active",
+  },
+  {
+    email: "demo@gstfy.in",
+    phone: "9988776655",
+    displayName: "Demo Super Store",
+    gstin: "29ABCDE1234F1Z7",
+    avatarFallback: "DS",
+    gstStatus: "Active",
+  },
+] as const
+
+const identifierSchema = z.object({
+  identifier: z
+    .string()
+    .trim()
+    .min(1, "Enter your email or phone number.")
+    .superRefine((value, ctx) => {
+      if (isPhoneMode(value)) {
+        if (!/^[6-9]\d{9}$/.test(normalizePhone(value))) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Enter a valid 10-digit Indian mobile number.",
+          })
+        }
+        return
+      }
+
+      if (!z.email().safeParse(value.trim().toLowerCase()).success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Enter a valid email address.",
+        })
+      }
+    }),
+})
+
+const passwordSchema = z.object({
+  password: z.string().min(1, "Enter your password."),
+})
+
+type IdentifierValues = z.infer<typeof identifierSchema>
+type PasswordValues = z.infer<typeof passwordSchema>
+type Account = (typeof mockAccounts)[number]
+
+export function LoginForm({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  const shouldReduceMotion = useReducedMotion()
+  const [step, setStep] = useState<"identifier" | "password">("identifier")
+  const [lookupState, setLookupState] = useState<"idle" | "loading" | "not-found">(
+    "idle"
+  )
+  const [authState, setAuthState] = useState<"idle" | "submitting" | "blocked">(
+    "idle"
+  )
+  const [account, setAccount] = useState<Account | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
+
+  const identifierForm = useForm<IdentifierValues>({
+    resolver: zodResolver(identifierSchema),
+    mode: "onChange",
+    reValidateMode: "onChange",
+    defaultValues: {
+      identifier: "",
+    },
+  })
+
+  const passwordForm = useForm<PasswordValues>({
+    resolver: zodResolver(passwordSchema),
+    mode: "onChange",
+    reValidateMode: "onChange",
+    defaultValues: {
+      password: "",
+    },
+  })
+
+  const rawIdentifier = useWatch({
+    control: identifierForm.control,
+    name: "identifier",
+    defaultValue: "",
+  })
+  const rawPassword = useWatch({
+    control: passwordForm.control,
+    name: "password",
+    defaultValue: "",
+  })
+
+  const phoneMode = isPhoneMode(rawIdentifier)
+  const canContinue =
+    rawIdentifier.trim().length > 0 &&
+    identifierForm.formState.isValid &&
+    lookupState !== "loading"
+  const canLogin =
+    rawPassword.length > 0 &&
+    passwordForm.formState.isValid &&
+    authState !== "submitting"
+  const transition = shouldReduceMotion
+    ? { duration: 0 }
+    : { duration: 0.24, ease: "easeOut" as const }
+
+  async function handleIdentifierSubmit(values: IdentifierValues) {
+    setLookupState("loading")
+    setAuthState("idle")
+
+    await new Promise((resolve) => setTimeout(resolve, 550))
+
+    const normalizedIdentifier = normalizeIdentifier(values.identifier)
+    const matchedAccount =
+      mockAccounts.find(
+        (item) =>
+          item.email === normalizedIdentifier || item.phone === normalizedIdentifier
+      ) ?? null
+
+    if (!matchedAccount) {
+      setLookupState("not-found")
+      setAccount(null)
+      return
+    }
+
+    setLookupState("idle")
+    setAccount(matchedAccount)
+    setStep("password")
+    setShowPassword(false)
+    passwordForm.reset()
+  }
+
+  async function handlePasswordSubmit() {
+    setAuthState("submitting")
+
+    await new Promise((resolve) => setTimeout(resolve, 650))
+
+    setAuthState("blocked")
+  }
+
+  function handleIdentifierChange(nextValue: string) {
+    const normalizedValue = isPhoneMode(nextValue)
+      ? normalizePhoneInput(nextValue)
+      : nextValue
+
+    identifierForm.setValue("identifier", normalizedValue, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    })
+
+    if (lookupState !== "idle") {
+      setLookupState("idle")
+    }
+  }
+
+  function handleResetToIdentifier() {
+    setStep("identifier")
+    setLookupState("idle")
+    setAuthState("idle")
+    setAccount(null)
+    setShowPassword(false)
+    passwordForm.reset()
+  }
+
+  const passwordRegistration = passwordForm.register("password")
+
+  return (
+    <div className={cn("flex flex-col gap-6", className)} {...props}>
+      <div className="flex flex-col items-center gap-2 text-center">
+        <div className="flex flex-col items-center gap-2 font-medium">
+          <div className="flex size-8 items-center justify-center rounded-md">
+            <GalleryVerticalEndIcon className="size-6" />
+          </div>
+          <span className="sr-only">GSTFY</span>
+        </div>
+        <h1 className="text-xl font-bold">Welcome to GSTFY</h1>
+        <FieldDescription>
+          {step === "identifier"
+            ? "Enter your business email or Indian mobile number."
+            : "Confirm your password to continue."}
+        </FieldDescription>
+      </div>
+
+      <AnimatePresence mode="wait" initial={false}>
+        {step === "identifier" ? (
+          <motion.form
+            key="identifier-step"
+            onSubmit={identifierForm.handleSubmit(handleIdentifierSubmit)}
+            initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: shouldReduceMotion ? 0 : -12 }}
+            transition={transition}
+            noValidate
+          >
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="identifier">Email or phone number</FieldLabel>
+                <InputGroup>
+                  {phoneMode ? (
+                    <InputGroupAddon>
+                      <InputGroupText>
+                        <Image
+                          src="/india-flag.png"
+                          alt="India"
+                          width={16}
+                          height={12}
+                          className="h-3 w-4 rounded-[2px] object-cover"
+                        />
+                        <span>+91</span>
+                      </InputGroupText>
+                    </InputGroupAddon>
+                  ) : null}
+                  <InputGroupInput
+                    id="identifier"
+                    type="text"
+                    value={rawIdentifier}
+                    inputMode={phoneMode ? "numeric" : "email"}
+                    placeholder={phoneMode ? "9876543210" : "owner@gstfy.in"}
+                    autoComplete="username"
+                    aria-invalid={!!identifierForm.formState.errors.identifier}
+                    onChange={(event) =>
+                      handleIdentifierChange(event.target.value)
+                    }
+                  />
+                </InputGroup>
+                <FieldError errors={[identifierForm.formState.errors.identifier]} />
+                {lookupState === "not-found" ? (
+                  <FieldError>
+                    We couldn&apos;t find an account for that email or phone
+                    number.
+                  </FieldError>
+                ) : null}
+                <FieldDescription>
+                  Try `owner@gstfy.in`, `meera@shreemart.in`, `demo@gstfy.in`, `9876543210`,
+                  `9123456789`, or `9988776655`.
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={!canContinue}
+                >
+                  {lookupState === "loading" ? "Checking account..." : "Continue"}
+                </Button>
+              </Field>
+              <FieldSeparator>or</FieldSeparator>
+              <Field className="gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  render={<Link href="/register" />}
+                >
+                  Create a new account
+                </Button>
+                <FieldDescription className="text-center">
+                  New to GSTFY? Start with registration.
+                </FieldDescription>
+              </Field>
+            </FieldGroup>
+          </motion.form>
+        ) : (
+          <motion.form
+            key="password-step"
+            onSubmit={passwordForm.handleSubmit(handlePasswordSubmit)}
+            initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: shouldReduceMotion ? 0 : -12 }}
+            transition={transition}
+            noValidate
+          >
+            <FieldGroup>
+              <div className="rounded-xl border border-border bg-muted/40 p-3.5 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <Avatar size="lg" className="ring-1 ring-border">
+                    <AvatarFallback>{account?.avatarFallback}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-medium">
+                        {account?.displayName}
+                      </p>
+                      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+                        <CheckIcon className="size-3.5" />
+                        {account?.gstStatus}
+                      </Badge>
+                    </div>
+                    <p className="font-mono text-xs tracking-[0.16em] text-muted-foreground uppercase">
+                      {account?.gstin}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <Field>
+                <div className="flex items-center justify-between gap-3">
+                  <FieldLabel htmlFor="password">Password</FieldLabel>
+                  <Link
+                    href="/forgot-password"
+                    className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+                <InputGroup>
+                  <InputGroupAddon>
+                    <LockKeyholeIcon className="size-4" />
+                  </InputGroupAddon>
+                  <InputGroupInput
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                    aria-invalid={!!passwordForm.formState.errors.password}
+                    {...passwordRegistration}
+                    onChange={(event) => {
+                      passwordRegistration.onChange(event)
+
+                      if (authState !== "idle") {
+                        setAuthState("idle")
+                      }
+                    }}
+                  />
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupButton
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      onClick={() => setShowPassword((current) => !current)}
+                    >
+                      {showPassword ? (
+                        <EyeOffIcon className="size-4" />
+                      ) : (
+                        <EyeIcon className="size-4" />
+                      )}
+                    </InputGroupButton>
+                  </InputGroupAddon>
+                </InputGroup>
+                <FieldError errors={[passwordForm.formState.errors.password]} />
+                {authState === "blocked" ? (
+                  <FieldDescription className="text-destructive">
+                    Authentication API is not connected yet. The UI flow is ready.
+                  </FieldDescription>
+                ) : null}
+              </Field>
+
+              <Field className="gap-3">
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={!canLogin}
+                >
+                  {authState === "submitting" ? "Signing in..." : "Login"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={handleResetToIdentifier}
+                >
+                  Use a different email or phone
+                </Button>
+              </Field>
+            </FieldGroup>
+          </motion.form>
+        )}
+      </AnimatePresence>
+
+      <FieldDescription className="px-6 text-center">
+        By clicking continue, you agree to our <a href="#">Terms of Service</a>{" "}
+        and <a href="#">Privacy Policy</a>.
+      </FieldDescription>
+    </div>
+  )
+}
+
+function isPhoneMode(value: string) {
+  const trimmed = value.trim()
+  const digits = normalizePhone(trimmed)
+
+  return (
+    trimmed.length > 0 &&
+    !trimmed.includes("@") &&
+    /^[+\d\s()-]*$/.test(trimmed) &&
+    (trimmed.startsWith("+") || digits.length >= 4)
+  )
+}
+
+function normalizePhone(value: string) {
+  let digits = value.replace(/\D/g, "")
+
+  if (digits.startsWith("91") && digits.length > 10) {
+    digits = digits.slice(2)
+  }
+
+  return digits.slice(0, 10)
+}
+
+function normalizePhoneInput(value: string) {
+  return normalizePhone(value)
+}
+
+function normalizeIdentifier(value: string) {
+  return isPhoneMode(value)
+    ? normalizePhone(value)
+    : value.trim().toLowerCase()
+}
