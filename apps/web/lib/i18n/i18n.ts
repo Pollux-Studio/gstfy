@@ -13,6 +13,26 @@ if (!i18n.isInitialized) {
     },
     returnNull: false,
   })
+} else {
+  const resourceStore = i18n.services.resourceStore as unknown as {
+    addResourceBundle: (
+      language: string,
+      namespace: string,
+      resource: unknown,
+      deep: boolean,
+      overwrite: boolean
+    ) => void
+  }
+
+  for (const [language, bundle] of Object.entries(resources)) {
+    resourceStore.addResourceBundle(
+      language,
+      "translation",
+      bundle.translation,
+      true,
+      true
+    )
+  }
 }
 
 export { i18n }

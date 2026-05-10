@@ -39,8 +39,75 @@
     },
     "register": {
       "title": "अपना GSTFY खाता बनाएं",
-      "description": "पंजीकरण UI अगला जोड़ा जाएगा। लॉगिन से आने वाले उपयोगकर्ताओं के लिए यह रूट आगे बढ़ने के लिए तैयार है।",
-      "backToLogin": "लॉगिन पर वापस जाएं"
+      "subtitle": "अपना GSTIN सत्यापित करें, GST रिकॉर्ड की समीक्षा करें और एक ही फ्लो में लॉगिन क्रेडेंशियल बनाएं।",
+      "sampleHint": "UI सत्यापन के लिए सैंपल GST प्रोफाइल उपयोग की जा रही है: `{gstin}`",
+      "backToLogin": "लॉगिन पर वापस जाएं",
+      "backToLoginText": {
+        "before": "पहले से अकाउंट है?",
+        "link": "साइन इन"
+      },
+      "steps": {
+        "gstin": {
+          "stepTitle": "GSTIN",
+          "label": "GSTIN नंबर",
+          "placeholder": "29AFSPB9500E1ZY",
+          "helper": "GSTIN को उसी तरह दर्ज करें जैसे वह पंजीकरण प्रमाणपत्र में है।",
+          "cta": "GSTIN सत्यापित करें",
+          "loading": "GSTIN सत्यापित किया जा रहा है..."
+        },
+        "review": {
+          "stepTitle": "समीक्षा",
+          "heading": "GST पंजीकरण विवरण की समीक्षा करें",
+          "description": "अकाउंट सेटअप पर जाने से पहले प्राप्त GST विवरण की जांच करें।",
+          "gstinVerified": "GSTIN सत्यापित",
+          "editGstin": "GSTIN बदलें",
+          "continue": "अकाउंट सेटअप पर जाएं",
+          "sections": {
+            "businessIdentity": "बिज़नेस पहचान",
+            "companyInformation": "कंपनी जानकारी",
+            "registeredAddress": "पंजीकृत पता"
+          },
+          "fields": {
+            "legalName": "बिज़नेस नाम",
+            "tradeName": "ट्रेड नाम",
+            "businessType": "बिज़नेस प्रकार",
+            "taxpayerType": "करदाता प्रकार",
+            "gstState": "GST राज्य",
+            "eInvoice": "E-Invoice सक्षम",
+            "registeredDate": "पंजीकृत तिथि",
+            "lastUpdated": "अंतिम अपडेट"
+          }
+        },
+        "account": {
+          "stepTitle": "अकाउंट",
+          "heading": "लॉगिन क्रेडेंशियल बनाएं",
+          "description": "अकाउंट सेटअप पूरा करने के लिए अपना व्यावसायिक ईमेल या भारतीय फोन नंबर उपयोग करें।",
+          "identifierLabel": "ईमेल या फोन नंबर",
+          "emailPlaceholder": "owner@gstfy.in",
+          "phonePlaceholder": "9876543210",
+          "passwordLabel": "पासवर्ड",
+          "passwordPlaceholder": "पासवर्ड बनाएं",
+          "confirmPasswordLabel": "पासवर्ड की पुष्टि करें",
+          "confirmPasswordPlaceholder": "पासवर्ड दोबारा दर्ज करें",
+          "passwordHelper": "कम से कम 8 अक्षर, एक संख्या और एक विशेष अक्षर का उपयोग करें।",
+          "cta": "अकाउंट बनाएं",
+          "submitting": "अकाउंट बनाया जा रहा है...",
+          "blockedMessage": "रजिस्ट्रेशन API अभी कनेक्ट नहीं है। UI फ्लो तैयार है।",
+          "backToReview": "GST समीक्षा पर वापस जाएं"
+        }
+      },
+      "errors": {
+        "gstinRequired": "अपना GSTIN दर्ज करें।",
+        "gstinInvalid": "सही 15-अक्षर वाला GSTIN दर्ज करें।",
+        "identifierRequired": "अपना ईमेल या फोन नंबर दर्ज करें।",
+        "invalidPhone": "सही 10 अंकों वाला भारतीय मोबाइल नंबर दर्ज करें।",
+        "invalidEmail": "सही ईमेल पता दर्ज करें।",
+        "passwordLength": "पासवर्ड कम से कम 8 अक्षरों का होना चाहिए।",
+        "passwordNumber": "पासवर्ड में कम से कम एक संख्या होनी चाहिए।",
+        "passwordSpecial": "पासवर्ड में कम से कम एक विशेष अक्षर होना चाहिए।",
+        "confirmPasswordRequired": "अपने पासवर्ड की पुष्टि करें।",
+        "passwordMismatch": "पासवर्ड मेल नहीं खाते।"
+      }
     },
     "forgotPassword": {
       "title": "पासवर्ड भूल गए",
