@@ -47,10 +47,10 @@ import { Input } from "@/components/ui/input"
 import {
   buildMockProfile,
   formatGstAddress,
-  getGstStateMeta,
   gstApiSample,
   type GstProfile,
 } from "@/lib/auth/mock-gst-profile"
+import { getGstStateMeta } from "@/lib/gst-state"
 import { cn } from "@/lib/utils"
 
 type RegisterStep = "gstin" | "review" | "account"
