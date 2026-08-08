@@ -11,7 +11,7 @@
       "stepTwoDescription": "Confirm your password to continue.",
       "identifierLabel": "Email or phone number",
       "emailPlaceholder": "owner@gstfy.in",
-      "phonePlaceholder": "9876543210",
+      "phonePlaceholder": "0000000000",
       "checkingAccount": "Checking account...",
       "continue": "Continue",
       "or": "OR",
@@ -23,6 +23,8 @@
       "forgotPassword": "Forgot password?",
       "showPassword": "Show password",
       "hidePassword": "Hide password",
+      "registrationSuccessEmail": "Account created successfully. Check your email, verify your account, then sign in to finish setup.",
+      "registrationSuccessPhone": "Account created successfully. Complete phone verification, then sign in to finish setup.",
       "blockedMessage": "Authentication API is not connected yet. The UI flow is ready.",
       "signingIn": "Signing in...",
       "login": "Login",
@@ -31,51 +33,137 @@
       "termsNotice": "By clicking continue, you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.",
       "errors": {
         "identifierRequired": "Enter your email or phone number.",
-        "invalidPhone": "Enter a valid 10-digit Indian mobile number.",
+        "invalidPhone": "Enter a valid 10-digit mobile number.",
         "invalidEmail": "Enter a valid email address.",
         "accountNotFound": "We couldn't find an account for that email or phone number.",
-        "passwordRequired": "Enter your password."
+        "passwordRequired": "Enter your password.",
+        "generic": "Unable to sign in right now. Please try again."
       }
     },
     "register": {
-      "title": "Create your GSTFY account",
-      "subtitle": "Verify your GSTIN, review your GST record, and create login credentials in one flow.",
-      "sampleHint": "Using sample GST profile for UI verification: `{gstin}`",
-      "backToLogin": "Back to login",
+      "title": "Set up your GSTFY workspace",
+      "subtitle": "Enter your company, GST registration, and account details manually for the first rollout.",
+      "rolloutHint": "Current rollout supports one company under a manually entered GST registration. Additional branches can be added later from the dashboard.",
       "backToLoginText": {
         "before": "Already have an account?",
         "link": "Sign in"
       },
       "steps": {
-        "gstin": {
-          "stepTitle": "GSTIN",
-          "label": "GSTIN number",
-          "placeholder": "29AFSPB9500E1ZY",
-          "helper": "Use the GSTIN exactly as it appears in your registration certificate.",
-          "cta": "Verify GSTIN",
-          "loading": "Verifying GSTIN..."
+        "company": {
+          "stepTitle": "Company",
+          "fields": {
+            "legalName": "Legal business name",
+            "tradeName": "Trade name",
+            "pan": "PAN",
+            "constitution": "Constitution of business",
+            "businessEmail": "Business email",
+            "businessMobile": "Business mobile",
+            "primaryContactName": "Primary contact name",
+            "primaryContactMobile": "Primary contact mobile",
+            "primaryContactEmail": "Primary contact email"
+          },
+          "placeholders": {
+            "legalName": "Vicky Retail Private Limited",
+            "tradeName": "Vicky Mart",
+            "constitution": "Choose constitution",
+            "primaryContactName": "Business owner or operations head"
+          },
+          "helpers": {
+            "pan": "PAN must be 10 characters: 5 letters, 4 digits, and 1 letter. The 4th letter must be a valid holder type code."
+          }
         },
-        "review": {
-          "stepTitle": "Review",
-          "heading": "Review GST registration details",
-          "description": "Check the fetched GST details before moving to account setup.",
-          "gstinVerified": "GSTIN verified",
-          "editGstin": "Edit GSTIN",
-          "continue": "Continue to account setup",
+        "registration": {
+          "stepTitle": "GST",
+          "heading": "Enter GST registration details",
+          "description": "Capture the GST registration and principal place of business details manually.",
+          "fields": {
+            "gstin": "GSTIN",
+            "taxpayerType": "Taxpayer type",
+            "registrationDate": "Effective registration date",
+            "principalAddressLine1": "Principal address line 1",
+            "principalAddressLine2": "Principal address line 2",
+            "locality": "Locality / area",
+            "district": "District",
+            "pincode": "Pincode",
+            "state": "State / UT",
+            "possessionType": "Nature of possession",
+            "signatoryName": "Primary authorized signatory",
+            "signatoryRole": "Signatory designation",
+            "signatoryMobile": "Signatory mobile",
+            "signatoryEmail": "Signatory email",
+            "eInvoiceApplicable": "E-invoice applicable",
+            "eWayBillApplicable": "E-way bill applicable"
+          },
+          "placeholders": {
+            "taxpayerType": "Choose taxpayer type",
+            "principalAddressLine1": "Door / building / street",
+            "principalAddressLine2": "Landmark / floor / additional address",
+            "locality": "Eg. T Nagar",
+            "district": "Eg. Chennai",
+            "state": "Choose state",
+            "possessionType": "Choose possession type",
+            "signatoryName": "Authorized signatory name",
+            "signatoryRole": "Director / Partner / Proprietor"
+          },
           "sections": {
-            "businessIdentity": "Business Identity",
-            "companyInformation": "Company Information",
-            "registeredAddress": "Registered Address"
+            "signatory": "Authorized signatory"
+          },
+          "location": {
+            "requesting": "We requested browser location access to auto-fill district, pincode, and state.",
+            "success": "District, pincode, and state were auto-filled from your current location when available.",
+            "unsupported": "This browser cannot share location here. Enter district, pincode, and state manually.",
+            "denied": "Location access was denied. Enter district, pincode, and state manually.",
+            "timeout": "Location lookup timed out. Enter district, pincode, and state manually.",
+            "notFound": "We could not map this location to district, pincode, and state. Enter them manually.",
+            "lookupFailed": "We could not fetch address details from your location. Enter district, pincode, and state manually."
+          },
+          "helpers": {
+            "gstin": "Enter the GSTIN exactly as shown on the registration certificate. The system validates the format only in this rollout.",
+            "eInvoiceApplicable": "Turn this on only if this GST registration needs IRN generation for applicable B2B invoices.",
+            "eWayBillApplicable": "Turn this on if this registration issues or dispatches goods that may need e-way bills."
+          }
+        },
+        "branches": {
+          "stepTitle": "Branches",
+          "heading": "Add operational branches",
+          "description": "Add the branches that will use GSTFY under this GST registration.",
+          "principalCaptured": "Principal place of business is already captured in the GST step.",
+          "pendingPrincipal": "Complete the GST registration step to save the principal place of business.",
+          "branchCount": "{{count}} / {{max}} branches added",
+          "branchTitle": "Branch {{index}}",
+          "branchDescription": "Use one card per store, warehouse, office, or factory location that will operate in the system.",
+          "addBranch": "Add another branch",
+          "removeBranch": "Remove branch",
+          "sections": {
+            "branchContact": "Branch contact"
           },
           "fields": {
-            "legalName": "Business name",
-            "tradeName": "Trade name",
-            "businessType": "Business type",
-            "taxpayerType": "Taxpayer type",
-            "gstState": "GST state",
-            "eInvoice": "E-Invoice enabled",
-            "registeredDate": "Registered date",
-            "lastUpdated": "Last updated"
+            "branchName": "Branch name",
+            "branchCode": "Branch code",
+            "branchType": "Branch type",
+            "addressLine1": "Address line 1",
+            "addressLine2": "Address line 2",
+            "locality": "Locality / area",
+            "district": "District",
+            "pincode": "Pincode",
+            "state": "State / UT",
+            "managerName": "Branch manager / in-charge",
+            "managerMobile": "Branch mobile",
+            "managerEmail": "Branch email",
+            "salesEnabled": "Sales",
+            "purchasesEnabled": "Purchases",
+            "inventoryEnabled": "Inventory",
+            "posEnabled": "POS"
+          },
+          "placeholders": {
+            "branchName": "Eg. Velachery Branch",
+            "branchType": "Choose branch type",
+            "state": "Choose state",
+            "addressLine1": "Door / building / street",
+            "addressLine2": "Landmark / floor / additional address",
+            "locality": "Eg. Velachery",
+            "district": "Eg. Chennai",
+            "managerName": "Branch in-charge name"
           }
         },
         "account": {
@@ -84,7 +172,7 @@
           "description": "Use your business email or Indian phone number to finish account setup.",
           "identifierLabel": "Email or phone number",
           "emailPlaceholder": "owner@gstfy.in",
-          "phonePlaceholder": "9876543210",
+          "phonePlaceholder": "0000000000",
           "passwordLabel": "Password",
           "passwordPlaceholder": "Create a password",
           "confirmPasswordLabel": "Confirm password",
@@ -92,16 +180,77 @@
           "passwordHelper": "Use at least 8 characters with one number and one special character.",
           "cta": "Create account",
           "submitting": "Creating account...",
+          "verificationRequired": "Account created. Verify your email or phone with Supabase to finish setup, then sign in.",
           "blockedMessage": "Registration API is not connected yet. The UI flow is ready.",
-          "backToReview": "Back to GST review"
+          "backToReview": "Back to branch setup"
+        }
+      },
+      "actions": {
+        "fillTestValues": "Fill test values",
+        "continue": "Continue",
+        "backToCompany": "Back to company details",
+        "backToRegistration": "Back to GST registration",
+        "backToBranches": "Back to branch setup"
+      },
+      "options": {
+        "constitution": {
+          "proprietorship": "Proprietorship",
+          "partnership": "Partnership Firm",
+          "llp": "LLP",
+          "private_limited": "Private Limited Company",
+          "public_limited": "Public Limited Company",
+          "trust": "Trust",
+          "society": "Society / Association",
+          "other": "Other"
+        },
+        "taxpayerType": {
+          "regular": "Regular",
+          "composition": "Composition",
+          "sez": "SEZ",
+          "casual": "Casual taxable person"
+        },
+        "possession": {
+          "own": "Own",
+          "rented": "Rented",
+          "leased": "Leased",
+          "consent": "Consent",
+          "shared": "Shared",
+          "other": "Other"
+        },
+        "branchType": {
+          "retail": "Retail store",
+          "warehouse": "Warehouse",
+          "office": "Office",
+          "factory": "Factory / unit"
         }
       },
       "errors": {
-        "gstinRequired": "Enter your GSTIN.",
+        "legalNameRequired": "Enter the legal business name.",
+        "tradeNameRequired": "Enter the trade name.",
+        "panInvalid": "Enter a valid PAN.",
+        "constitutionRequired": "Choose the constitution of business.",
+        "contactNameRequired": "Enter the primary contact name.",
         "gstinInvalid": "Enter a valid 15-character GSTIN.",
+        "taxpayerTypeRequired": "Choose the taxpayer type.",
+        "registrationDateRequired": "Enter the GST registration date.",
+        "addressLine1Required": "Enter address line 1.",
+        "localityRequired": "Enter the locality or area.",
+        "districtRequired": "Enter the district.",
+        "pincodeInvalid": "Enter a valid 6-digit pincode.",
+        "stateRequired": "Choose the state or union territory.",
+        "possessionRequired": "Choose the nature of possession.",
+        "signatoryNameRequired": "Enter the authorized signatory name.",
+        "signatoryRoleRequired": "Enter the signatory designation.",
+        "branchRequired": "Add at least one branch.",
+        "branchNameRequired": "Enter the branch name.",
+        "branchCodeRequired": "Enter the branch code.",
+        "branchTypeRequired": "Choose the branch type.",
+        "branchStateMismatch": "This rollout supports branches under the same state GST registration only.",
+        "managerNameRequired": "Enter the branch manager or in-charge name.",
         "identifierRequired": "Enter your email or phone number.",
-        "invalidPhone": "Enter a valid 10-digit Indian mobile number.",
+        "invalidPhone": "Enter a valid 10-digit mobile number.",
         "invalidEmail": "Enter a valid email address.",
+        "generic": "Unable to complete registration right now. Please try again.",
         "passwordLength": "Password must be at least 8 characters long.",
         "passwordNumber": "Password must include at least one number.",
         "passwordSpecial": "Password must include at least one special character.",

@@ -11,7 +11,7 @@
       "stepTwoDescription": "जारी रखने के लिए अपना पासवर्ड पुष्टि करें।",
       "identifierLabel": "ईमेल या फोन नंबर",
       "emailPlaceholder": "owner@gstfy.in",
-      "phonePlaceholder": "9876543210",
+      "phonePlaceholder": "0000000000",
       "checkingAccount": "खाता जाँचा जा रहा है...",
       "continue": "जारी रखें",
       "or": "या",
@@ -23,6 +23,8 @@
       "forgotPassword": "पासवर्ड भूल गए?",
       "showPassword": "पासवर्ड दिखाएं",
       "hidePassword": "पासवर्ड छुपाएं",
+      "registrationSuccessEmail": "अकाउंट सफलतापूर्वक बन गया। अपना ईमेल जांचें, अकाउंट सत्यापित करें, फिर सेटअप पूरा करने के लिए साइन इन करें।",
+      "registrationSuccessPhone": "अकाउंट सफलतापूर्वक बन गया। फोन सत्यापन पूरा करें, फिर सेटअप पूरा करने के लिए साइन इन करें।",
       "blockedMessage": "Authentication API अभी कनेक्ट नहीं है। UI फ्लो तैयार है।",
       "signingIn": "साइन इन हो रहा है...",
       "login": "लॉग इन",
@@ -31,51 +33,137 @@
       "termsNotice": "जारी रखकर, आप हमारी <terms>सेवा की शर्तों</terms> और <privacy>गोपनीयता नीति</privacy> से सहमत होते हैं।",
       "errors": {
         "identifierRequired": "अपना ईमेल या फोन नंबर दर्ज करें।",
-        "invalidPhone": "सही 10 अंकों वाला भारतीय मोबाइल नंबर दर्ज करें।",
+        "invalidPhone": "सही 10 अंकों वाला मोबाइल नंबर दर्ज करें।",
         "invalidEmail": "सही ईमेल पता दर्ज करें।",
         "accountNotFound": "उस ईमेल या फोन नंबर के लिए कोई खाता नहीं मिला।",
-        "passwordRequired": "अपना पासवर्ड दर्ज करें।"
+        "passwordRequired": "अपना पासवर्ड दर्ज करें।",
+        "generic": "अभी साइन इन नहीं हो सका। कृपया फिर से प्रयास करें।"
       }
     },
     "register": {
-      "title": "अपना GSTFY खाता बनाएं",
-      "subtitle": "अपना GSTIN सत्यापित करें, GST रिकॉर्ड की समीक्षा करें और एक ही फ्लो में लॉगिन क्रेडेंशियल बनाएं।",
-      "sampleHint": "UI सत्यापन के लिए सैंपल GST प्रोफाइल उपयोग की जा रही है: `{gstin}`",
-      "backToLogin": "लॉगिन पर वापस जाएं",
+      "title": "अपना GSTFY workspace सेट करें",
+      "subtitle": "पहले rollout के लिए company, GST registration aur account details manually darj karen.",
+      "rolloutHint": "Current rollout ek company ko manually entered GST registration ke saath support karta hai. Additional branches baad mein dashboard se add ki ja sakti hain.",
       "backToLoginText": {
         "before": "पहले से अकाउंट है?",
         "link": "साइन इन"
       },
       "steps": {
-        "gstin": {
-          "stepTitle": "GSTIN",
-          "label": "GSTIN नंबर",
-          "placeholder": "29AFSPB9500E1ZY",
-          "helper": "GSTIN को उसी तरह दर्ज करें जैसे वह पंजीकरण प्रमाणपत्र में है।",
-          "cta": "GSTIN सत्यापित करें",
-          "loading": "GSTIN सत्यापित किया जा रहा है..."
+        "company": {
+          "stepTitle": "कंपनी",
+          "fields": {
+            "legalName": "Legal business name",
+            "tradeName": "Trade name",
+            "pan": "PAN",
+            "constitution": "Constitution of business",
+            "businessEmail": "Business email",
+            "businessMobile": "Business mobile",
+            "primaryContactName": "Primary contact name",
+            "primaryContactMobile": "Primary contact mobile",
+            "primaryContactEmail": "Primary contact email"
+          },
+          "placeholders": {
+            "legalName": "Vicky Retail Private Limited",
+            "tradeName": "Vicky Mart",
+            "constitution": "Choose constitution",
+            "primaryContactName": "Business owner or operations head"
+          },
+          "helpers": {
+            "pan": "PAN 10 अक्षरों का होना चाहिए: 5 letters, 4 digits, और 1 letter. 4th letter एक valid holder type code होना चाहिए।"
+          }
         },
-        "review": {
-          "stepTitle": "समीक्षा",
-          "heading": "GST पंजीकरण विवरण की समीक्षा करें",
-          "description": "अकाउंट सेटअप पर जाने से पहले प्राप्त GST विवरण की जांच करें।",
-          "gstinVerified": "GSTIN सत्यापित",
-          "editGstin": "GSTIN बदलें",
-          "continue": "अकाउंट सेटअप पर जाएं",
+        "registration": {
+          "stepTitle": "GST",
+          "heading": "GST registration details दर्ज करें",
+          "description": "GST registration और principal place of business details manually capture करें।",
+          "fields": {
+            "gstin": "GSTIN",
+            "taxpayerType": "Taxpayer type",
+            "registrationDate": "Effective registration date",
+            "principalAddressLine1": "Principal address line 1",
+            "principalAddressLine2": "Principal address line 2",
+            "locality": "Locality / area",
+            "district": "District",
+            "pincode": "Pincode",
+            "state": "State / UT",
+            "possessionType": "Nature of possession",
+            "signatoryName": "Primary authorized signatory",
+            "signatoryRole": "Signatory designation",
+            "signatoryMobile": "Signatory mobile",
+            "signatoryEmail": "Signatory email",
+            "eInvoiceApplicable": "E-invoice applicable",
+            "eWayBillApplicable": "E-way bill applicable"
+          },
+          "placeholders": {
+            "taxpayerType": "Choose taxpayer type",
+            "principalAddressLine1": "Door / building / street",
+            "principalAddressLine2": "Landmark / floor / additional address",
+            "locality": "Eg. T Nagar",
+            "district": "Eg. Chennai",
+            "state": "Choose state",
+            "possessionType": "Choose possession type",
+            "signatoryName": "Authorized signatory name",
+            "signatoryRole": "Director / Partner / Proprietor"
+          },
           "sections": {
-            "businessIdentity": "बिज़नेस पहचान",
-            "companyInformation": "कंपनी जानकारी",
-            "registeredAddress": "पंजीकृत पता"
+            "signatory": "Authorized signatory"
+          },
+          "location": {
+            "requesting": "District, pincode aur state auto-fill karne ke liye browser location access request kiya gaya hai.",
+            "success": "Available hone par district, pincode aur state aapki current location se auto-fill kar diye gaye.",
+            "unsupported": "Is browser mein yahan location access uplabdh nahin hai. District, pincode aur state manually bharen.",
+            "denied": "Location access deny kiya gaya. District, pincode aur state manually bharen.",
+            "timeout": "Location lookup timeout ho gaya. District, pincode aur state manually bharen.",
+            "notFound": "Is location se district, pincode aur state map nahin ho sake. Inhen manually bharen.",
+            "lookupFailed": "Location se address details fetch nahin ho sake. District, pincode aur state manually bharen."
+          },
+          "helpers": {
+            "gstin": "GSTIN को registration certificate के अनुसार दर्ज करें। इस rollout में केवल format validation है।",
+            "eInvoiceApplicable": "इसे तभी on करें जब इस GST registration को applicable B2B invoices के लिए IRN generation चाहिए।",
+            "eWayBillApplicable": "इसे on करें अगर इस registration से goods dispatch होते हैं और e-way bill की जरूरत पड़ सकती है।"
+          }
+        },
+        "branches": {
+          "stepTitle": "Branches",
+          "heading": "Operational branches जोड़ें",
+          "description": "इस GST registration के अंतर्गत GSTFY उपयोग करने वाली branches जोड़ें।",
+          "principalCaptured": "Principal place of business GST step में पहले से capture किया गया है।",
+          "pendingPrincipal": "Principal place of business save करने के लिए GST registration step पूरा करें।",
+          "branchCount": "{{count}} / {{max}} branches added",
+          "branchTitle": "Branch {{index}}",
+          "branchDescription": "System में काम करने वाले हर store, warehouse, office या factory location के लिए एक card उपयोग करें।",
+          "addBranch": "Add another branch",
+          "removeBranch": "Remove branch",
+          "sections": {
+            "branchContact": "Branch contact"
           },
           "fields": {
-            "legalName": "बिज़नेस नाम",
-            "tradeName": "ट्रेड नाम",
-            "businessType": "बिज़नेस प्रकार",
-            "taxpayerType": "करदाता प्रकार",
-            "gstState": "GST राज्य",
-            "eInvoice": "E-Invoice सक्षम",
-            "registeredDate": "पंजीकृत तिथि",
-            "lastUpdated": "अंतिम अपडेट"
+            "branchName": "Branch name",
+            "branchCode": "Branch code",
+            "branchType": "Branch type",
+            "addressLine1": "Address line 1",
+            "addressLine2": "Address line 2",
+            "locality": "Locality / area",
+            "district": "District",
+            "pincode": "Pincode",
+            "state": "State / UT",
+            "managerName": "Branch manager / in-charge",
+            "managerMobile": "Branch mobile",
+            "managerEmail": "Branch email",
+            "salesEnabled": "Sales",
+            "purchasesEnabled": "Purchases",
+            "inventoryEnabled": "Inventory",
+            "posEnabled": "POS"
+          },
+          "placeholders": {
+            "branchName": "Eg. Velachery Branch",
+            "branchType": "Choose branch type",
+            "state": "Choose state",
+            "addressLine1": "Door / building / street",
+            "addressLine2": "Landmark / floor / additional address",
+            "locality": "Eg. Velachery",
+            "district": "Eg. Chennai",
+            "managerName": "Branch in-charge name"
           }
         },
         "account": {
@@ -84,7 +172,7 @@
           "description": "अकाउंट सेटअप पूरा करने के लिए अपना व्यावसायिक ईमेल या भारतीय फोन नंबर उपयोग करें।",
           "identifierLabel": "ईमेल या फोन नंबर",
           "emailPlaceholder": "owner@gstfy.in",
-          "phonePlaceholder": "9876543210",
+          "phonePlaceholder": "0000000000",
           "passwordLabel": "पासवर्ड",
           "passwordPlaceholder": "पासवर्ड बनाएं",
           "confirmPasswordLabel": "पासवर्ड की पुष्टि करें",
@@ -92,16 +180,77 @@
           "passwordHelper": "कम से कम 8 अक्षर, एक संख्या और एक विशेष अक्षर का उपयोग करें।",
           "cta": "अकाउंट बनाएं",
           "submitting": "अकाउंट बनाया जा रहा है...",
+          "verificationRequired": "अकाउंट बन गया है। सेटअप पूरा करने के लिए Supabase में अपना ईमेल या फोन सत्यापित करें, फिर साइन इन करें।",
           "blockedMessage": "रजिस्ट्रेशन API अभी कनेक्ट नहीं है। UI फ्लो तैयार है।",
-          "backToReview": "GST समीक्षा पर वापस जाएं"
+          "backToReview": "Branch setup पर वापस जाएं"
+        }
+      },
+      "actions": {
+        "fillTestValues": "टेस्ट वैल्यू भरें",
+        "continue": "जारी रखें",
+        "backToCompany": "Company details पर वापस जाएं",
+        "backToRegistration": "GST registration पर वापस जाएं",
+        "backToBranches": "Branch setup पर वापस जाएं"
+      },
+      "options": {
+        "constitution": {
+          "proprietorship": "Proprietorship",
+          "partnership": "Partnership Firm",
+          "llp": "LLP",
+          "private_limited": "Private Limited Company",
+          "public_limited": "Public Limited Company",
+          "trust": "Trust",
+          "society": "Society / Association",
+          "other": "Other"
+        },
+        "taxpayerType": {
+          "regular": "Regular",
+          "composition": "Composition",
+          "sez": "SEZ",
+          "casual": "Casual taxable person"
+        },
+        "possession": {
+          "own": "Own",
+          "rented": "Rented",
+          "leased": "Leased",
+          "consent": "Consent",
+          "shared": "Shared",
+          "other": "Other"
+        },
+        "branchType": {
+          "retail": "Retail store",
+          "warehouse": "Warehouse",
+          "office": "Office",
+          "factory": "Factory / unit"
         }
       },
       "errors": {
-        "gstinRequired": "अपना GSTIN दर्ज करें।",
+        "legalNameRequired": "Legal business name दर्ज करें।",
+        "tradeNameRequired": "Trade name दर्ज करें।",
+        "panInvalid": "सही PAN दर्ज करें।",
+        "constitutionRequired": "Constitution of business चुनें।",
+        "contactNameRequired": "Primary contact name दर्ज करें।",
         "gstinInvalid": "सही 15-अक्षर वाला GSTIN दर्ज करें।",
+        "taxpayerTypeRequired": "Taxpayer type चुनें।",
+        "registrationDateRequired": "GST registration date दर्ज करें।",
+        "addressLine1Required": "Address line 1 दर्ज करें।",
+        "localityRequired": "Locality / area दर्ज करें।",
+        "districtRequired": "District दर्ज करें।",
+        "pincodeInvalid": "सही 6-digit pincode दर्ज करें।",
+        "stateRequired": "State / UT चुनें।",
+        "possessionRequired": "Nature of possession चुनें।",
+        "signatoryNameRequired": "Authorized signatory name दर्ज करें।",
+        "signatoryRoleRequired": "Signatory designation दर्ज करें।",
+        "branchRequired": "कम से कम एक branch जोड़ें।",
+        "branchNameRequired": "Branch name दर्ज करें।",
+        "branchCodeRequired": "Branch code दर्ज करें।",
+        "branchTypeRequired": "Branch type चुनें।",
+        "branchStateMismatch": "यह rollout केवल same-state GST registration के तहत branches को support करता है।",
+        "managerNameRequired": "Branch manager / in-charge name दर्ज करें।",
         "identifierRequired": "अपना ईमेल या फोन नंबर दर्ज करें।",
-        "invalidPhone": "सही 10 अंकों वाला भारतीय मोबाइल नंबर दर्ज करें।",
+        "invalidPhone": "सही 10 अंकों वाला मोबाइल नंबर दर्ज करें।",
         "invalidEmail": "सही ईमेल पता दर्ज करें।",
+        "generic": "अभी रजिस्ट्रेशन पूरा नहीं हो सका। कृपया फिर से प्रयास करें।",
         "passwordLength": "पासवर्ड कम से कम 8 अक्षरों का होना चाहिए।",
         "passwordNumber": "पासवर्ड में कम से कम एक संख्या होनी चाहिए।",
         "passwordSpecial": "पासवर्ड में कम से कम एक विशेष अक्षर होना चाहिए।",

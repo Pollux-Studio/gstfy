@@ -2,6 +2,8 @@
 
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { useMutation } from "@tanstack/react-query"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import {
@@ -16,6 +18,12 @@ import { Trans, useTranslation } from "react-i18next"
 import { useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
 
+import {
+  login as loginWithPassword,
+  lookupIdentifier,
+  type LookupIdentifierResponse,
+} from "@/lib/auth/api"
+import { setStoredAuthSession } from "@/lib/auth/session"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -36,52 +44,25 @@ import {
 } from "@/components/ui/input-group"
 import { cn } from "@/lib/utils"
 
-const mockAccounts = [
-  {
-    email: "owner@gstfy.in",
-    phone: "9876543210",
-    displayName: "Aarav Traders",
-    gstin: "24ABCDE1234F1Z5",
-    avatarFallback: "AT",
-    gstStatus: "Active",
-  },
-  {
-    email: "meera@shreemart.in",
-    phone: "9123456789",
-    displayName: "Shree Mart",
-    gstin: "27PQRSM4321L1Z2",
-    avatarFallback: "SM",
-    gstStatus: "Active",
-  },
-  {
-    email: "demo@gstfy.in",
-    phone: "9988776655",
-    displayName: "Demo Super Store",
-    gstin: "29ABCDE1234F1Z7",
-    avatarFallback: "DS",
-    gstStatus: "Active",
-  },
-] as const
-
 type IdentifierValues = { identifier: string }
 type PasswordValues = { password: string }
-type Account = (typeof mockAccounts)[number]
+type Account = LookupIdentifierResponse["account"]
 
 export function LoginForm({
   className,
+  registrationBanner = "",
   ...props
-}: React.ComponentProps<"div">) {
+}: React.ComponentProps<"div"> & {
+  registrationBanner?: string
+}) {
   const { t } = useTranslation()
+  const router = useRouter()
   const shouldReduceMotion = useReducedMotion()
   const [step, setStep] = useState<"identifier" | "password">("identifier")
-  const [lookupState, setLookupState] = useState<"idle" | "loading" | "not-found">(
-    "idle"
-  )
-  const [authState, setAuthState] = useState<"idle" | "submitting" | "blocked">(
-    "idle"
-  )
+  const [lookupState, setLookupState] = useState<"idle" | "not-found">("idle")
   const [account, setAccount] = useState<Account | null>(null)
   const [showPassword, setShowPassword] = useState(false)
+  const [authError, setAuthError] = useState("")
 
   const identifierSchema = useMemo(
     () =>
@@ -149,51 +130,70 @@ export function LoginForm({
     defaultValue: "",
   })
 
+  const lookupMutation = useMutation({
+    mutationFn: lookupIdentifier,
+  })
+
+  const loginMutation = useMutation({
+    mutationFn: loginWithPassword,
+  })
+
   const phoneMode = isPhoneMode(rawIdentifier)
   const canContinue =
     rawIdentifier.trim().length > 0 &&
     identifierForm.formState.isValid &&
-    lookupState !== "loading"
+    !lookupMutation.isPending
   const canLogin =
     rawPassword.length > 0 &&
     passwordForm.formState.isValid &&
-    authState !== "submitting"
+    !loginMutation.isPending
   const transition = shouldReduceMotion
     ? { duration: 0 }
     : { duration: 0.24, ease: "easeOut" as const }
 
   async function handleIdentifierSubmit(values: IdentifierValues) {
-    setLookupState("loading")
-    setAuthState("idle")
-
-    await new Promise((resolve) => setTimeout(resolve, 550))
-
-    const normalizedIdentifier = normalizeIdentifier(values.identifier)
-    const matchedAccount =
-      mockAccounts.find(
-        (item) =>
-          item.email === normalizedIdentifier || item.phone === normalizedIdentifier
-      ) ?? null
-
-    if (!matchedAccount) {
-      setLookupState("not-found")
-      setAccount(null)
-      return
-    }
-
     setLookupState("idle")
-    setAccount(matchedAccount)
-    setStep("password")
-    setShowPassword(false)
-    passwordForm.reset()
+    setAuthError("")
+
+    try {
+      const response = await lookupMutation.mutateAsync(values.identifier)
+      setAccount(response.account)
+      setStep("password")
+      setShowPassword(false)
+      passwordForm.reset()
+    } catch (error) {
+      setAccount(null)
+      setLookupState("not-found")
+
+      if (error instanceof Error && !/account not found/i.test(error.message)) {
+        identifierForm.setError("identifier", {
+          type: "server",
+          message: error.message,
+        })
+      }
+    }
   }
 
   async function handlePasswordSubmit() {
-    setAuthState("submitting")
+    setAuthError("")
 
-    await new Promise((resolve) => setTimeout(resolve, 650))
+    try {
+      const response = await loginMutation.mutateAsync({
+        identifier: rawIdentifier,
+        password: rawPassword,
+      })
 
-    setAuthState("blocked")
+      setStoredAuthSession({
+        user: response.user,
+        session: response.session,
+      })
+
+      router.push("/dashboard")
+    } catch (error) {
+      setAuthError(
+        error instanceof Error ? error.message : t("auth.login.errors.generic")
+      )
+    }
   }
 
   function handleIdentifierChange(nextValue: string) {
@@ -210,15 +210,21 @@ export function LoginForm({
     if (lookupState !== "idle") {
       setLookupState("idle")
     }
+
+    if (identifierForm.formState.errors.identifier) {
+      identifierForm.clearErrors("identifier")
+    }
   }
 
   function handleResetToIdentifier() {
     setStep("identifier")
     setLookupState("idle")
-    setAuthState("idle")
+    setAuthError("")
     setAccount(null)
     setShowPassword(false)
     passwordForm.reset()
+    loginMutation.reset()
+    lookupMutation.reset()
   }
 
   const passwordRegistration = passwordForm.register("password")
@@ -238,6 +244,11 @@ export function LoginForm({
             ? t("auth.login.stepOneDescription")
             : t("auth.login.stepTwoDescription")}
         </FieldDescription>
+        {registrationBanner ? (
+          <FieldDescription className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+            {registrationBanner}
+          </FieldDescription>
+        ) : null}
       </div>
 
       <AnimatePresence mode="wait" initial={false}>
@@ -292,16 +303,6 @@ export function LoginForm({
                 {lookupState === "not-found" ? (
                   <FieldError>{t("auth.login.errors.accountNotFound")}</FieldError>
                 ) : null}
-                <FieldDescription>
-                  {t("auth.login.sampleHint", {
-                    primaryEmail: "owner@gstfy.in",
-                    secondaryEmail: "meera@shreemart.in",
-                    demoEmail: "demo@gstfy.in",
-                    primaryPhone: "9876543210",
-                    secondaryPhone: "9123456789",
-                    demoPhone: "9988776655",
-                  })}
-                </FieldDescription>
               </Field>
 
               <Field>
@@ -310,7 +311,7 @@ export function LoginForm({
                   className="w-full"
                   disabled={!canContinue}
                 >
-                  {lookupState === "loading"
+                  {lookupMutation.isPending
                     ? t("auth.login.checkingAccount")
                     : t("auth.login.continue")}
                 </Button>
@@ -346,7 +347,9 @@ export function LoginForm({
               <div className="rounded-xl border border-border bg-muted/40 p-3.5 shadow-xs">
                 <div className="flex items-center gap-3">
                   <Avatar size="lg" className="ring-1 ring-border">
-                    <AvatarFallback>{account?.avatarFallback}</AvatarFallback>
+                    <AvatarFallback>
+                      {getAccountInitials(account?.displayName)}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex flex-wrap items-center gap-2">
@@ -358,9 +361,11 @@ export function LoginForm({
                         {t("auth.login.gstStatusActive")}
                       </Badge>
                     </div>
-                    <p className="font-mono text-xs tracking-[0.16em] text-muted-foreground uppercase">
-                      {account?.gstin}
-                    </p>
+                    {account?.gstin ? (
+                      <p className="font-mono text-xs tracking-[0.16em] text-muted-foreground uppercase">
+                        {account.gstin}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -391,8 +396,8 @@ export function LoginForm({
                     onChange={(event) => {
                       passwordRegistration.onChange(event)
 
-                      if (authState !== "idle") {
-                        setAuthState("idle")
+                      if (authError) {
+                        setAuthError("")
                       }
                     }}
                   />
@@ -414,9 +419,9 @@ export function LoginForm({
                   </InputGroupAddon>
                 </InputGroup>
                 <FieldError errors={[passwordForm.formState.errors.password]} />
-                {authState === "blocked" ? (
+                {authError ? (
                   <FieldDescription className="text-destructive">
-                    {t("auth.login.blockedMessage")}
+                    {authError}
                   </FieldDescription>
                 ) : null}
               </Field>
@@ -427,7 +432,7 @@ export function LoginForm({
                   className="w-full"
                   disabled={!canLogin}
                 >
-                  {authState === "submitting"
+                  {loginMutation.isPending
                     ? t("auth.login.signingIn")
                     : t("auth.login.login")}
                 </Button>
@@ -484,8 +489,20 @@ function normalizePhoneInput(value: string) {
   return normalizePhone(value)
 }
 
-function normalizeIdentifier(value: string) {
-  return isPhoneMode(value)
-    ? normalizePhone(value)
-    : value.trim().toLowerCase()
+function getAccountInitials(displayName?: string | null) {
+  if (!displayName) {
+    return "GW"
+  }
+
+  const parts = displayName
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+
+  if (parts.length === 0) {
+    return "GW"
+  }
+
+  return parts.map((part) => part[0]?.toUpperCase() ?? "").join("")
 }

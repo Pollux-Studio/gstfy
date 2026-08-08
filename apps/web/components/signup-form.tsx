@@ -2,33 +2,32 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { zodResolver } from "@hookform/resolvers/zod"
+import { useRouter } from "next/navigation"
+import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
+import { useMutation } from "@tanstack/react-query"
+import { format, parseISO } from "date-fns"
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
-  BadgeCheckIcon,
-  BriefcaseBusinessIcon,
-  Building2Icon,
-  CalendarDaysIcon,
+  CalendarIcon,
   CheckIcon,
-  CheckCircle2Icon,
-  Clock3Icon,
   EyeIcon,
   EyeOffIcon,
-  FileTextIcon,
   LockKeyholeIcon,
-  MapPinHouseIcon,
-  MapPinnedIcon,
-  ReceiptTextIcon,
-  StoreIcon,
 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
 
-import { Badge } from "@/components/ui/badge"
+import {
+  type CompleteOnboardingPayload,
+  register as registerAccount,
+} from "@/lib/auth/api"
+import { setStoredAuthSession } from "@/lib/auth/session"
+import { getAllGstStates } from "@/lib/gst-state"
+
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import {
   Field,
   FieldDescription,
@@ -36,6 +35,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import {
   InputGroup,
   InputGroupAddon,
@@ -43,51 +43,213 @@ import {
   InputGroupInput,
   InputGroupText,
 } from "@/components/ui/input-group"
-import { Input } from "@/components/ui/input"
 import {
-  buildMockProfile,
-  formatGstAddress,
-  gstApiSample,
-  type GstProfile,
-} from "@/lib/auth/mock-gst-profile"
-import { getGstStateMeta } from "@/lib/gst-state"
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 
-type RegisterStep = "gstin" | "review" | "account"
-type GstinValues = { gstin: string }
-type AccountValues = {
+type RegisterStep = "company" | "registration" | "account"
+
+type CompanyFormValues = {
+  legalName: string
+  tradeName: string
+  pan: string
+  constitution: string
+  businessEmail: string
+  businessMobile: string
+  primaryContactName: string
+  primaryContactMobile: string
+  primaryContactEmail: string
+}
+
+type RegistrationFormValues = {
+  gstin: string
+  taxpayerType: string
+  registrationDate: string
+  principalAddressLine1: string
+  principalAddressLine2: string
+  locality: string
+  district: string
+  pincode: string
+  stateCode: string
+  possessionType: string
+  eInvoiceApplicable: boolean
+  eWayBillApplicable: boolean
+}
+
+type AccountFormValues = {
   identifier: string
   password: string
   confirmPassword: string
 }
 
-type SignupFormProps = React.ComponentProps<"div">
+type FieldErrors<T extends string> = Partial<Record<T, string>>
+type RegistrationLocationStatus = "idle" | "requesting" | "success" | "error"
 
-export function SignupForm({ className, ...props }: SignupFormProps) {
+const indiaPhonePattern = /^\d{10}$/
+const gstinPattern = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/
+const pincodePattern = /^\d{6}$/
+const PAN_STATUS_CODES = new Set(["A", "B", "C", "F", "G", "H", "J", "L", "P", "T"])
+
+export function SignupForm({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
   const { t } = useTranslation()
-  const [step, setStep] = useState<RegisterStep>("gstin")
-  const [verifyState, setVerifyState] = useState<
-    "idle" | "loading" | "success" | "error"
-  >("idle")
-  const [submitState, setSubmitState] = useState<"idle" | "submitting" | "blocked">(
-    "idle"
+  const router = useRouter()
+  const states = useMemo(
+    () => getAllGstStates().filter((item) => item.code !== "97" && item.code !== "99"),
+    []
   )
-  const [profile, setProfile] = useState<GstProfile | null>(null)
+
+  const [step, setStep] = useState<RegisterStep>("company")
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [isRegistrationDatePickerOpen, setIsRegistrationDatePickerOpen] = useState(false)
+  const [registrationLocationStatus, setRegistrationLocationStatus] =
+    useState<RegistrationLocationStatus>("idle")
+  const [registrationLocationMessage, setRegistrationLocationMessage] = useState("")
+  const [submitFeedback, setSubmitFeedback] = useState<{
+    type: "error" | "info"
+    message: string
+  } | null>(null)
+  const hasRequestedRegistrationLocationRef = useRef(false)
 
-  const gstinSchema = useMemo(
+  const [company, setCompany] = useState<CompanyFormValues>({
+    legalName: "",
+    tradeName: "",
+    pan: "",
+    constitution: "",
+    businessEmail: "",
+    businessMobile: "",
+    primaryContactName: "",
+    primaryContactMobile: "",
+    primaryContactEmail: "",
+  })
+
+  const [registration, setRegistration] = useState<RegistrationFormValues>({
+    gstin: "",
+    taxpayerType: "",
+    registrationDate: "",
+    principalAddressLine1: "",
+    principalAddressLine2: "",
+    locality: "",
+    district: "",
+    pincode: "",
+    stateCode: "",
+    possessionType: "",
+    eInvoiceApplicable: false,
+    eWayBillApplicable: false,
+  })
+
+  const [account, setAccount] = useState<AccountFormValues>({
+    identifier: "",
+    password: "",
+    confirmPassword: "",
+  })
+
+  const [companyErrors, setCompanyErrors] = useState<FieldErrors<keyof CompanyFormValues>>(
+    {}
+  )
+  const [registrationErrors, setRegistrationErrors] = useState<
+    FieldErrors<keyof RegistrationFormValues>
+  >({})
+  const [accountErrors, setAccountErrors] = useState<FieldErrors<keyof AccountFormValues>>(
+    {}
+  )
+
+  const registerMutation = useMutation({
+    mutationFn: registerAccount,
+  })
+
+  const companySchema = useMemo(
+    () =>
+      z
+        .object({
+          legalName: z.string().trim().min(1, t("auth.register.errors.legalNameRequired")),
+          tradeName: z.string().trim().min(1, t("auth.register.errors.tradeNameRequired")),
+          pan: z.string().trim().toUpperCase(),
+          constitution: z.string().trim().min(1, t("auth.register.errors.constitutionRequired")),
+          businessEmail: z
+            .string()
+            .trim()
+            .refine(
+              (value) => value.length === 0 || z.string().email().safeParse(value).success,
+              { message: t("auth.register.errors.invalidEmail") }
+            ),
+          businessMobile: z
+            .string()
+            .trim()
+            .refine(
+              (value) => value.length === 0 || indiaPhonePattern.test(normalizePhone(value)),
+              {
+                message: t("auth.register.errors.invalidPhone"),
+              }
+            ),
+          primaryContactName: z
+            .string()
+            .trim()
+            .min(1, t("auth.register.errors.contactNameRequired")),
+          primaryContactMobile: z
+            .string()
+            .trim()
+            .refine((value) => indiaPhonePattern.test(normalizePhone(value)), {
+              message: t("auth.register.errors.invalidPhone"),
+            }),
+          primaryContactEmail: z
+            .string()
+            .trim()
+            .email(t("auth.register.errors.invalidEmail")),
+        })
+        .superRefine((values, ctx) => {
+          if (!validateBusinessPan(values.pan)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["pan"],
+              message: t("auth.register.errors.panInvalid"),
+            })
+          }
+        }),
+    [t]
+  )
+
+  const registrationSchema = useMemo(
     () =>
       z.object({
         gstin: z
           .string()
           .trim()
           .toUpperCase()
-          .min(1, t("auth.register.errors.gstinRequired"))
-          .regex(
-            /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/,
-            t("auth.register.errors.gstinInvalid")
-          ),
+          .regex(gstinPattern, t("auth.register.errors.gstinInvalid")),
+        taxpayerType: z
+          .string()
+          .trim()
+          .min(1, t("auth.register.errors.taxpayerTypeRequired")),
+        registrationDate: z
+          .string()
+          .trim()
+          .min(1, t("auth.register.errors.registrationDateRequired")),
+        principalAddressLine1: z
+          .string()
+          .trim()
+          .min(1, t("auth.register.errors.addressLine1Required")),
+        principalAddressLine2: z.string().trim(),
+        locality: z.string().trim().min(1, t("auth.register.errors.localityRequired")),
+        district: z.string().trim().min(1, t("auth.register.errors.districtRequired")),
+        pincode: z
+          .string()
+          .trim()
+          .regex(pincodePattern, t("auth.register.errors.pincodeInvalid")),
+        stateCode: z.string().trim().min(1, t("auth.register.errors.stateRequired")),
+        possessionType: z
+          .string()
+          .trim()
+          .min(1, t("auth.register.errors.possessionRequired")),
+        eInvoiceApplicable: z.boolean(),
+        eWayBillApplicable: z.boolean(),
       }),
     [t]
   )
@@ -102,7 +264,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
             .min(1, t("auth.register.errors.identifierRequired"))
             .superRefine((value, ctx) => {
               if (isPhoneMode(value)) {
-                if (!/^[6-9]\d{9}$/.test(normalizePhone(value))) {
+                if (!indiaPhonePattern.test(normalizePhone(value))) {
                   ctx.addIssue({
                     code: z.ZodIssueCode.custom,
                     message: t("auth.register.errors.invalidPhone"),
@@ -111,7 +273,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
                 return
               }
 
-              if (!z.email().safeParse(value.trim().toLowerCase()).success) {
+              if (!z.string().email().safeParse(value.trim().toLowerCase()).success) {
                 ctx.addIssue({
                   code: z.ZodIssueCode.custom,
                   message: t("auth.register.errors.invalidEmail"),
@@ -134,105 +296,338 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
     [t]
   )
 
-  const gstinForm = useForm<GstinValues>({
-    resolver: zodResolver(gstinSchema),
-    mode: "onChange",
-    reValidateMode: "onChange",
-    defaultValues: {
-      gstin: gstApiSample.data.data.gstin,
-    },
-  })
+  const phoneMode = isPhoneMode(account.identifier)
+  const companyHasErrors = Object.keys(companyErrors).length > 0
+  const registrationHasErrors = Object.keys(registrationErrors).length > 0
+  const accountHasErrors = Object.keys(accountErrors).length > 0
+  const constitutionTranslationKey = `auth.register.options.constitution.${company.constitution}`
+  const translatedConstitutionLabel = company.constitution
+    ? t(constitutionTranslationKey)
+    : ""
+  const constitutionDisplayLabel =
+    translatedConstitutionLabel && translatedConstitutionLabel !== constitutionTranslationKey
+      ? translatedConstitutionLabel
+      : formatSelectValueLabel(company.constitution)
+  const taxpayerTypeDisplayLabel = getTranslatedSelectLabel(
+    t,
+    "auth.register.options.taxpayerType",
+    registration.taxpayerType
+  )
+  const selectedRegistrationDate = registration.registrationDate
+    ? parseISO(registration.registrationDate)
+    : undefined
+  const registrationStateDisplayLabel = getStateDisplayLabel(states, registration.stateCode)
+  const possessionDisplayLabel = getTranslatedSelectLabel(
+    t,
+    "auth.register.options.possession",
+    registration.possessionType
+  )
+  const compactStepHasErrors =
+    (step === "company" && companyHasErrors) ||
+    (step === "registration" && registrationHasErrors) ||
+    (step === "account" && accountHasErrors)
 
-  const accountForm = useForm<AccountValues>({
-    resolver: zodResolver(accountSchema),
-    mode: "onChange",
-    reValidateMode: "onChange",
-    defaultValues: {
-      identifier: "",
-      password: "",
-      confirmPassword: "",
-    },
-  })
+  function requestRegistrationLocationAutofill() {
+    if (hasRequestedRegistrationLocationRef.current) {
+      return
+    }
 
-  const rawGstin = useWatch({
-    control: gstinForm.control,
-    name: "gstin",
-    defaultValue: gstApiSample.data.data.gstin,
-  })
-  const rawIdentifier = useWatch({
-    control: accountForm.control,
-    name: "identifier",
-    defaultValue: "",
-  })
-  const rawPassword = useWatch({
-    control: accountForm.control,
-    name: "password",
-    defaultValue: "",
-  })
-  const rawConfirmPassword = useWatch({
-    control: accountForm.control,
-    name: "confirmPassword",
-    defaultValue: "",
-  })
+    hasRequestedRegistrationLocationRef.current = true
 
-  const phoneMode = isPhoneMode(rawIdentifier)
-  const canVerify =
-    rawGstin.trim().length > 0 &&
-    gstinForm.formState.isValid &&
-    verifyState !== "loading"
-  const canSubmit =
-    rawIdentifier.trim().length > 0 &&
-    rawPassword.length > 0 &&
-    rawConfirmPassword.length > 0 &&
-    accountForm.formState.isValid &&
-    submitState !== "submitting"
-  const contentWidthClass = step === "review" ? "max-w-3xl" : "max-w-sm"
+    if (typeof window === "undefined" || !("geolocation" in navigator)) {
+      setRegistrationLocationStatus("error")
+      setRegistrationLocationMessage(
+        t("auth.register.steps.registration.location.unsupported")
+      )
+      return
+    }
 
-  async function handleVerifyGstin(values: GstinValues) {
-    setVerifyState("loading")
+    setRegistrationLocationStatus("requesting")
+    setRegistrationLocationMessage(t("auth.register.steps.registration.location.requesting"))
 
-    await new Promise((resolve) => setTimeout(resolve, 900))
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        void reverseGeocodeRegistrationLocation(
+          position.coords.latitude,
+          position.coords.longitude,
+          states
+        )
+          .then((locationData) => {
+            if (!locationData) {
+              setRegistrationLocationStatus("error")
+              setRegistrationLocationMessage(
+                t("auth.register.steps.registration.location.notFound")
+              )
+              return
+            }
 
-    setProfile(buildMockProfile(values.gstin))
-    setVerifyState("success")
-    setStep("review")
+            setRegistration((currentValue) => ({
+              ...currentValue,
+              district: currentValue.district || locationData.district,
+              pincode: currentValue.pincode || locationData.pincode,
+              stateCode: currentValue.stateCode || locationData.stateCode,
+            }))
+            setRegistrationErrors((currentValue) => {
+              let nextErrors = currentValue
+
+              if (locationData.district) {
+                nextErrors = clearErrorKey(nextErrors, "district")
+              }
+
+              if (locationData.pincode) {
+                nextErrors = clearErrorKey(nextErrors, "pincode")
+              }
+
+              if (locationData.stateCode) {
+                nextErrors = clearErrorKey(nextErrors, "stateCode")
+              }
+
+              return nextErrors
+            })
+            setRegistrationLocationStatus("success")
+            setRegistrationLocationMessage(
+              t("auth.register.steps.registration.location.success")
+            )
+          })
+          .catch(() => {
+            setRegistrationLocationStatus("error")
+            setRegistrationLocationMessage(
+              t("auth.register.steps.registration.location.lookupFailed")
+            )
+          })
+      },
+      (error) => {
+        setRegistrationLocationStatus("error")
+        setRegistrationLocationMessage(getGeolocationErrorMessage(t, error.code))
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 10000,
+        maximumAge: 300000,
+      }
+    )
   }
 
-  async function handleCreateAccount() {
-    setSubmitState("submitting")
-
-    await new Promise((resolve) => setTimeout(resolve, 800))
-
-    setSubmitState("blocked")
+  function updateCompanyValue<K extends keyof CompanyFormValues>(
+    key: K,
+    value: CompanyFormValues[K]
+  ) {
+    updateSimpleField(setCompany, key, value)
+    setCompanyErrors((currentValue) => clearErrorKey(currentValue, key))
   }
 
-  function handleGstinChange(nextValue: string) {
-    gstinForm.setValue("gstin", nextValue.toUpperCase(), {
-      shouldDirty: true,
-      shouldTouch: true,
-      shouldValidate: true,
-    })
+  function updateRegistrationValue<K extends keyof RegistrationFormValues>(
+    key: K,
+    value: RegistrationFormValues[K]
+  ) {
+    updateSimpleField(setRegistration, key, value)
+    setRegistrationErrors((currentValue) => clearErrorKey(currentValue, key))
+  }
 
-    if (verifyState !== "idle") {
-      setVerifyState("idle")
+  function updateAccountValue<K extends keyof AccountFormValues>(
+    key: K,
+    value: AccountFormValues[K]
+  ) {
+    updateSimpleField(setAccount, key, value)
+    setAccountErrors((currentValue) => clearErrorKey(currentValue, key))
+    if (submitFeedback) {
+      setSubmitFeedback(null)
     }
   }
 
-  function handleIdentifierChange(nextValue: string) {
-    const normalizedValue = isPhoneMode(nextValue)
-      ? normalizePhoneInput(nextValue)
-      : nextValue
+  function fillCompanySampleValues() {
+    const testIdentity = buildUniqueTestIdentity()
 
-    accountForm.setValue("identifier", normalizedValue, {
-      shouldDirty: true,
-      shouldTouch: true,
-      shouldValidate: true,
+    setCompany({
+      legalName: `Acme Retail ${testIdentity.suffix} Private Limited`,
+      tradeName: `Acme Mart ${testIdentity.suffix}`,
+      pan: testIdentity.pan,
+      constitution: "private_limited",
+      businessEmail: testIdentity.businessEmail,
+      businessMobile: testIdentity.businessMobile,
+      primaryContactName: "Vicky Prasad",
+      primaryContactMobile: testIdentity.primaryContactMobile,
+      primaryContactEmail: testIdentity.primaryContactEmail,
     })
+    setCompanyErrors({})
   }
 
-  const passwordRegistration = accountForm.register("password")
-  const confirmPasswordRegistration = accountForm.register("confirmPassword")
-  const gstStateMeta = profile ? getGstStateMeta(profile.gstin) : null
+  function fillRegistrationSampleValues() {
+    const testIdentity = buildUniqueTestIdentity(company.pan)
+
+    setRegistration({
+      gstin: testIdentity.gstin,
+      taxpayerType: "regular",
+      registrationDate: "2019-10-18",
+      principalAddressLine1: "12, North Usman Road",
+      principalAddressLine2: "Level 2, Near T Nagar Bus Stand",
+      locality: "T Nagar",
+      district: "Chennai",
+      pincode: "600017",
+      stateCode: "33",
+      possessionType: "rented",
+      eInvoiceApplicable: false,
+      eWayBillApplicable: false,
+    })
+    setIsRegistrationDatePickerOpen(false)
+    setRegistrationErrors({})
+    setRegistrationLocationStatus("success")
+    setRegistrationLocationMessage(
+      t("auth.register.steps.registration.location.success")
+    )
+  }
+
+  function validateCompanyStep() {
+    const result = companySchema.safeParse({
+      ...company,
+      pan: company.pan.toUpperCase(),
+      businessMobile: normalizePhone(company.businessMobile),
+      primaryContactMobile: normalizePhone(company.primaryContactMobile),
+    })
+
+    if (result.success) {
+      setCompanyErrors({})
+      setCompany({
+        ...company,
+        pan: company.pan.toUpperCase(),
+        businessMobile: normalizePhone(company.businessMobile),
+        primaryContactMobile: normalizePhone(company.primaryContactMobile),
+      })
+      return true
+    }
+
+    setCompanyErrors(mapIssues(result.error))
+    return false
+  }
+
+  function validateRegistrationStep() {
+    const normalizedRegistration = {
+      ...registration,
+      gstin: registration.gstin.toUpperCase(),
+    }
+    const result = registrationSchema.safeParse(normalizedRegistration)
+
+    if (result.success) {
+      setRegistrationErrors({})
+      setRegistration(normalizedRegistration)
+      return true
+    }
+
+    setRegistrationErrors(mapIssues(result.error))
+    return false
+  }
+
+  function validateAccountStep() {
+    const normalizedAccount = {
+      ...account,
+      identifier: phoneMode ? normalizePhone(account.identifier) : account.identifier.trim(),
+    }
+    const result = accountSchema.safeParse(normalizedAccount)
+
+    if (result.success) {
+      setAccountErrors({})
+      setAccount(normalizedAccount)
+      return true
+    }
+
+    setAccountErrors(mapIssues(result.error))
+    return false
+  }
+
+  function handleCompanySubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!validateCompanyStep()) {
+      return
+    }
+    setStep("registration")
+    requestRegistrationLocationAutofill()
+  }
+
+  function handleRegistrationSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!validateRegistrationStep()) {
+      return
+    }
+    setSubmitFeedback(null)
+    setStep("account")
+  }
+
+  async function handleAccountSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!validateAccountStep()) {
+      return
+    }
+
+    setSubmitFeedback(null)
+
+    try {
+      const onboardingPayload: CompleteOnboardingPayload = {
+        company: {
+          legalName: company.legalName.trim(),
+          tradeName: company.tradeName.trim(),
+          pan: company.pan.trim().toUpperCase(),
+          constitution: company.constitution,
+          businessEmail: company.businessEmail.trim() || undefined,
+          businessMobile: normalizePhone(company.businessMobile) || undefined,
+          primaryContactName: company.primaryContactName.trim(),
+          primaryContactMobile: normalizePhone(company.primaryContactMobile),
+          primaryContactEmail: company.primaryContactEmail.trim().toLowerCase(),
+        },
+        registration: {
+          gstin: registration.gstin.trim().toUpperCase(),
+          taxpayerType: registration.taxpayerType,
+          registrationDate: registration.registrationDate,
+          principalAddressLine1: registration.principalAddressLine1.trim(),
+          principalAddressLine2:
+            registration.principalAddressLine2.trim() || undefined,
+          locality: registration.locality.trim(),
+          district: registration.district.trim(),
+          pincode: registration.pincode.trim(),
+          stateCode: registration.stateCode,
+          possessionType: registration.possessionType,
+          locationSource:
+            registrationLocationStatus === "success"
+              ? "browser_geolocation"
+              : "manual",
+        },
+      }
+      const normalizedIdentifier = phoneMode
+        ? normalizePhone(account.identifier)
+        : account.identifier.trim().toLowerCase()
+
+      const registerResponse = await registerMutation.mutateAsync({
+        identifier: normalizedIdentifier,
+        password: account.password,
+        emailRedirectTo:
+          typeof window !== "undefined" ? `${window.location.origin}/login` : undefined,
+        ...onboardingPayload,
+      })
+
+      if (!registerResponse.session) {
+        router.push(
+          `/login?registered=1&verification=${phoneMode ? "phone" : "email"}`
+        )
+        return
+      }
+
+      setStoredAuthSession({
+        user: registerResponse.user,
+        session: registerResponse.session,
+      })
+
+      router.push("/dashboard")
+    } catch (error) {
+      setSubmitFeedback({
+        type: "error",
+        message:
+          error instanceof Error ? error.message : t("auth.register.errors.generic"),
+      })
+    }
+  }
+
+  const stepContentWidth = "max-w-md"
+  const shouldCenterStepContent =
+    !compactStepHasErrors && (step === "company" || step === "account")
 
   return (
     <div
@@ -242,205 +637,606 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
       )}
       {...props}
     >
-      <div className="w-full max-w-3xl">
+      <div className="w-full max-w-4xl">
         <StepIndicator currentStep={step} />
       </div>
 
       <div
         className={cn(
           "mx-auto w-full",
-          contentWidthClass,
-          step === "review"
-            ? "flex h-full min-h-0 flex-1 flex-col"
-            : "flex flex-1 flex-col justify-center"
+          stepContentWidth,
+          "flex h-full min-h-0 flex-1 flex-col"
         )}
       >
-        {step === "gstin" ? (
+        {step === "company" ? (
           <form
-            className="flex flex-col gap-6"
-            onSubmit={gstinForm.handleSubmit(handleVerifyGstin)}
+            className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto]"
+            onSubmit={handleCompanySubmit}
             noValidate
           >
-              <FieldGroup>
+            <div
+              className={cn(
+                "no-scrollbar min-h-0 flex-1 overflow-y-auto",
+                shouldCenterStepContent ? "flex items-center" : "py-4"
+              )}
+            >
+              <FieldGroup className="w-full gap-4 pb-4">
                 <div className="flex flex-col items-center gap-1 text-center">
-                  <h1 className="text-2xl font-bold">{t("auth.register.title")}</h1>
+                  <h1 className="text-xl font-bold sm:text-2xl">{t("auth.register.title")}</h1>
                   <p className="text-sm text-balance text-muted-foreground">
                     {t("auth.register.subtitle")}
                   </p>
                 </div>
 
                 <Field>
-                  <FieldLabel htmlFor="gstin">
-                    {t("auth.register.steps.gstin.label")}
-                  </FieldLabel>
+                  <RequiredFieldLabel htmlFor="legal-name">
+                    {t("auth.register.steps.company.fields.legalName")}
+                  </RequiredFieldLabel>
                   <Input
-                    id="gstin"
-                    value={rawGstin}
-                    placeholder={t("auth.register.steps.gstin.placeholder")}
-                    className="bg-background"
-                    aria-invalid={!!gstinForm.formState.errors.gstin}
-                    onChange={(event) => handleGstinChange(event.target.value)}
+                    id="legal-name"
+                    value={company.legalName}
+                    onChange={(event) => updateCompanyValue("legalName", event.target.value)}
+                    placeholder={t("auth.register.steps.company.placeholders.legalName")}
                   />
-                  <FieldError errors={[gstinForm.formState.errors.gstin]} />
-                  <FieldDescription>
-                    {t("auth.register.steps.gstin.helper")}
-                  </FieldDescription>
+                  <FieldError>{companyErrors.legalName}</FieldError>
                 </Field>
 
                 <Field>
-                  <Button type="submit" disabled={!canVerify}>
-                    {verifyState === "loading"
-                      ? t("auth.register.steps.gstin.loading")
-                      : t("auth.register.steps.gstin.cta")}
-                  </Button>
+                  <RequiredFieldLabel htmlFor="trade-name">
+                    {t("auth.register.steps.company.fields.tradeName")}
+                  </RequiredFieldLabel>
+                  <Input
+                    id="trade-name"
+                    value={company.tradeName}
+                    onChange={(event) => updateCompanyValue("tradeName", event.target.value)}
+                    placeholder={t("auth.register.steps.company.placeholders.tradeName")}
+                  />
+                  <FieldError>{companyErrors.tradeName}</FieldError>
                 </Field>
 
-                <FieldDescription className="px-6 text-center">
-                  {t("auth.register.sampleHint", {
-                    gstin: gstApiSample.data.data.gstin,
-                  })}
-                </FieldDescription>
+                <Field>
+                  <RequiredFieldLabel htmlFor="pan">
+                    {t("auth.register.steps.company.fields.pan")}
+                  </RequiredFieldLabel>
+                  <Input
+                    id="pan"
+                    value={company.pan}
+                    onChange={(event) =>
+                      updateCompanyValue("pan", formatPanInput(event.target.value))
+                    }
+                    placeholder="ABCDE1234F"
+                    className="font-mono uppercase tracking-[0.18em]"
+                    maxLength={10}
+                    autoCapitalize="characters"
+                  />
+                  <FieldDescription>
+                    {t("auth.register.steps.company.helpers.pan")}
+                  </FieldDescription>
+                  <FieldError>{companyErrors.pan}</FieldError>
+                </Field>
+
+                <Field>
+                  <RequiredFieldLabel htmlFor="constitution">
+                    {t("auth.register.steps.company.fields.constitution")}
+                  </RequiredFieldLabel>
+                  <Select
+                    value={company.constitution}
+                    onValueChange={(value) => updateCompanyValue("constitution", value ?? "")}
+                  >
+                    <SelectTrigger id="constitution" className="w-full">
+                      <span
+                        className={cn(
+                          "min-w-0 flex flex-1 items-center text-left truncate",
+                          !company.constitution && "text-muted-foreground"
+                        )}
+                        title={
+                          company.constitution
+                            ? constitutionDisplayLabel
+                            : t("auth.register.steps.company.placeholders.constitution")
+                        }
+                      >
+                        {company.constitution
+                          ? constitutionDisplayLabel
+                          : t("auth.register.steps.company.placeholders.constitution")}
+                      </span>
+                    </SelectTrigger>
+                    <SelectContent align="start">
+                      {[
+                        "proprietorship",
+                        "partnership",
+                        "llp",
+                        "private_limited",
+                        "public_limited",
+                        "trust",
+                        "society",
+                        "other",
+                      ].map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {t(`auth.register.options.constitution.${option}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FieldError>{companyErrors.constitution}</FieldError>
+                </Field>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field>
+                    <FieldLabel htmlFor="business-email">
+                      {t("auth.register.steps.company.fields.businessEmail")}
+                    </FieldLabel>
+                    <Input
+                      id="business-email"
+                      type="email"
+                      value={company.businessEmail}
+                      onChange={(event) => updateCompanyValue("businessEmail", event.target.value)}
+                      placeholder="billing@gstfy.in"
+                    />
+                    <FieldError>{companyErrors.businessEmail}</FieldError>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="business-mobile">
+                      {t("auth.register.steps.company.fields.businessMobile")}
+                    </FieldLabel>
+                    <InputGroup>
+                      <InputGroupAddon>
+                        <InputGroupText>
+                          <Image
+                            src="/india-flag.png"
+                            alt="India"
+                            width={16}
+                            height={12}
+                            className="h-3 w-4 rounded-[2px] object-cover"
+                          />
+                          <span>+91</span>
+                        </InputGroupText>
+                      </InputGroupAddon>
+                      <InputGroupInput
+                        id="business-mobile"
+                        className="font-mono"
+                        maxLength={10}
+                        autoComplete="tel-national"
+                        inputMode="numeric"
+                        placeholder="0000000000"
+                        value={company.businessMobile}
+                        onChange={(event) =>
+                          updateCompanyValue("businessMobile", normalizePhoneInput(event.target.value))
+                        }
+                      />
+                    </InputGroup>
+                    <FieldError>{companyErrors.businessMobile}</FieldError>
+                  </Field>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field>
+                    <RequiredFieldLabel htmlFor="primary-contact-name">
+                      {t("auth.register.steps.company.fields.primaryContactName")}
+                    </RequiredFieldLabel>
+                    <Input
+                      id="primary-contact-name"
+                      value={company.primaryContactName}
+                      onChange={(event) =>
+                        updateCompanyValue("primaryContactName", event.target.value)
+                      }
+                      placeholder={t("auth.register.steps.company.placeholders.primaryContactName")}
+                    />
+                    <FieldError>{companyErrors.primaryContactName}</FieldError>
+                  </Field>
+                  <Field>
+                    <RequiredFieldLabel htmlFor="primary-contact-mobile">
+                      {t("auth.register.steps.company.fields.primaryContactMobile")}
+                    </RequiredFieldLabel>
+                    <InputGroup>
+                      <InputGroupAddon>
+                        <InputGroupText>
+                          <Image
+                            src="/india-flag.png"
+                            alt="India"
+                            width={16}
+                            height={12}
+                            className="h-3 w-4 rounded-[2px] object-cover"
+                          />
+                          <span>+91</span>
+                        </InputGroupText>
+                      </InputGroupAddon>
+                      <InputGroupInput
+                        id="primary-contact-mobile"
+                        className="font-mono"
+                        maxLength={10}
+                        autoComplete="tel-national"
+                        inputMode="numeric"
+                        placeholder="0000000000"
+                        value={company.primaryContactMobile}
+                        onChange={(event) =>
+                          updateCompanyValue(
+                            "primaryContactMobile",
+                            normalizePhoneInput(event.target.value)
+                          )
+                        }
+                      />
+                    </InputGroup>
+                    <FieldError>{companyErrors.primaryContactMobile}</FieldError>
+                  </Field>
+                </div>
+
+                <Field>
+                  <RequiredFieldLabel htmlFor="primary-contact-email">
+                    {t("auth.register.steps.company.fields.primaryContactEmail")}
+                  </RequiredFieldLabel>
+                  <Input
+                    id="primary-contact-email"
+                    type="email"
+                    value={company.primaryContactEmail}
+                    onChange={(event) =>
+                      updateCompanyValue("primaryContactEmail", event.target.value)
+                    }
+                    placeholder="owner@gstfy.in"
+                  />
+                  <FieldError>{companyErrors.primaryContactEmail}</FieldError>
+                </Field>
               </FieldGroup>
+            </div>
+            <div className="border-t bg-background pt-3">
+              <Button type="button" variant="outline" className="mb-3 w-full" onClick={fillCompanySampleValues}>
+                {t("auth.register.actions.fillTestValues")}
+              </Button>
+              <Button type="submit" className="w-full">
+                {t("auth.register.actions.continue")}
+                <ArrowRightIcon className="size-4" />
+              </Button>
+            </div>
           </form>
         ) : null}
 
-        {step === "review" && profile ? (
-          <div className="flex min-h-0 flex-1 flex-col">
-              <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
-                <div className="space-y-6 pb-8">
-                  <div className="space-y-1 text-center lg:text-left">
-                    <h1 className="text-2xl font-bold">
-                      {t("auth.register.steps.review.heading")}
-                    </h1>
-                    <p className="text-sm text-muted-foreground">
-                      {t("auth.register.steps.review.description")}
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl border bg-background p-4 shadow-xs">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge className="gap-1.5 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
-                            <BadgeCheckIcon className="size-3.5" />
-                            <span>{t("auth.register.steps.review.gstinVerified")}</span>
-                          </Badge>
-                          <Badge className="gap-1.5 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
-                            <CheckCircle2Icon className="size-3.5" />
-                            <span>{profile.sts}</span>
-                          </Badge>
-                        </div>
-                        <p className="font-mono text-base tracking-[0.16em] uppercase">
-                          {profile.gstin}
-                        </p>
-                      </div>
-
-                      {gstStateMeta?.emblemSrc ? (
-                        <Image
-                          src={gstStateMeta.emblemSrc}
-                          alt={gstStateMeta.name}
-                          width={48}
-                          height={48}
-                          className="size-12 rounded-md object-cover"
-                        />
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <ReviewSection
-                    title={t("auth.register.steps.review.sections.businessIdentity")}
-                    items={[
-                      {
-                        label: t("auth.register.steps.review.fields.legalName"),
-                        value: profile.lgnm,
-                        icon: Building2Icon,
-                      },
-                      {
-                        label: t("auth.register.steps.review.fields.tradeName"),
-                        value: profile.tradeNam,
-                        icon: StoreIcon,
-                      },
-                      {
-                        label: t("auth.register.steps.review.fields.businessType"),
-                        value: profile.ctb,
-                        icon: BriefcaseBusinessIcon,
-                      },
-                      {
-                        label: t("auth.register.steps.review.fields.taxpayerType"),
-                        value: profile.dty,
-                        icon: FileTextIcon,
-                      },
-                    ]}
-                  />
-
-                  <ReviewSection
-                    title={t("auth.register.steps.review.sections.companyInformation")}
-                    items={[
-                      {
-                        label: t("auth.register.steps.review.fields.gstState"),
-                        value: profile.pradr.addr.stcd,
-                        icon: MapPinnedIcon,
-                      },
-                      {
-                        label: t("auth.register.steps.review.fields.eInvoice"),
-                        value: profile.einvoiceStatus,
-                        icon: ReceiptTextIcon,
-                      },
-                      {
-                        label: t("auth.register.steps.review.fields.registeredDate"),
-                        value: profile.rgdt,
-                        icon: CalendarDaysIcon,
-                      },
-                      {
-                        label: t("auth.register.steps.review.fields.lastUpdated"),
-                        value: profile.lstupdt,
-                        icon: Clock3Icon,
-                      },
-                    ]}
-                  />
-
-                  <div className="rounded-xl border bg-background p-4 shadow-xs">
-                    <div className="mb-3 flex items-center gap-2">
-                      <MapPinHouseIcon className="size-4 text-muted-foreground" />
-                      <h2 className="text-sm font-medium">
-                        {t("auth.register.steps.review.sections.registeredAddress")}
-                      </h2>
-                    </div>
-                    <p className="text-sm leading-6 text-muted-foreground">
-                      {formatGstAddress(profile)}
-                    </p>
-                  </div>
+        {step === "registration" ? (
+          <form
+            className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto]"
+            onSubmit={handleRegistrationSubmit}
+            noValidate
+          >
+            <div
+              className={cn(
+                "no-scrollbar min-h-0 flex-1 overflow-y-auto",
+                "py-4"
+              )}
+            >
+              <FieldGroup className="w-full gap-4 pb-4">
+                <div className="flex flex-col items-center gap-1 text-center">
+                  <h1 className="text-xl font-bold sm:text-2xl">
+                    {t("auth.register.steps.registration.heading")}
+                  </h1>
+                  <p className="text-sm text-balance text-muted-foreground">
+                    {t("auth.register.steps.registration.description")}
+                  </p>
                 </div>
-              </div>
 
-              <div className="sticky bottom-0 z-10 mt-auto border-t bg-background/95 pt-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-                <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setStep("gstin")}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field>
+                    <RequiredFieldLabel htmlFor="gstin">
+                      {t("auth.register.steps.registration.fields.gstin")}
+                    </RequiredFieldLabel>
+                    <Input
+                      id="gstin"
+                      value={registration.gstin}
+                      onChange={(event) =>
+                        updateRegistrationValue("gstin", event.target.value.toUpperCase())
+                      }
+                      placeholder="33ABCDE1234F1Z5"
+                      className="font-mono uppercase tracking-[0.18em]"
+                    />
+                    <FieldDescription>
+                      {t("auth.register.steps.registration.helpers.gstin")}
+                    </FieldDescription>
+                    <FieldError>{registrationErrors.gstin}</FieldError>
+                  </Field>
+                  <Field>
+                    <RequiredFieldLabel htmlFor="taxpayer-type">
+                      {t("auth.register.steps.registration.fields.taxpayerType")}
+                    </RequiredFieldLabel>
+                    <Select
+                      value={registration.taxpayerType}
+                      onValueChange={(value) =>
+                        updateRegistrationValue("taxpayerType", value ?? "")
+                      }
+                    >
+                      <SelectTrigger id="taxpayer-type" className="w-full">
+                        <span
+                          className={cn(
+                            "min-w-0 flex flex-1 items-center text-left truncate",
+                            !registration.taxpayerType && "text-muted-foreground"
+                          )}
+                          title={
+                            registration.taxpayerType
+                              ? taxpayerTypeDisplayLabel
+                              : t("auth.register.steps.registration.placeholders.taxpayerType")
+                          }
+                        >
+                          {registration.taxpayerType
+                            ? taxpayerTypeDisplayLabel
+                            : t("auth.register.steps.registration.placeholders.taxpayerType")}
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent align="start">
+                        {["regular", "composition", "sez", "casual"].map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {t(`auth.register.options.taxpayerType.${option}`)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FieldError>{registrationErrors.taxpayerType}</FieldError>
+                  </Field>
+                </div>
+
+                <Field>
+                  <RequiredFieldLabel htmlFor="registration-date">
+                    {t("auth.register.steps.registration.fields.registrationDate")}
+                  </RequiredFieldLabel>
+                  <PopoverPrimitive.Root
+                    open={isRegistrationDatePickerOpen}
+                    onOpenChange={setIsRegistrationDatePickerOpen}
                   >
-                    <ArrowLeftIcon className="size-4" />
-                    {t("auth.register.steps.review.editGstin")}
-                  </Button>
-                  <Button type="button" onClick={() => setStep("account")}>
-                    {t("auth.register.steps.review.continue")}
-                    <ArrowRightIcon className="size-4" />
-                  </Button>
+                    <PopoverPrimitive.Trigger
+                      render={
+                        <Button
+                          type="button"
+                          id="registration-date"
+                          variant="outline"
+                          aria-invalid={Boolean(registrationErrors.registrationDate)}
+                          className={cn(
+                            "h-8 w-full justify-between rounded-lg border-input px-2.5 text-left text-sm font-normal",
+                            !registration.registrationDate && "text-muted-foreground"
+                          )}
+                        >
+                          <span>
+                            {selectedRegistrationDate
+                              ? format(selectedRegistrationDate, "dd MMM yyyy")
+                              : "DD MMM YYYY"}
+                          </span>
+                          <CalendarIcon className="size-4 text-muted-foreground" />
+                        </Button>
+                      }
+                    />
+                    <PopoverPrimitive.Portal>
+                      <PopoverPrimitive.Positioner
+                        side="bottom"
+                        sideOffset={4}
+                        align="start"
+                        className="isolate z-50"
+                      >
+                        <PopoverPrimitive.Popup
+                          data-slot="popover-content"
+                          className="relative z-50 w-auto rounded-2xl border border-border bg-popover p-0 text-popover-foreground shadow-md outline-hidden transition duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0"
+                        >
+                          <Calendar
+                            mode="single"
+                            selected={selectedRegistrationDate}
+                            onSelect={(date) => {
+                              updateRegistrationValue(
+                                "registrationDate",
+                                date ? format(date, "yyyy-MM-dd") : ""
+                              )
+                              setIsRegistrationDatePickerOpen(false)
+                            }}
+                          />
+                        </PopoverPrimitive.Popup>
+                      </PopoverPrimitive.Positioner>
+                    </PopoverPrimitive.Portal>
+                  </PopoverPrimitive.Root>
+                  <FieldError>{registrationErrors.registrationDate}</FieldError>
+                </Field>
+
+                <Field>
+                  <RequiredFieldLabel htmlFor="principal-address-line-1">
+                    {t("auth.register.steps.registration.fields.principalAddressLine1")}
+                  </RequiredFieldLabel>
+                  <Input
+                    id="principal-address-line-1"
+                    value={registration.principalAddressLine1}
+                    onChange={(event) =>
+                      updateRegistrationValue("principalAddressLine1", event.target.value)
+                    }
+                    placeholder={t(
+                      "auth.register.steps.registration.placeholders.principalAddressLine1"
+                    )}
+                  />
+                  <FieldError>{registrationErrors.principalAddressLine1}</FieldError>
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="principal-address-line-2">
+                    {t("auth.register.steps.registration.fields.principalAddressLine2")}
+                  </FieldLabel>
+                  <Input
+                    id="principal-address-line-2"
+                    value={registration.principalAddressLine2}
+                    onChange={(event) =>
+                      updateRegistrationValue("principalAddressLine2", event.target.value)
+                    }
+                    placeholder={t(
+                      "auth.register.steps.registration.placeholders.principalAddressLine2"
+                    )}
+                  />
+                </Field>
+
+                {registrationLocationMessage ? (
+                  <FieldDescription
+                    className={cn(
+                      registrationLocationStatus === "success" &&
+                        "text-emerald-600 dark:text-emerald-400"
+                    )}
+                  >
+                    {registrationLocationMessage}
+                  </FieldDescription>
+                ) : null}
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <Field>
+                    <RequiredFieldLabel htmlFor="registration-locality">
+                      {t("auth.register.steps.registration.fields.locality")}
+                    </RequiredFieldLabel>
+                    <Input
+                      id="registration-locality"
+                      value={registration.locality}
+                      onChange={(event) =>
+                        updateRegistrationValue("locality", event.target.value)
+                      }
+                      placeholder={t("auth.register.steps.registration.placeholders.locality")}
+                    />
+                    <FieldError>{registrationErrors.locality}</FieldError>
+                  </Field>
+                  <Field>
+                    <RequiredFieldLabel htmlFor="registration-district">
+                      {t("auth.register.steps.registration.fields.district")}
+                    </RequiredFieldLabel>
+                    <Input
+                      id="registration-district"
+                      value={registration.district}
+                      onChange={(event) =>
+                        updateRegistrationValue("district", event.target.value)
+                      }
+                      placeholder={t("auth.register.steps.registration.placeholders.district")}
+                    />
+                    <FieldError>{registrationErrors.district}</FieldError>
+                  </Field>
+                  <Field>
+                    <RequiredFieldLabel htmlFor="registration-pincode">
+                      {t("auth.register.steps.registration.fields.pincode")}
+                    </RequiredFieldLabel>
+                    <Input
+                      id="registration-pincode"
+                      value={registration.pincode}
+                      onChange={(event) =>
+                        updateRegistrationValue(
+                          "pincode",
+                          event.target.value.replace(/\D/g, "").slice(0, 6)
+                        )
+                      }
+                      placeholder="600001"
+                      inputMode="numeric"
+                    />
+                    <FieldError>{registrationErrors.pincode}</FieldError>
+                  </Field>
                 </div>
-              </div>
-          </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field>
+                    <RequiredFieldLabel htmlFor="registration-state">
+                      {t("auth.register.steps.registration.fields.state")}
+                    </RequiredFieldLabel>
+                    <Select
+                      value={registration.stateCode}
+                      onValueChange={(value) =>
+                        updateRegistrationValue("stateCode", value ?? "")
+                      }
+                    >
+                      <SelectTrigger id="registration-state" className="w-full">
+                        <span
+                          className={cn(
+                            "min-w-0 flex flex-1 items-center text-left truncate",
+                            !registration.stateCode && "text-muted-foreground"
+                          )}
+                          title={
+                            registration.stateCode
+                              ? registrationStateDisplayLabel
+                              : t("auth.register.steps.registration.placeholders.state")
+                          }
+                        >
+                          {registration.stateCode
+                            ? registrationStateDisplayLabel
+                            : t("auth.register.steps.registration.placeholders.state")}
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent align="start">
+                        {states.map((stateOption) => (
+                          <SelectItem key={stateOption.code} value={stateOption.code}>
+                            {stateOption.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FieldError>{registrationErrors.stateCode}</FieldError>
+                  </Field>
+                  <Field>
+                    <RequiredFieldLabel htmlFor="possession-type">
+                      {t("auth.register.steps.registration.fields.possessionType")}
+                    </RequiredFieldLabel>
+                    <Select
+                      value={registration.possessionType}
+                      onValueChange={(value) =>
+                        updateRegistrationValue("possessionType", value ?? "")
+                      }
+                    >
+                      <SelectTrigger id="possession-type" className="w-full">
+                        <span
+                          className={cn(
+                            "min-w-0 flex flex-1 items-center text-left truncate",
+                            !registration.possessionType && "text-muted-foreground"
+                          )}
+                          title={
+                            registration.possessionType
+                              ? possessionDisplayLabel
+                              : t("auth.register.steps.registration.placeholders.possessionType")
+                          }
+                        >
+                          {registration.possessionType
+                            ? possessionDisplayLabel
+                            : t("auth.register.steps.registration.placeholders.possessionType")}
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent align="start">
+                        {["own", "rented", "leased", "consent", "shared", "other"].map(
+                          (option) => (
+                            <SelectItem key={option} value={option}>
+                              {t(`auth.register.options.possession.${option}`)}
+                            </SelectItem>
+                          )
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FieldError>{registrationErrors.possessionType}</FieldError>
+                  </Field>
+                </div>
+
+              </FieldGroup>
+            </div>
+            <div className="flex flex-col gap-3 border-t bg-background pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={fillRegistrationSampleValues}
+              >
+                {t("auth.register.actions.fillTestValues")}
+              </Button>
+              <Button type="submit" className="w-full">
+                {t("auth.register.actions.continue")}
+                <ArrowRightIcon className="size-4" />
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setStep("company")}>
+                <ArrowLeftIcon className="size-4" />
+                {t("auth.register.actions.backToCompany")}
+              </Button>
+            </div>
+          </form>
         ) : null}
 
         {step === "account" ? (
           <form
-            className="flex flex-col gap-6"
-            onSubmit={accountForm.handleSubmit(handleCreateAccount)}
+            className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto]"
+            onSubmit={handleAccountSubmit}
             noValidate
           >
-              <FieldGroup>
+            <div
+              className={cn(
+                "no-scrollbar min-h-0 flex-1 overflow-y-auto",
+                shouldCenterStepContent ? "flex items-center" : "py-4"
+              )}
+            >
+              <FieldGroup className="w-full gap-4 pb-4">
                 <div className="flex flex-col items-center gap-1 text-center">
-                  <h1 className="text-2xl font-bold">
+                  <h1 className="text-xl font-bold sm:text-2xl">
                     {t("auth.register.steps.account.heading")}
                   </h1>
                   <p className="text-sm text-balance text-muted-foreground">
@@ -449,9 +1245,9 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
                 </div>
 
                 <Field>
-                  <FieldLabel htmlFor="register-identifier">
+                  <RequiredFieldLabel htmlFor="register-identifier">
                     {t("auth.register.steps.account.identifierLabel")}
-                  </FieldLabel>
+                  </RequiredFieldLabel>
                   <InputGroup>
                     {phoneMode ? (
                       <InputGroupAddon>
@@ -470,7 +1266,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
                     <InputGroupInput
                       id="register-identifier"
                       type="text"
-                      value={rawIdentifier}
+                      value={account.identifier}
                       inputMode={phoneMode ? "numeric" : "email"}
                       placeholder={
                         phoneMode
@@ -478,19 +1274,23 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
                           : t("auth.register.steps.account.emailPlaceholder")
                       }
                       autoComplete="email"
-                      aria-invalid={!!accountForm.formState.errors.identifier}
                       onChange={(event) =>
-                        handleIdentifierChange(event.target.value)
+                        updateAccountValue(
+                          "identifier",
+                          isPhoneMode(event.target.value)
+                            ? normalizePhoneInput(event.target.value)
+                            : event.target.value
+                        )
                       }
                     />
                   </InputGroup>
-                  <FieldError errors={[accountForm.formState.errors.identifier]} />
+                  <FieldError>{accountErrors.identifier}</FieldError>
                 </Field>
 
                 <Field>
-                  <FieldLabel htmlFor="register-password">
+                  <RequiredFieldLabel htmlFor="register-password">
                     {t("auth.register.steps.account.passwordLabel")}
-                  </FieldLabel>
+                  </RequiredFieldLabel>
                   <InputGroup>
                     <InputGroupAddon>
                       <LockKeyholeIcon className="size-4" />
@@ -500,8 +1300,8 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
                       type={showPassword ? "text" : "password"}
                       placeholder={t("auth.register.steps.account.passwordPlaceholder")}
                       autoComplete="new-password"
-                      aria-invalid={!!accountForm.formState.errors.password}
-                      {...passwordRegistration}
+                      value={account.password}
+                      onChange={(event) => updateAccountValue("password", event.target.value)}
                     />
                     <InputGroupAddon align="inline-end">
                       <InputGroupButton
@@ -510,7 +1310,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
                             ? t("auth.login.hidePassword")
                             : t("auth.login.showPassword")
                         }
-                        onClick={() => setShowPassword((current) => !current)}
+                        onClick={() => setShowPassword((currentValue) => !currentValue)}
                       >
                         {showPassword ? (
                           <EyeOffIcon className="size-4" />
@@ -520,13 +1320,13 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
                       </InputGroupButton>
                     </InputGroupAddon>
                   </InputGroup>
-                  <FieldError errors={[accountForm.formState.errors.password]} />
+                  <FieldError>{accountErrors.password}</FieldError>
                 </Field>
 
                 <Field>
-                  <FieldLabel htmlFor="register-confirm-password">
+                  <RequiredFieldLabel htmlFor="register-confirm-password">
                     {t("auth.register.steps.account.confirmPasswordLabel")}
-                  </FieldLabel>
+                  </RequiredFieldLabel>
                   <InputGroup>
                     <InputGroupAddon>
                       <LockKeyholeIcon className="size-4" />
@@ -538,8 +1338,10 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
                         "auth.register.steps.account.confirmPasswordPlaceholder"
                       )}
                       autoComplete="new-password"
-                      aria-invalid={!!accountForm.formState.errors.confirmPassword}
-                      {...confirmPasswordRegistration}
+                      value={account.confirmPassword}
+                      onChange={(event) =>
+                        updateAccountValue("confirmPassword", event.target.value)
+                      }
                     />
                     <InputGroupAddon align="inline-end">
                       <InputGroupButton
@@ -549,7 +1351,7 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
                             : t("auth.login.showPassword")
                         }
                         onClick={() =>
-                          setShowConfirmPassword((current) => !current)
+                          setShowConfirmPassword((currentValue) => !currentValue)
                         }
                       >
                         {showConfirmPassword ? (
@@ -560,34 +1362,21 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
                       </InputGroupButton>
                     </InputGroupAddon>
                   </InputGroup>
-                  <FieldError
-                    errors={[accountForm.formState.errors.confirmPassword]}
-                  />
+                  <FieldError>{accountErrors.confirmPassword}</FieldError>
                   <FieldDescription>
                     {t("auth.register.steps.account.passwordHelper")}
                   </FieldDescription>
                 </Field>
 
-                {submitState === "blocked" ? (
-                  <FieldDescription className="text-destructive">
-                    {t("auth.register.steps.account.blockedMessage")}
+                {submitFeedback ? (
+                  <FieldDescription
+                    className={cn(
+                      submitFeedback.type === "error" && "text-destructive"
+                    )}
+                  >
+                    {submitFeedback.message}
                   </FieldDescription>
                 ) : null}
-
-                <Field className="gap-3">
-                  <Button type="submit" disabled={!canSubmit}>
-                    {submitState === "submitting"
-                      ? t("auth.register.steps.account.submitting")
-                      : t("auth.register.steps.account.cta")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setStep("review")}
-                  >
-                    {t("auth.register.steps.account.backToReview")}
-                  </Button>
-                </Field>
 
                 <FieldDescription className="px-6 text-center">
                   {t("auth.register.backToLoginText.before")}{" "}
@@ -599,6 +1388,22 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
                   </Link>
                 </FieldDescription>
               </FieldGroup>
+            </div>
+            <div className="flex flex-col gap-3 border-t bg-background pt-3">
+              <Button
+                type="submit"
+                disabled={registerMutation.isPending}
+                className="w-full"
+              >
+                {registerMutation.isPending
+                  ? t("auth.register.steps.account.submitting")
+                  : t("auth.register.steps.account.cta")}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setStep("registration")}>
+                <ArrowLeftIcon className="size-4" />
+                {t("auth.register.actions.backToRegistration")}
+              </Button>
+            </div>
           </form>
         ) : null}
       </div>
@@ -606,14 +1411,29 @@ export function SignupForm({ className, ...props }: SignupFormProps) {
   )
 }
 
+function RequiredFieldLabel({
+  htmlFor,
+  children,
+}: {
+  htmlFor: string
+  children: React.ReactNode
+}) {
+  return (
+    <FieldLabel htmlFor={htmlFor}>
+      {children}
+      <span className="ml-1 text-destructive">*</span>
+    </FieldLabel>
+  )
+}
+
 function StepIndicator({ currentStep }: { currentStep: RegisterStep }) {
   const { t } = useTranslation()
   const steps: Array<{ id: RegisterStep; label: string }> = [
-    { id: "gstin", label: t("auth.register.steps.gstin.stepTitle") },
-    { id: "review", label: t("auth.register.steps.review.stepTitle") },
+    { id: "company", label: t("auth.register.steps.company.stepTitle") },
+    { id: "registration", label: t("auth.register.steps.registration.stepTitle") },
     { id: "account", label: t("auth.register.steps.account.stepTitle") },
   ]
-  const currentIndex = steps.findIndex((step) => step.id === currentStep)
+  const currentIndex = steps.findIndex((item) => item.id === currentStep)
 
   return (
     <div className="grid grid-cols-3 gap-3">
@@ -661,38 +1481,216 @@ function StepIndicator({ currentStep }: { currentStep: RegisterStep }) {
   )
 }
 
-function ReviewSection({
-  title,
-  items,
-}: {
-  title: string
-  items: Array<{
-    label: string
-    value: string
-    icon: React.ComponentType<React.ComponentProps<"svg">>
-  }>
-}) {
+function validateBusinessPan(pan: string) {
+  const normalizedPan = pan.trim().toUpperCase()
+
+  if (!/^[A-Z]{5}\d{4}[A-Z]$/.test(normalizedPan)) {
+    return false
+  }
+
+  if (!PAN_STATUS_CODES.has(normalizedPan[3])) {
+    return false
+  }
+
+  return true
+}
+
+function formatPanInput(value: string) {
+  const normalizedValue = value.toUpperCase()
+  let nextValue = ""
+
+  for (const character of normalizedValue) {
+    const position = nextValue.length
+
+    if (position >= 10) {
+      break
+    }
+
+    if (position < 5) {
+      if (/[A-Z]/.test(character)) {
+        nextValue += character
+      }
+      continue
+    }
+
+    if (position < 9) {
+      if (/\d/.test(character)) {
+        nextValue += character
+      }
+      continue
+    }
+
+    if (/[A-Z]/.test(character)) {
+      nextValue += character
+    }
+  }
+
+  return nextValue
+}
+
+function formatSelectValueLabel(value: string) {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (character) => character.toUpperCase())
+}
+
+function getTranslatedSelectLabel(
+  t: (key: string) => string,
+  baseKey: string,
+  value: string
+) {
+  const translationKey = `${baseKey}.${value}`
+  const translatedLabel = value ? t(translationKey) : ""
+
+  if (translatedLabel && translatedLabel !== translationKey) {
+    return translatedLabel
+  }
+
+  return formatSelectValueLabel(value)
+}
+
+function getStateDisplayLabel(
+  states: Array<{ code: string; name: string }>,
+  stateCode: string
+) {
+  return states.find((stateOption) => stateOption.code === stateCode)?.name ?? stateCode
+}
+
+function getStateCodeFromLocation(
+  states: Array<{ code: string; name: string }>,
+  stateName: string
+) {
+  const normalizedStateName = normalizeLocationLabel(stateName)
+
   return (
-    <div className="rounded-xl border bg-background p-4 shadow-xs">
-      <h2 className="mb-3 text-sm font-medium">{title}</h2>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {items.map((item) => (
-          <div
-            key={item.label}
-            className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3"
-          >
-            <div className="mt-0.5 rounded-md bg-background p-2 text-muted-foreground shadow-xs">
-              <item.icon className="size-4" />
-            </div>
-            <div className="min-w-0 space-y-1">
-              <p className="text-xs text-muted-foreground">{item.label}</p>
-              <p className="text-sm">{item.value}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+    states.find((stateOption) => {
+      const normalizedOptionName = normalizeLocationLabel(stateOption.name)
+      return (
+        normalizedOptionName === normalizedStateName ||
+        normalizedOptionName.includes(normalizedStateName) ||
+        normalizedStateName.includes(normalizedOptionName)
+      )
+    })?.code ?? ""
   )
+}
+
+function normalizeLocationLabel(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+async function reverseGeocodeRegistrationLocation(
+  latitude: number,
+  longitude: number,
+  states: Array<{ code: string; name: string }>
+) {
+  const searchParams = new URLSearchParams({
+    format: "jsonv2",
+    addressdetails: "1",
+    zoom: "18",
+    lat: latitude.toString(),
+    lon: longitude.toString(),
+  })
+
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?${searchParams.toString()}`,
+    {
+      headers: {
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    }
+  )
+
+  if (!response.ok) {
+    throw new Error("Reverse geocoding failed")
+  }
+
+  const payload: {
+    address?: {
+      state?: string
+      union_territory?: string
+      state_district?: string
+      county?: string
+      district?: string
+      postcode?: string
+    }
+  } = await response.json()
+
+  const address = payload.address
+
+  if (!address) {
+    return null
+  }
+
+  const stateName = address.state ?? address.union_territory ?? ""
+  const stateCode = stateName ? getStateCodeFromLocation(states, stateName) : ""
+  const district = address.state_district ?? address.county ?? address.district ?? ""
+  const pincode = address.postcode?.replace(/\D/g, "").slice(0, 6) ?? ""
+
+  if (!stateCode && !district && !pincode) {
+    return null
+  }
+
+  return {
+    stateCode,
+    district,
+    pincode,
+  }
+}
+
+function getGeolocationErrorMessage(
+  t: (key: string) => string,
+  errorCode: number
+) {
+  if (errorCode === 1) {
+    return t("auth.register.steps.registration.location.denied")
+  }
+
+  if (errorCode === 3) {
+    return t("auth.register.steps.registration.location.timeout")
+  }
+
+  return t("auth.register.steps.registration.location.lookupFailed")
+}
+
+function updateSimpleField<T extends Record<string, unknown>, K extends keyof T>(
+  setter: React.Dispatch<React.SetStateAction<T>>,
+  key: K,
+  value: T[K]
+) {
+  setter((currentValue) => ({
+    ...currentValue,
+    [key]: value,
+  }))
+}
+
+function mapIssues(error: z.ZodError) {
+  const flattenedErrors = error.flatten().fieldErrors
+  return Object.fromEntries(
+    Object.entries(flattenedErrors)
+      .map(([key, messages]) => {
+        const firstMessage = Array.isArray(messages) ? messages[0] : undefined
+        return [key, firstMessage]
+      })
+      .filter((entry) => entry[1])
+  )
+}
+
+function clearErrorKey<T extends string>(errors: FieldErrors<T>, key: T): FieldErrors<T> {
+  if (!errors[key]) {
+    return errors
+  }
+
+  const nextErrors = { ...errors }
+  delete nextErrors[key]
+  return nextErrors
 }
 
 function isPhoneMode(value: string) {
@@ -719,4 +1717,33 @@ function normalizePhone(value: string) {
 
 function normalizePhoneInput(value: string) {
   return normalizePhone(value)
+}
+
+function buildUniqueTestIdentity(existingPan?: string) {
+  const timestamp = Date.now().toString()
+  const suffix = timestamp.slice(-6)
+  const numericSeed = Number(suffix)
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+  const firstLetter = alphabet[numericSeed % alphabet.length] ?? "A"
+  const secondLetter = alphabet[(numericSeed + 7) % alphabet.length] ?? "B"
+
+  const pan =
+    existingPan && validateBusinessPan(existingPan)
+      ? existingPan.trim().toUpperCase()
+      : `GSTP${firstLetter}${suffix.slice(-4)}${secondLetter}`
+
+  const checksumCharacter = alphabet[(numericSeed + 13) % alphabet.length] ?? "C"
+  const gstin = `33${pan}1Z${checksumCharacter}`
+  const mobileBase = Number(`9${suffix.slice(-5)}0000`.slice(0, 10))
+
+  return {
+    suffix,
+    pan,
+    gstin,
+    businessEmail: `billing+${suffix}@gstfy.in`,
+    primaryContactEmail: `owner+${suffix}@gstfy.in`,
+    businessMobile: String(mobileBase),
+    primaryContactMobile: String(mobileBase + 7),
+  }
 }

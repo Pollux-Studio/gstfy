@@ -11,7 +11,7 @@
       "stepTwoDescription": "தொடர உங்கள் கடவுச்சொல்லை உறுதிப்படுத்துங்கள்.",
       "identifierLabel": "மின்னஞ்சல் அல்லது தொலைபேசி எண்",
       "emailPlaceholder": "owner@gstfy.in",
-      "phonePlaceholder": "9876543210",
+      "phonePlaceholder": "0000000000",
       "checkingAccount": "கணக்கை சரிபார்க்கிறது...",
       "continue": "தொடரவும்",
       "or": "அல்லது",
@@ -23,6 +23,8 @@
       "forgotPassword": "கடவுச்சொல்லை மறந்துவிட்டீர்களா?",
       "showPassword": "கடவுச்சொல்லைக் காண்பி",
       "hidePassword": "கடவுச்சொல்லை மறை",
+      "registrationSuccessEmail": "கணக்கு வெற்றிகரமாக உருவாக்கப்பட்டது. உங்கள் மின்னஞ்சலை சரிபார்த்து, கணக்கை உறுதிப்படுத்தி, பின்னர் அமைப்பை முடிக்க உள்நுழையுங்கள்.",
+      "registrationSuccessPhone": "கணக்கு வெற்றிகரமாக உருவாக்கப்பட்டது. தொலைபேசி உறுதிப்படுத்தலை முடித்து, பின்னர் அமைப்பை முடிக்க உள்நுழையுங்கள்.",
       "blockedMessage": "அங்கீகார API இன்னும் இணைக்கப்படவில்லை. UI ஓட்டம் தயாராக உள்ளது.",
       "signingIn": "உள்நுழைகிறது...",
       "login": "உள்நுழை",
@@ -31,51 +33,137 @@
       "termsNotice": "தொடருவதன் மூலம், எங்கள் <terms>சேவை விதிமுறைகள்</terms> மற்றும் <privacy>தனியுரிமைக் கொள்கைக்கு</privacy> நீங்கள் இணங்குகிறீர்கள்.",
       "errors": {
         "identifierRequired": "உங்கள் மின்னஞ்சல் அல்லது தொலைபேசி எண்ணை உள்ளிடுங்கள்.",
-        "invalidPhone": "சரியான 10 இலக்க இந்திய மொபைல் எண்ணை உள்ளிடுங்கள்.",
+        "invalidPhone": "சரியான 10 இலக்க மொபைல் எண்ணை உள்ளிடுங்கள்.",
         "invalidEmail": "சரியான மின்னஞ்சல் முகவரியை உள்ளிடுங்கள்.",
         "accountNotFound": "அந்த மின்னஞ்சல் அல்லது தொலைபேசி எண்ணுக்கு கணக்கை கண்டுபிடிக்க முடியவில்லை.",
-        "passwordRequired": "உங்கள் கடவுச்சொல்லை உள்ளிடுங்கள்."
+        "passwordRequired": "உங்கள் கடவுச்சொல்லை உள்ளிடுங்கள்.",
+        "generic": "இப்போது உள்நுழைய முடியவில்லை. மீண்டும் முயற்சிக்கவும்."
       }
     },
     "register": {
-      "title": "உங்கள் GSTFY கணக்கை உருவாக்குங்கள்",
-      "subtitle": "உங்கள் GSTIN-ஐ சரிபார்த்து, GST பதிவை மதிப்பாய்வு செய்து, ஒரே ஓட்டத்தில் உள்நுழைவு விவரங்களை உருவாக்குங்கள்.",
-      "sampleHint": "UI சரிபார்ப்புக்காக மாதிரி GST சுயவிவரம் பயன்படுத்தப்படுகிறது: `{gstin}`",
-      "backToLogin": "மீண்டும் உள்நுழைவு",
+      "title": "உங்கள் GSTFY workspace-ஐ அமைக்கவும்",
+      "subtitle": "முதல் rollout-க்கு company, GST registration, account details-ஐ manually உள்ளிடுங்கள்.",
+      "rolloutHint": "Current rollout ஒரு company-ஐ manually entered GST registration உடன் support செய்கிறது. Additional branches-ஐ பின்னர் dashboard-இல் இருந்து add செய்யலாம்.",
       "backToLoginText": {
         "before": "ஏற்கனவே கணக்கு உள்ளதா?",
         "link": "உள்நுழை"
       },
       "steps": {
-        "gstin": {
-          "stepTitle": "GSTIN",
-          "label": "GSTIN எண்",
-          "placeholder": "29AFSPB9500E1ZY",
-          "helper": "பதிவு சான்றிதழில் இருப்பதுபோல் GSTIN-ஐ உள்ளிடுங்கள்.",
-          "cta": "GSTIN சரிபார்க்கவும்",
-          "loading": "GSTIN சரிபார்க்கப்படுகிறது..."
+        "company": {
+          "stepTitle": "Company",
+          "fields": {
+            "legalName": "Legal business name",
+            "tradeName": "Trade name",
+            "pan": "PAN",
+            "constitution": "Constitution of business",
+            "businessEmail": "Business email",
+            "businessMobile": "Business mobile",
+            "primaryContactName": "Primary contact name",
+            "primaryContactMobile": "Primary contact mobile",
+            "primaryContactEmail": "Primary contact email"
+          },
+          "placeholders": {
+            "legalName": "Vicky Retail Private Limited",
+            "tradeName": "Vicky Mart",
+            "constitution": "Choose constitution",
+            "primaryContactName": "Business owner or operations head"
+          },
+          "helpers": {
+            "pan": "PAN 10 எழுத்துகளாக இருக்க வேண்டும்: 5 letters, 4 digits, மற்றும் 1 letter. 4th letter ஒரு valid holder type code ஆக இருக்க வேண்டும்."
+          }
         },
-        "review": {
-          "stepTitle": "மதிப்பாய்வு",
-          "heading": "GST பதிவு விவரங்களை மதிப்பாய்வு செய்யவும்",
-          "description": "கணக்கு அமைப்புக்கு செல்லும் முன் பெறப்பட்ட GST விவரங்களை சரிபார்க்கவும்.",
-          "gstinVerified": "GSTIN சரிபார்க்கப்பட்டது",
-          "editGstin": "GSTIN திருத்து",
-          "continue": "கணக்கு அமைப்புக்கு தொடரவும்",
+        "registration": {
+          "stepTitle": "GST",
+          "heading": "GST registration details-ஐ உள்ளிடுங்கள்",
+          "description": "GST registration மற்றும் principal place of business details-ஐ manually capture செய்யுங்கள்.",
+          "fields": {
+            "gstin": "GSTIN",
+            "taxpayerType": "Taxpayer type",
+            "registrationDate": "Effective registration date",
+            "principalAddressLine1": "Principal address line 1",
+            "principalAddressLine2": "Principal address line 2",
+            "locality": "Locality / area",
+            "district": "District",
+            "pincode": "Pincode",
+            "state": "State / UT",
+            "possessionType": "Nature of possession",
+            "signatoryName": "Primary authorized signatory",
+            "signatoryRole": "Signatory designation",
+            "signatoryMobile": "Signatory mobile",
+            "signatoryEmail": "Signatory email",
+            "eInvoiceApplicable": "E-invoice applicable",
+            "eWayBillApplicable": "E-way bill applicable"
+          },
+          "placeholders": {
+            "taxpayerType": "Choose taxpayer type",
+            "principalAddressLine1": "Door / building / street",
+            "principalAddressLine2": "Landmark / floor / additional address",
+            "locality": "Eg. T Nagar",
+            "district": "Eg. Chennai",
+            "state": "Choose state",
+            "possessionType": "Choose possession type",
+            "signatoryName": "Authorized signatory name",
+            "signatoryRole": "Director / Partner / Proprietor"
+          },
           "sections": {
-            "businessIdentity": "வணிக அடையாளம்",
-            "companyInformation": "நிறுவன தகவல்",
-            "registeredAddress": "பதிவு செய்யப்பட்ட முகவரி"
+            "signatory": "Authorized signatory"
+          },
+          "location": {
+            "requesting": "District, pincode matrum state auto-fill seiya browser location access ketkappattullathu.",
+            "success": "Kidaikkum pothu district, pincode matrum state ungal tharpoathaiya location-ilirundhu auto-fill seiyappattana.",
+            "unsupported": "Indha browser ingu location-ai share seiya mudiyadhu. District, pincode matrum state-ai manually ullidungal.",
+            "denied": "Location access marukkappattadhu. District, pincode matrum state-ai manually ullidungal.",
+            "timeout": "Location lookup timeout aanadhu. District, pincode matrum state-ai manually ullidungal.",
+            "notFound": "Indha location-ilirundhu district, pincode matrum state-ai map seiya mudiyavillai. Avatrai manually ullidungal.",
+            "lookupFailed": "Location-ilirundhu address details-ai fetch seiya mudiyavillai. District, pincode matrum state-ai manually ullidungal."
+          },
+          "helpers": {
+            "gstin": "Registration certificate-ல் இருப்பது போல GSTIN-ஐ உள்ளிடுங்கள். இந்த rollout-ல் format validation மட்டும் இருக்கும்.",
+            "eInvoiceApplicable": "Applicable B2B invoices-க்கு IRN generation தேவைப்பட்டால் மட்டும் இதை on செய்யுங்கள்.",
+            "eWayBillApplicable": "இந்த registration-ல் இருந்து goods dispatch ஆகும் போது e-way bill தேவைப்படலாம் என்றால் இதை on செய்யுங்கள்."
+          }
+        },
+        "branches": {
+          "stepTitle": "Branches",
+          "heading": "Operational branches-ஐ சேர்க்கவும்",
+          "description": "இந்த GST registration கீழ் GSTFY பயன்படுத்தும் branches-ஐ சேர்க்கவும்.",
+          "principalCaptured": "Principal place of business ஏற்கனவே GST step-ல் capture செய்யப்பட்டுள்ளது.",
+          "pendingPrincipal": "Principal place of business-ஐ save செய்ய GST registration step-ஐ முதலில் முடிக்கவும்.",
+          "branchCount": "{{count}} / {{max}} branches added",
+          "branchTitle": "Branch {{index}}",
+          "branchDescription": "System-ல் இயங்கும் ஒவ்வொரு store, warehouse, office அல்லது factory location-க்கும் ஒரு card பயன்படுத்தவும்.",
+          "addBranch": "Add another branch",
+          "removeBranch": "Remove branch",
+          "sections": {
+            "branchContact": "Branch contact"
           },
           "fields": {
-            "legalName": "வணிக பெயர்",
-            "tradeName": "வர்த்தக பெயர்",
-            "businessType": "வணிக வகை",
-            "taxpayerType": "வரி செலுத்துநர் வகை",
-            "gstState": "GST மாநிலம்",
-            "eInvoice": "E-Invoice இயலுமை",
-            "registeredDate": "பதிவு தேதி",
-            "lastUpdated": "கடைசி புதுப்பிப்பு"
+            "branchName": "Branch name",
+            "branchCode": "Branch code",
+            "branchType": "Branch type",
+            "addressLine1": "Address line 1",
+            "addressLine2": "Address line 2",
+            "locality": "Locality / area",
+            "district": "District",
+            "pincode": "Pincode",
+            "state": "State / UT",
+            "managerName": "Branch manager / in-charge",
+            "managerMobile": "Branch mobile",
+            "managerEmail": "Branch email",
+            "salesEnabled": "Sales",
+            "purchasesEnabled": "Purchases",
+            "inventoryEnabled": "Inventory",
+            "posEnabled": "POS"
+          },
+          "placeholders": {
+            "branchName": "Eg. Velachery Branch",
+            "branchType": "Choose branch type",
+            "state": "Choose state",
+            "addressLine1": "Door / building / street",
+            "addressLine2": "Landmark / floor / additional address",
+            "locality": "Eg. Velachery",
+            "district": "Eg. Chennai",
+            "managerName": "Branch in-charge name"
           }
         },
         "account": {
@@ -84,7 +172,7 @@
           "description": "கணக்கு அமைப்பை முடிக்க உங்கள் வணிக மின்னஞ்சல் அல்லது இந்திய தொலைபேசி எண்ணைப் பயன்படுத்துங்கள்.",
           "identifierLabel": "மின்னஞ்சல் அல்லது தொலைபேசி எண்",
           "emailPlaceholder": "owner@gstfy.in",
-          "phonePlaceholder": "9876543210",
+          "phonePlaceholder": "0000000000",
           "passwordLabel": "கடவுச்சொல்",
           "passwordPlaceholder": "கடவுச்சொல்லை உருவாக்குங்கள்",
           "confirmPasswordLabel": "கடவுச்சொல் உறுதி",
@@ -92,16 +180,77 @@
           "passwordHelper": "குறைந்தது 8 எழுத்துகள், ஒரு எண், ஒரு சிறப்பு எழுத்து இருக்க வேண்டும்.",
           "cta": "கணக்கு உருவாக்கு",
           "submitting": "கணக்கு உருவாக்கப்படுகிறது...",
+          "verificationRequired": "கணக்கு உருவாக்கப்பட்டது. அமைப்பை முடிக்க Supabase-ல் உங்கள் மின்னஞ்சல் அல்லது தொலைபேசியை சரிபார்த்து, பின்னர் உள்நுழையவும்.",
           "blockedMessage": "பதிவு API இன்னும் இணைக்கப்படவில்லை. UI ஓட்டம் தயாராக உள்ளது.",
-          "backToReview": "GST மதிப்பாய்வுக்கு திரும்பு"
+          "backToReview": "Branch setup-க்கு திரும்பு"
+        }
+      },
+      "actions": {
+        "fillTestValues": "சோதனை மதிப்புகளை நிரப்பு",
+        "continue": "தொடரவும்",
+        "backToCompany": "Company details-க்கு திரும்பவும்",
+        "backToRegistration": "GST registration-க்கு திரும்பவும்",
+        "backToBranches": "Branch setup-க்கு திரும்பவும்"
+      },
+      "options": {
+        "constitution": {
+          "proprietorship": "Proprietorship",
+          "partnership": "Partnership Firm",
+          "llp": "LLP",
+          "private_limited": "Private Limited Company",
+          "public_limited": "Public Limited Company",
+          "trust": "Trust",
+          "society": "Society / Association",
+          "other": "Other"
+        },
+        "taxpayerType": {
+          "regular": "Regular",
+          "composition": "Composition",
+          "sez": "SEZ",
+          "casual": "Casual taxable person"
+        },
+        "possession": {
+          "own": "Own",
+          "rented": "Rented",
+          "leased": "Leased",
+          "consent": "Consent",
+          "shared": "Shared",
+          "other": "Other"
+        },
+        "branchType": {
+          "retail": "Retail store",
+          "warehouse": "Warehouse",
+          "office": "Office",
+          "factory": "Factory / unit"
         }
       },
       "errors": {
-        "gstinRequired": "உங்கள் GSTIN-ஐ உள்ளிடுங்கள்.",
+        "legalNameRequired": "Legal business name-ஐ உள்ளிடுங்கள்.",
+        "tradeNameRequired": "Trade name-ஐ உள்ளிடுங்கள்.",
+        "panInvalid": "சரியான PAN-ஐ உள்ளிடுங்கள்.",
+        "constitutionRequired": "Constitution of business-ஐ தேர்வு செய்யுங்கள்.",
+        "contactNameRequired": "Primary contact name-ஐ உள்ளிடுங்கள்.",
         "gstinInvalid": "சரியான 15 எழுத்து GSTIN-ஐ உள்ளிடுங்கள்.",
+        "taxpayerTypeRequired": "Taxpayer type-ஐ தேர்வு செய்யுங்கள்.",
+        "registrationDateRequired": "GST registration date-ஐ உள்ளிடுங்கள்.",
+        "addressLine1Required": "Address line 1-ஐ உள்ளிடுங்கள்.",
+        "localityRequired": "Locality / area-ஐ உள்ளிடுங்கள்.",
+        "districtRequired": "District-ஐ உள்ளிடுங்கள்.",
+        "pincodeInvalid": "சரியான 6-digit pincode-ஐ உள்ளிடுங்கள்.",
+        "stateRequired": "State / UT-ஐ தேர்வு செய்யுங்கள்.",
+        "possessionRequired": "Nature of possession-ஐ தேர்வு செய்யுங்கள்.",
+        "signatoryNameRequired": "Authorized signatory name-ஐ உள்ளிடுங்கள்.",
+        "signatoryRoleRequired": "Signatory designation-ஐ உள்ளிடுங்கள்.",
+        "branchRequired": "குறைந்தது ஒரு branch சேர்க்கவும்.",
+        "branchNameRequired": "Branch name-ஐ உள்ளிடுங்கள்.",
+        "branchCodeRequired": "Branch code-ஐ உள்ளிடுங்கள்.",
+        "branchTypeRequired": "Branch type-ஐ தேர்வு செய்யுங்கள்.",
+        "branchStateMismatch": "இந்த rollout same-state GST registration கீழ் உள்ள branches-ஐ மட்டும் support செய்கிறது.",
+        "managerNameRequired": "Branch manager / in-charge name-ஐ உள்ளிடுங்கள்.",
         "identifierRequired": "உங்கள் மின்னஞ்சல் அல்லது தொலைபேசி எண்ணை உள்ளிடுங்கள்.",
-        "invalidPhone": "சரியான 10 இலக்க இந்திய மொபைல் எண்ணை உள்ளிடுங்கள்.",
+        "invalidPhone": "சரியான 10 இலக்க மொபைல் எண்ணை உள்ளிடுங்கள்.",
         "invalidEmail": "சரியான மின்னஞ்சல் முகவரியை உள்ளிடுங்கள்.",
+        "generic": "இப்போது பதிவு செயல்முறையை முடிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.",
         "passwordLength": "கடவுச்சொல் குறைந்தது 8 எழுத்துகள் இருக்க வேண்டும்.",
         "passwordNumber": "கடவுச்சொல்லில் குறைந்தது ஒரு எண் இருக்க வேண்டும்.",
         "passwordSpecial": "கடவுச்சொல்லில் குறைந்தது ஒரு சிறப்பு எழுத்து இருக்க வேண்டும்.",

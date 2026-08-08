@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { I18nProvider } from "@/providers/i18n-provider"
+import { AppQueryProvider } from "@/providers/query-provider"
 import { StoreProvider } from "@/providers/store-provider"
 import { ThemeProvider } from "@/providers/theme-provider"
 
@@ -36,11 +37,13 @@ export default async function RootLayout({
     >
       <body suppressHydrationWarning className="min-h-full flex flex-col">
         <StoreProvider>
-          <I18nProvider>
-            <ThemeProvider>
-              <TooltipProvider>{children}</TooltipProvider>
-            </ThemeProvider>
-          </I18nProvider>
+          <AppQueryProvider>
+            <I18nProvider>
+              <ThemeProvider>
+                <TooltipProvider>{children}</TooltipProvider>
+              </ThemeProvider>
+            </I18nProvider>
+          </AppQueryProvider>
         </StoreProvider>
       </body>
     </html>
