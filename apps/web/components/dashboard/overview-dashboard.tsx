@@ -1,14 +1,23 @@
 "use client"
 
+import { memo } from "react"
 import dynamic from "next/dynamic"
 import {
   ArrowRightIcon,
-  ArrowUpRightIcon,
-  Clock3Icon,
+  BadgeIndianRupeeIcon,
+  FileWarningIcon,
   FileTextIcon,
   Layers3Icon,
+  PackageSearchIcon,
+  PlugZapIcon,
   ReceiptTextIcon,
+  ShoppingBagIcon,
+  ShoppingCartIcon,
+  StoreIcon,
+  TruckIcon,
+  Undo2Icon,
   UserPlusIcon,
+  UsersIcon,
   WalletIcon,
 } from "lucide-react"
 
@@ -22,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { overviewDashboardData } from "@/lib/dashboard/mock-overview"
 
@@ -37,32 +47,52 @@ const compactFormatter = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 1,
 })
 
-const MonthlySalesChart = dynamic(
+const OverviewRevenueChart = dynamic(
   () =>
-    import("@/components/dashboard/monthly-sales-chart").then(
-      (module) => module.MonthlySalesChart
+    import("@/components/dashboard/overview-revenue-chart").then(
+      (module) => module.OverviewRevenueChart
     ),
   {
     ssr: false,
     loading: () => (
       <div className="grid h-full grid-cols-12 items-end gap-2 px-2">
-        {overviewDashboardData.monthlySales.map((item, index) => (
+        {overviewDashboardData.revenueStatistics.map((item) => (
           <div
             key={item.month}
-            className={cn(
-              "rounded-t-lg bg-muted/70",
-              index === overviewDashboardData.monthlySales.length - 1 &&
-                "bg-primary/70"
-            )}
-            style={{
-              height: `${Math.max(item.sales / 7500, 18)}%`,
-            }}
+            className="rounded-t-lg bg-muted/70"
+            style={{ height: `${Math.max(item.sales / 7000, 18)}%` }}
           />
         ))}
       </div>
     ),
   }
 )
+
+const OverviewReportsPieChart = dynamic(
+  () =>
+    import("@/components/dashboard/overview-reports-pie-chart").then(
+      (module) => module.OverviewReportsPieChart
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full items-center justify-center">
+        <div className="size-44 rounded-full border-16 border-muted/70 border-t-primary/70" />
+      </div>
+    ),
+  }
+)
+
+const totalIconMap = {
+  sales: StoreIcon,
+  purchase: ShoppingCartIcon,
+  income: WalletIcon,
+  expenses: BadgeIndianRupeeIcon,
+  customers: UsersIcon,
+  suppliers: TruckIcon,
+  salesReturns: Undo2Icon,
+  purchaseReturns: PackageSearchIcon,
+} as const
 
 const quickActions = [
   {
@@ -83,14 +113,12 @@ const quickActions = [
   },
 ]
 
-const transactionBadgeClassMap = {
-  Sale: "bg-primary/10 text-primary",
-  Payment: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  Refund: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-} as const
-
 function formatCurrency(value: number) {
   return currencyFormatter.format(value)
+}
+
+function formatValue(value: number, kind: "currency" | "count") {
+  return kind === "currency" ? formatCurrency(value) : value.toLocaleString("en-IN")
 }
 
 function DashboardCard({
@@ -112,7 +140,48 @@ function DashboardCard({
   )
 }
 
-export function OverviewDashboard() {
+function RecentLedgerTable({
+  rows,
+}: {
+  rows: typeof overviewDashboardData.recentSales
+}) {
+  return (
+    <div className="app-scrollbar max-h-[332px] overflow-y-auto overflow-x-auto rounded-xl border border-border/70">
+      <Table className="min-w-[720px]">
+        <TableHeader className="sticky top-0 z-10 bg-card">
+          <TableRow className="hover:bg-transparent">
+            <TableHead>Date</TableHead>
+            <TableHead>Invoice Number</TableHead>
+            <TableHead>Party</TableHead>
+            <TableHead className="text-right">Total</TableHead>
+            <TableHead className="text-right">Paid</TableHead>
+            <TableHead className="text-right">Due</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id}>
+              <TableCell className="text-muted-foreground">{row.date}</TableCell>
+              <TableCell className="font-medium">{row.invoiceNumber}</TableCell>
+              <TableCell>{row.party}</TableCell>
+              <TableCell className="text-right font-mono font-semibold">
+                {formatCurrency(row.total)}
+              </TableCell>
+              <TableCell className="text-right font-mono">
+                {formatCurrency(row.paid)}
+              </TableCell>
+              <TableCell className="text-right font-mono">
+                {formatCurrency(row.due)}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+export const OverviewDashboard = memo(function OverviewDashboard() {
   return (
     <div className="flex flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
       <DashboardCard className="overflow-hidden">
@@ -165,217 +234,192 @@ export function OverviewDashboard() {
         </div>
       </DashboardCard>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <DashboardCard>
-          <div className="space-y-4 p-4 sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">
-                  {overviewDashboardData.gstOwed.label}
-                </p>
-                <h2 className="font-mono text-2xl font-semibold tracking-tight">
-                  {formatCurrency(overviewDashboardData.gstOwed.value)}
-                </h2>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {overviewDashboardData.totals.map((item) => {
+          const Icon = totalIconMap[item.id]
+
+          return (
+            <DashboardCard key={item.id}>
+              <div className="space-y-4 p-4 sm:p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">{item.label}</p>
+                    <h2 className="font-mono text-xl font-semibold tracking-tight sm:text-2xl">
+                      {formatValue(item.value, item.kind)}
+                    </h2>
+                  </div>
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Icon className="size-4" />
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground">{item.note}</p>
               </div>
-              <Badge className="gap-1.5 bg-primary/10 text-primary dark:text-primary-foreground">
-                <ArrowUpRightIcon className="size-3.5" />
-                {overviewDashboardData.gstOwed.trend}
+            </DashboardCard>
+          )
+        })}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.95fr)]">
+        <DashboardCard className="overflow-hidden">
+          <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-base font-semibold">Revenue Statistic</h2>
+                <p className="text-sm text-muted-foreground">
+                  Sales, purchase, and net income trend through the year.
+                </p>
+              </div>
+              <Badge variant="outline" className="gap-1.5">
+                <ShoppingBagIcon className="size-3.5" />
+                {compactFormatter.format(
+                  overviewDashboardData.revenueStatistics.reduce(
+                    (total, item) => total + item.sales,
+                    0
+                  )
+                )}{" "}
+                sales booked
               </Badge>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {overviewDashboardData.gstOwed.note}
-            </p>
+          </div>
+          <div className="h-[340px] min-w-0 px-2 py-4 sm:px-4">
+            <OverviewRevenueChart data={overviewDashboardData.revenueStatistics} />
           </div>
         </DashboardCard>
 
-        <DashboardCard>
-          <div className="space-y-4 p-4 sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">
-                  Filing deadline countdown
-                </p>
-                <h2 className="text-2xl font-semibold tracking-tight">
-                  {overviewDashboardData.filingDeadline.daysRemaining} days
-                </h2>
-              </div>
-              <Badge className="gap-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                <Clock3Icon className="size-3.5" />
-                Due soon
-              </Badge>
-            </div>
-            <div className="space-y-1 text-sm text-muted-foreground">
-              <p>{overviewDashboardData.filingDeadline.dueDate}</p>
-              <p>{overviewDashboardData.filingDeadline.note}</p>
+        <DashboardCard className="overflow-hidden">
+          <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">
+            <div className="space-y-1">
+              <h2 className="text-base font-semibold">Overall Reports</h2>
+              <p className="text-sm text-muted-foreground">
+                Business mix across sales, purchase, and expenses.
+              </p>
             </div>
           </div>
-        </DashboardCard>
-
-        <DashboardCard>
-          <div className="space-y-4 p-4 sm:p-5">
-            <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">
-                Outstanding invoices
-              </p>
-              <h2 className="text-2xl font-semibold tracking-tight">
-                {overviewDashboardData.outstandingInvoices.count}
-              </h2>
+          <div className="grid gap-4 p-4 sm:p-5 lg:p-6">
+            <div className="h-[240px] min-w-0">
+              <OverviewReportsPieChart data={overviewDashboardData.overallReports} />
             </div>
-            <div className="space-y-1">
-              <p className="font-mono text-lg font-semibold">
-                {formatCurrency(overviewDashboardData.outstandingInvoices.amount)}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {overviewDashboardData.outstandingInvoices.note}
-              </p>
+            <div className="space-y-3">
+              {overviewDashboardData.overallReports.map((item) => (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5"
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="size-2.5 rounded-full"
+                      style={{ backgroundColor: item.fill }}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      {item.label}
+                    </span>
+                  </div>
+                  <span className="font-mono text-sm font-semibold">
+                    {formatCurrency(item.value)}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </DashboardCard>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.95fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.85fr)]">
         <DashboardCard className="overflow-hidden">
           <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-base font-semibold">Monthly sales chart</h2>
+              <div className="space-y-1">
+                <h2 className="text-base font-semibold">Low Stock</h2>
                 <p className="text-sm text-muted-foreground">
-                  Sales trend across the current financial year.
+                  Top 10 products that need immediate replenishment.
                 </p>
               </div>
-              <Badge variant="outline">
-                {compactFormatter.format(
-                  overviewDashboardData.monthlySales.reduce(
-                    (total, item) => total + item.sales,
-                    0
-                  )
-                )}{" "}
-                booked
+              <Badge className="gap-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                <FileWarningIcon className="size-3.5" />
+                10 low-stock items
               </Badge>
             </div>
           </div>
-          <div className="h-80 min-w-0 px-2 py-4 sm:px-4">
-            <MonthlySalesChart data={overviewDashboardData.monthlySales} />
+          <div className="app-scrollbar max-h-[332px] overflow-y-auto overflow-x-auto">
+            <Table className="min-w-[620px]">
+              <TableHeader className="sticky top-0 z-10 bg-card">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>HSN Code</TableHead>
+                  <TableHead>Name of Product</TableHead>
+                  <TableHead className="text-right">Current Stock</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {overviewDashboardData.lowStockItems.map((item) => (
+                  <TableRow key={`${item.hsnCode}-${item.productName}`}>
+                    <TableCell className="font-mono">{item.hsnCode}</TableCell>
+                    <TableCell className="font-medium">{item.productName}</TableCell>
+                    <TableCell className="text-right font-mono font-semibold">
+                      {item.currentStock}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </DashboardCard>
 
-        <DashboardCard>
-          <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">
-            <div className="space-y-1">
-              <h2 className="text-base font-semibold">Shopify sales chart</h2>
-              <p className="text-sm text-muted-foreground">
-                Marketplace channel performance appears here when connected.
-              </p>
+        <DashboardCard className="overflow-hidden">
+          <div className="flex h-full flex-col justify-between gap-6 p-4 sm:p-5 lg:p-6">
+            <div className="space-y-4">
+              <Badge variant="outline" className="gap-1.5">
+                <PlugZapIcon className="size-3.5" />
+                Integrations
+              </Badge>
+              <div className="space-y-2">
+                <h2 className="text-base font-semibold">Connect any integration</h2>
+                <p className="text-sm text-muted-foreground">
+                  Bring your commerce, payment, and banking channels into one
+                  GST-ready workspace.
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="flex h-[22rem] flex-col items-center justify-center gap-4 px-4 text-center sm:px-5 lg:px-6">
-            <div className="flex size-14 items-center justify-center rounded-2xl bg-muted">
-              <ReceiptTextIcon className="size-6 text-muted-foreground" />
+
+            <div className="relative flex min-h-[180px] items-center justify-center overflow-hidden rounded-2xl border border-dashed border-primary/20 bg-muted/30">
+              <div className="absolute inset-0 bg-radial-[circle_at_center] from-primary/12 via-transparent to-transparent" />
+              <div className="absolute size-28 rounded-full border border-primary/15 bg-primary/5 animate-pulse" />
+              <div className="absolute size-40 rounded-full border border-primary/10" />
+              <div className="relative flex size-16 items-center justify-center rounded-2xl border border-primary/20 bg-background/90 text-primary shadow-sm">
+                <PlugZapIcon className="size-8 animate-pulse" />
+              </div>
             </div>
-            <div className="space-y-1">
-              <h3 className="text-sm font-medium">Shopify not connected</h3>
-              <p className="max-w-xs text-sm text-muted-foreground">
-                {overviewDashboardData.shopify.note}
-              </p>
-            </div>
-            <Button type="button" variant="outline">
-              Connect Shopify
+
+            <Button type="button" className="h-10 rounded-xl">
+              Connect Integration
             </Button>
           </div>
         </DashboardCard>
       </div>
 
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <DashboardCard className="min-w-0 overflow-hidden">
-          <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">
-            <div className="space-y-1">
-              <h2 className="text-base font-semibold">Top customers by revenue</h2>
-              <p className="text-sm text-muted-foreground">
-                Highest-value buyers for the current month.
-              </p>
-            </div>
+      <DashboardCard className="overflow-hidden">
+        <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold">Recent Activity</h2>
+            <p className="text-sm text-muted-foreground">
+              Switch between recent sales and purchase documents.
+            </p>
           </div>
-          <div className="divide-y divide-border">
-            {overviewDashboardData.topCustomers.map((customer, index) => (
-              <div
-                key={customer.name}
-                className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5 lg:px-6"
-              >
-                <div className="min-w-0 w-full">
-                  <div className="flex items-center gap-3">
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
-                      {index + 1}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        {customer.name}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {customer.invoiceCount} invoices
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <p className="shrink-0 pl-10 font-mono text-sm font-semibold sm:pl-0">
-                  {formatCurrency(customer.revenue)}
-                </p>
-              </div>
-            ))}
-          </div>
-        </DashboardCard>
-
-        <DashboardCard className="min-w-0 overflow-hidden">
-          <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">
-            <div className="space-y-1">
-              <h2 className="text-base font-semibold">Recent transactions</h2>
-              <p className="text-sm text-muted-foreground">
-                Latest invoices, payments, and credit activity.
-              </p>
-            </div>
-          </div>
-          <Table className="min-w-[640px]">
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Type</TableHead>
-                <TableHead>Party</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead className="text-right">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {overviewDashboardData.recentTransactions.map((transaction) => (
-                <TableRow key={transaction.id}>
-                  <TableCell>
-                    <Badge
-                      className={cn(
-                        "gap-1.5 border-transparent",
-                        transactionBadgeClassMap[transaction.type]
-                      )}
-                    >
-                      {transaction.type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {transaction.party}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {transaction.date}
-                  </TableCell>
-                  <TableCell className="text-right font-mono font-semibold">
-                    {formatCurrency(transaction.amount)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button type="button" variant="ghost" size="sm">
-                      View
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DashboardCard>
-      </div>
+        </div>
+        <div className="p-4 sm:p-5 lg:p-6">
+          <Tabs defaultValue="sales" className="gap-4">
+            <TabsList>
+              <TabsTrigger value="sales">Recent Sales</TabsTrigger>
+              <TabsTrigger value="purchases">Recent Purchase</TabsTrigger>
+            </TabsList>
+            <TabsContent value="sales" className="min-w-0">
+              <RecentLedgerTable rows={overviewDashboardData.recentSales} />
+            </TabsContent>
+            <TabsContent value="purchases" className="min-w-0">
+              <RecentLedgerTable rows={overviewDashboardData.recentPurchases} />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </DashboardCard>
     </div>
   )
-}
+})

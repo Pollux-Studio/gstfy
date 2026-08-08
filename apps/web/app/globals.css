@@ -189,4 +189,13 @@
   .app-scrollbar::-webkit-scrollbar-thumb:hover {
     background-color: var(--muted-foreground);
   }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }

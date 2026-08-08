@@ -1,3 +1,5 @@
+import Link from "next/link"
+
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -22,6 +24,8 @@ export function NavMain({
       title: string
       url: string
       icon?: React.ReactNode
+      isActive?: boolean
+      disabled?: boolean
     }[]
   }[]
 }) {
@@ -32,7 +36,7 @@ export function NavMain({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              render={<a href={overview.url} />}
+              render={<Link href={overview.url} />}
               tooltip={overview.title}
               isActive={overview.isActive}
             >
@@ -48,7 +52,12 @@ export function NavMain({
           <SidebarMenu>
             {category.items.map((item) => (
               <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton render={<a href={item.url} />} tooltip={item.title}>
+                <SidebarMenuButton
+                  render={item.disabled ? undefined : <Link href={item.url} />}
+                  tooltip={item.title}
+                  isActive={item.isActive}
+                  disabled={item.disabled}
+                >
                   {item.icon}
                   <span>{item.title}</span>
                 </SidebarMenuButton>

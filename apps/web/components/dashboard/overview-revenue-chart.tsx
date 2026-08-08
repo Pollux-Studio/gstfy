@@ -1,17 +1,17 @@
 "use client"
 
 import {
-  Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
+  ComposedChart,
+  Bar,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts"
 
-import type { SalesPoint } from "@/lib/dashboard/mock-overview"
+import type { RevenueStatisticPoint } from "@/lib/dashboard/mock-overview"
 
 const compactFormatter = new Intl.NumberFormat("en-IN", {
   notation: "compact",
@@ -29,16 +29,21 @@ function formatCurrency(value: number) {
   return currencyFormatter.format(value)
 }
 
-export function MonthlySalesChart({ data }: { data: SalesPoint[] }) {
+export function OverviewRevenueChart({
+  data,
+}: {
+  data: RevenueStatisticPoint[]
+}) {
   return (
     <ResponsiveContainer width="100%" height="100%" minWidth={280} minHeight={280}>
-      <BarChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 4 }}>
+      <ComposedChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
         <CartesianGrid vertical={false} strokeDasharray="3 3" />
         <XAxis
           dataKey="month"
           axisLine={false}
           tickLine={false}
-          tickMargin={10}
+          tickMargin={6}
+          height={24}
           fontSize={12}
         />
         <YAxis
@@ -50,7 +55,7 @@ export function MonthlySalesChart({ data }: { data: SalesPoint[] }) {
           tickFormatter={(value) => compactFormatter.format(value)}
         />
         <Tooltip
-          cursor={{ fill: "var(--muted)", opacity: 0.25 }}
+          cursor={{ fill: "var(--muted)", opacity: 0.2 }}
           contentStyle={{
             borderRadius: 16,
             border: "1px solid var(--border)",
@@ -61,15 +66,30 @@ export function MonthlySalesChart({ data }: { data: SalesPoint[] }) {
             typeof value === "number" ? formatCurrency(value) : String(value ?? "")
           }
         />
-        <Bar dataKey="sales" radius={[10, 10, 4, 4]} fill="var(--chart-3)">
-          {data.map((item, index) => (
-            <Cell
-              key={item.month}
-              fill={index === data.length - 1 ? "var(--primary)" : "var(--chart-3)"}
-            />
-          ))}
-        </Bar>
-      </BarChart>
+        <Bar
+          dataKey="sales"
+          name="Sales"
+          radius={[8, 8, 0, 0]}
+          fill="var(--chart-1)"
+          barSize={18}
+        />
+        <Bar
+          dataKey="purchases"
+          name="Purchase"
+          radius={[8, 8, 0, 0]}
+          fill="var(--chart-2)"
+          barSize={18}
+        />
+        <Line
+          type="monotone"
+          dataKey="income"
+          name="Income"
+          stroke="var(--chart-4)"
+          strokeWidth={3}
+          dot={{ r: 3, fill: "var(--chart-4)" }}
+          activeDot={{ r: 5 }}
+        />
+      </ComposedChart>
     </ResponsiveContainer>
   )
 }

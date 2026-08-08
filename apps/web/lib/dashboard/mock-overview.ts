@@ -1,27 +1,46 @@
-export type OverviewMetric = {
+export type OverviewTotal = {
+  id:
+    | "sales"
+    | "purchase"
+    | "income"
+    | "expenses"
+    | "customers"
+    | "suppliers"
+    | "salesReturns"
+    | "purchaseReturns"
   label: string
   value: number
+  kind: "currency" | "count"
   note: string
-  trend: string
 }
 
-export type SalesPoint = {
+export type RevenueStatisticPoint = {
   month: string
   sales: number
+  purchases: number
+  income: number
 }
 
-export type TopCustomer = {
-  name: string
-  revenue: number
-  invoiceCount: number
+export type OverallReportSlice = {
+  label: string
+  value: number
+  fill: string
 }
 
-export type RecentTransaction = {
+export type LowStockItem = {
+  hsnCode: string
+  productName: string
+  currentStock: number
+}
+
+export type RecentLedgerRow = {
   id: string
-  type: "Sale" | "Payment" | "Refund"
-  party: string
-  amount: number
   date: string
+  invoiceNumber: string
+  party: string
+  total: number
+  paid: number
+  due: number
 }
 
 export type OverviewDashboardData = {
@@ -33,50 +52,12 @@ export type OverviewDashboardData = {
     title: string
     description: string
   }
-  executiveSummary: {
-    heading: string
-    note: string
-    collections: {
-      label: string
-      value: number
-      trend: string
-    }
-    paidRatio: {
-      label: string
-      value: string
-      note: string
-    }
-    filingSummary: {
-      label: string
-      value: string
-      note: string
-    }
-    salesChannels: {
-      label: string
-      items: {
-        name: string
-        share: number
-      }[]
-    }
-  }
-  gstOwed: OverviewMetric
-  filingDeadline: {
-    dueDate: string
-    daysRemaining: number
-    note: string
-  }
-  outstandingInvoices: {
-    count: number
-    amount: number
-    note: string
-  }
-  monthlySales: SalesPoint[]
-  shopify: {
-    connected: boolean
-    note: string
-  }
-  topCustomers: TopCustomer[]
-  recentTransactions: RecentTransaction[]
+  totals: OverviewTotal[]
+  revenueStatistics: RevenueStatisticPoint[]
+  overallReports: OverallReportSlice[]
+  lowStockItems: LowStockItem[]
+  recentSales: RecentLedgerRow[]
+  recentPurchases: RecentLedgerRow[]
 }
 
 export const overviewDashboardData: OverviewDashboardData = {
@@ -87,111 +68,189 @@ export const overviewDashboardData: OverviewDashboardData = {
   intro: {
     title: "Overview Dashboard",
     description:
-      "Track sales, taxes, filing deadlines, and business activity from one clear home screen.",
+      "Monitor sales, purchases, income, stock pressure, and recent activity from one business summary.",
   },
-  executiveSummary: {
-    heading: "Your business snapshot is healthy and filing-ready.",
-    note:
-      "Collections are steady, filing is on track, and digital channels are contributing consistently this month.",
-    collections: {
-      label: "Net collections",
-      value: 396800,
-      trend: "+12.4% vs last month",
-    },
-    paidRatio: {
-      label: "Invoice paid ratio",
-      value: "78%",
-      note: "42 of 54 invoices settled this month",
-    },
-    filingSummary: {
-      label: "Upcoming filings",
-      value: "2 due this month",
-      note: "GSTR-1 on 11 May, GSTR-3B on 20 May",
-    },
-    salesChannels: {
-      label: "Sales channel split",
-      items: [
-        { name: "Retail", share: 46 },
-        { name: "Wholesale", share: 34 },
-        { name: "Online", share: 20 },
-      ],
-    },
-  },
-  gstOwed: {
-    label: "GST owed this month",
-    value: 84250,
-    note: "After available input tax credit",
-    trend: "+8.2% vs last month",
-  },
-  filingDeadline: {
-    dueDate: "20 May 2026",
-    daysRemaining: 10,
-    note: "GSTR-3B filing window is open",
-  },
-  outstandingInvoices: {
-    count: 14,
-    amount: 218900,
-    note: "5 invoices are overdue by more than 7 days",
-  },
-  monthlySales: [
-    { month: "Jan", sales: 315000 },
-    { month: "Feb", sales: 352000 },
-    { month: "Mar", sales: 401500 },
-    { month: "Apr", sales: 438000 },
-    { month: "May", sales: 462500 },
-    { month: "Jun", sales: 429000 },
-    { month: "Jul", sales: 488500 },
-    { month: "Aug", sales: 521000 },
-    { month: "Sep", sales: 498000 },
-    { month: "Oct", sales: 556500 },
-    { month: "Nov", sales: 604000 },
-    { month: "Dec", sales: 648500 },
-  ],
-  shopify: {
-    connected: false,
-    note: "Connect Shopify to compare marketplace sales with your GST books.",
-  },
-  topCustomers: [
-    { name: "Sri Lakshmi Traders", revenue: 182500, invoiceCount: 8 },
-    { name: "Madurai Wholesale Mart", revenue: 146200, invoiceCount: 5 },
-    { name: "Urban Fresh Retail", revenue: 121800, invoiceCount: 4 },
-    { name: "Kaveri Foods", revenue: 98750, invoiceCount: 3 },
-  ],
-  recentTransactions: [
+  totals: [
     {
-      id: "txn-1",
-      type: "Sale",
+      id: "sales",
+      label: "Total Sales",
+      value: 1824500,
+      kind: "currency",
+      note: "Across all channels this month",
+    },
+    {
+      id: "purchase",
+      label: "Total Purchase",
+      value: 1178200,
+      kind: "currency",
+      note: "Supplier bills booked this month",
+    },
+    {
+      id: "income",
+      label: "Total Income",
+      value: 428400,
+      kind: "currency",
+      note: "Net income after purchase and expense impact",
+    },
+    {
+      id: "expenses",
+      label: "Total Expenses",
+      value: 217900,
+      kind: "currency",
+      note: "Operating expenses and business spend",
+    },
+    {
+      id: "customers",
+      label: "Total Customers",
+      value: 146,
+      kind: "count",
+      note: "Active customers in current books",
+    },
+    {
+      id: "suppliers",
+      label: "Total Suppliers",
+      value: 38,
+      kind: "count",
+      note: "Suppliers with recent transactions",
+    },
+    {
+      id: "salesReturns",
+      label: "Sales Return",
+      value: 28600,
+      kind: "currency",
+      note: "Returned outward supplies this month",
+    },
+    {
+      id: "purchaseReturns",
+      label: "Purchase Returns",
+      value: 19400,
+      kind: "currency",
+      note: "Returned inward supplies this month",
+    },
+  ],
+  revenueStatistics: [
+    { month: "Jan", sales: 312000, purchases: 214000, income: 64200 },
+    { month: "Feb", sales: 346000, purchases: 227000, income: 78400 },
+    { month: "Mar", sales: 389000, purchases: 244000, income: 96200 },
+    { month: "Apr", sales: 421000, purchases: 262000, income: 108700 },
+    { month: "May", sales: 458000, purchases: 281000, income: 122400 },
+    { month: "Jun", sales: 447000, purchases: 274000, income: 118600 },
+    { month: "Jul", sales: 486000, purchases: 298000, income: 133900 },
+    { month: "Aug", sales: 509000, purchases: 312000, income: 142500 },
+    { month: "Sep", sales: 497000, purchases: 308000, income: 137800 },
+    { month: "Oct", sales: 548000, purchases: 329000, income: 156400 },
+    { month: "Nov", sales: 581000, purchases: 341000, income: 171300 },
+    { month: "Dec", sales: 612000, purchases: 356000, income: 184600 },
+  ],
+  overallReports: [
+    { label: "Sales", value: 1824500, fill: "var(--chart-1)" },
+    { label: "Purchase", value: 1178200, fill: "var(--chart-2)" },
+    { label: "Expenses", value: 217900, fill: "var(--chart-4)" },
+  ],
+  lowStockItems: [
+    { hsnCode: "210690", productName: "Protein Mix 500g", currentStock: 8 },
+    { hsnCode: "190531", productName: "Butter Cookies Box", currentStock: 11 },
+    { hsnCode: "330499", productName: "Herbal Face Wash", currentStock: 9 },
+    { hsnCode: "392410", productName: "Kitchen Storage Jar", currentStock: 6 },
+    { hsnCode: "950300", productName: "Learning Blocks Set", currentStock: 7 },
+    { hsnCode: "481920", productName: "Printed Gift Box", currentStock: 10 },
+    { hsnCode: "220299", productName: "Energy Drink Can", currentStock: 5 },
+    { hsnCode: "090240", productName: "Premium Tea Pack", currentStock: 12 },
+    { hsnCode: "340111", productName: "Bath Soap Combo", currentStock: 9 },
+    { hsnCode: "821599", productName: "Steel Cutlery Set", currentStock: 4 },
+  ],
+  recentSales: [
+    {
+      id: "sale-1",
+      date: "11 May 2026",
+      invoiceNumber: "INV-2026-0182",
       party: "Sri Lakshmi Traders",
-      amount: 28500,
+      total: 28500,
+      paid: 18500,
+      due: 10000,
+    },
+    {
+      id: "sale-2",
       date: "10 May 2026",
-    },
-    {
-      id: "txn-2",
-      type: "Payment",
+      invoiceNumber: "INV-2026-0181",
       party: "Urban Fresh Retail",
-      amount: 18500,
-      date: "09 May 2026",
+      total: 41200,
+      paid: 41200,
+      due: 0,
     },
     {
-      id: "txn-3",
-      type: "Sale",
+      id: "sale-3",
+      date: "10 May 2026",
+      invoiceNumber: "INV-2026-0180",
       party: "Madurai Wholesale Mart",
-      amount: 43200,
+      total: 36200,
+      paid: 24000,
+      due: 12200,
+    },
+    {
+      id: "sale-4",
       date: "09 May 2026",
-    },
-    {
-      id: "txn-4",
-      type: "Refund",
-      party: "Kaveri Foods",
-      amount: 4200,
-      date: "08 May 2026",
-    },
-    {
-      id: "txn-5",
-      type: "Payment",
+      invoiceNumber: "INV-2026-0179",
       party: "Vetri Stores",
-      amount: 22000,
+      total: 19400,
+      paid: 9400,
+      due: 10000,
+    },
+    {
+      id: "sale-5",
       date: "08 May 2026",
+      invoiceNumber: "INV-2026-0178",
+      party: "Kaveri Foods",
+      total: 22800,
+      paid: 22800,
+      due: 0,
+    },
+  ],
+  recentPurchases: [
+    {
+      id: "purchase-1",
+      date: "11 May 2026",
+      invoiceNumber: "PUR-2026-0087",
+      party: "Arun Packaging Co",
+      total: 26400,
+      paid: 12000,
+      due: 14400,
+    },
+    {
+      id: "purchase-2",
+      date: "10 May 2026",
+      invoiceNumber: "PUR-2026-0086",
+      party: "Om Traders",
+      total: 38100,
+      paid: 38100,
+      due: 0,
+    },
+    {
+      id: "purchase-3",
+      date: "09 May 2026",
+      invoiceNumber: "PUR-2026-0085",
+      party: "South Coast Supplies",
+      total: 19500,
+      paid: 9500,
+      due: 10000,
+    },
+    {
+      id: "purchase-4",
+      date: "09 May 2026",
+      invoiceNumber: "PUR-2026-0084",
+      party: "Elite Wholesale Hub",
+      total: 44200,
+      paid: 22000,
+      due: 22200,
+    },
+    {
+      id: "purchase-5",
+      date: "08 May 2026",
+      invoiceNumber: "PUR-2026-0083",
+      party: "Nila Distributors",
+      total: 17300,
+      paid: 17300,
+      due: 0,
     },
   ],
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { usePathname } from "next/navigation"
 import {
   Building2Icon,
   CreditCardIcon,
@@ -14,17 +15,23 @@ import {
   ReceiptTextIcon,
   ScrollTextIcon,
   Settings2Icon,
+  ShieldCheckIcon,
   ShoppingCartIcon,
   SparklesIcon,
   TruckIcon,
   UsersIcon,
   WarehouseIcon,
 } from "lucide-react"
-import { PLANS, canAccess, type ModuleKey } from "@repo/core/lib/featureFlags"
+import { canAccess } from "@repo/core/lib/featureFlags"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
+import {
+  currentPlan,
+  getVisibleFeatureCategories,
+  planLabels,
+} from "@/lib/dashboard/modules"
 import {
   Sidebar,
   SidebarContent,
@@ -37,127 +44,13 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar"
 
-type SidebarModule = {
-  module: ModuleKey
-  title: string
-  url: string
-}
-
-type SidebarCategory = {
-  title: string
-  items: SidebarModule[]
-}
-
 type SidebarNavItem = {
   title: string
   url: string
   icon?: React.ReactNode
   isActive?: boolean
+  disabled?: boolean
 }
-
-const currentPlan = PLANS.small
-
-const planLabels: Record<(typeof PLANS)[keyof typeof PLANS], string> = {
-  micro: "Micro",
-  small: "Small",
-  pro: "Pro",
-  ca: "CA",
-}
-
-const overviewItem: SidebarNavItem = {
-  title: "Overview",
-  url: "/dashboard",
-  icon: <LayoutDashboardIcon />,
-  isActive: true,
-}
-
-const categoryItems: SidebarCategory[] = [
-  {
-    title: "Sales",
-    items: [
-      {
-        module: "invoices",
-        title: "Invoices",
-        url: "#",
-      },
-      {
-        module: "einvoice",
-        title: "E-Invoice",
-        url: "#",
-      },
-      {
-        module: "ewaybill",
-        title: "E-Way Bill",
-        url: "#",
-      },
-      {
-        module: "pos",
-        title: "POS",
-        url: "#",
-      },
-    ],
-  },
-  {
-    title: "Purchases",
-    items: [
-      {
-        module: "purchases",
-        title: "Purchases",
-        url: "#",
-      },
-      {
-        module: "expenses",
-        title: "Expenses",
-        url: "#",
-      },
-    ],
-  },
-  {
-    title: "Compliance",
-    items: [
-      {
-        module: "gstr",
-        title: "GST Returns",
-        url: "#",
-      },
-      {
-        module: "aireview",
-        title: "AI Review",
-        url: "#",
-      },
-    ],
-  },
-  {
-    title: "Inventory",
-    items: [
-      {
-        module: "inventory",
-        title: "Inventory",
-        url: "#",
-      },
-    ],
-  },
-  {
-    title: "Contacts",
-    items: [
-      {
-        module: "parties",
-        title: "Parties",
-        url: "#",
-      },
-    ],
-  },
-  {
-    title: "Business",
-    items: [
-      {
-        module: "reports",
-        title: "Reports",
-        url: "#",
-      },
-    ],
-  },
-]
 
 const data = {
   user: {
@@ -175,14 +68,26 @@ const data = {
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const visibleCategories = categoryItems
+  const pathname = usePathname()
+
+  const overviewItem: SidebarNavItem = {
+    title: "Overview",
+    url: "/dashboard",
+    icon: <LayoutDashboardIcon />,
+    isActive: pathname === "/dashboard",
+  }
+
+  const visibleCategories = getVisibleFeatureCategories(currentPlan)
     .map((category) => ({
       title: category.title,
-      items: category.items
-        .filter((item) => canAccess(item.module, currentPlan))
-        .map((item) => ({
+      items: [
+        ...category.items.map((item) => ({
           title: item.title,
           url: item.url,
+          isActive:
+            item.url !== "#" &&
+            (pathname === item.url || pathname.startsWith(`${item.url}/`)),
+          disabled: item.url === "#",
           icon:
             item.module === "invoices" ? <CreditCardIcon /> :
             item.module === "einvoice" ? <ScrollTextIcon /> :
@@ -197,8 +102,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             item.module === "reports" ? <FileChartColumnIcon /> :
             undefined,
         })),
+        ...(category.title === "Contacts" ?
+          [
+            {
+              title: "Users",
+              url: "/users",
+              isActive: pathname === "/users" || pathname.startsWith("/users/"),
+              icon: <ShieldCheckIcon />,
+            },
+          ]
+        : []),
+      ],
     }))
-    .filter((category) => category.items.length > 0)
 
   return (
     <Sidebar collapsible="icon" {...props}>

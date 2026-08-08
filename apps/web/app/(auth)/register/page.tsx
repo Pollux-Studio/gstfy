@@ -20,7 +20,7 @@ export default function SignupPage() {
           <AuthSystemControls />
         </div>
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <div className="flex h-full min-h-0 w-full py-6">
+          <div className="flex h-full min-h-0 w-full pt-6">
             <SignupForm />
           </div>
         </div>

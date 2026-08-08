@@ -1,7 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import { useState } from "react"
+import { memo, useState } from "react"
 import { SearchIcon } from "lucide-react"
 
 import { DashboardCommandMenu } from "@/components/dashboard/dashboard-command-menu"
@@ -17,13 +17,13 @@ import {
 import { overviewDashboardData } from "@/lib/dashboard/mock-overview"
 import { getGstStateMeta } from "@/lib/gst-state"
 
-export function DashboardTopbar() {
+export const DashboardTopbar = memo(function DashboardTopbar() {
   const stateMeta = getGstStateMeta(overviewDashboardData.business.gstin)
   const [isCommandOpen, setIsCommandOpen] = useState(false)
 
   return (
     <>
-      <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 lg:px-6">
+      <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-border/70 bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 transition-[width,height] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 lg:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <SidebarTrigger className="-ml-1" />
           <Button
@@ -99,4 +99,4 @@ export function DashboardTopbar() {
       />
     </>
   )
-}
+})

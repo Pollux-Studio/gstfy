@@ -54,3 +54,7 @@ export function getGstStateCode(gstin: string) {
 export function getGstStateMeta(gstin: string) {
   return GST_STATE_META[getGstStateCode(gstin)] ?? null
 }
+
+export function getAllGstStates() {
+  return Object.values(GST_STATE_META)
+}
