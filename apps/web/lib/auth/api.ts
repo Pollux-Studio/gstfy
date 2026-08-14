@@ -8,6 +8,8 @@ export type AuthUser = {
   id: string
   email: string | null
   phone: string | null
+  profileImageSeed?: string | null
+  profileImageStyle?: "glyphs"
 }
 
 export type AuthSession = {
@@ -44,6 +46,8 @@ export type CurrentUserResponse = {
     email: string | null
     phone_e164: string | null
     display_name: string | null
+    profile_image_seed: string | null
+    profile_image_style: "glyphs"
     locale: string
     onboarding_status: string
     last_login_at: string | null
@@ -54,6 +58,7 @@ export type CurrentUserResponse = {
     role: string
     status: string
     gstin: string | null
+    registration_date: string | null
   }>
 }
 
@@ -68,33 +73,41 @@ export type RegisterResponse = {
   session: AuthSession | null
   requiresVerification: boolean
   onboardingStatus: string
-}
-
-export type CaAuthResponse = {
-  user: AuthUser
-  session: AuthSession
-  practice: {
+  business?: {
     id: string
-    name: string
-    status: string
+    legalName: string
+    tradeName: string
+    pan: string
+    constitution: string
+    businessEmail: string | null
+    businessMobile: string | null
+    primaryContactName: string | null
+    primaryContactMobile: string | null
+    primaryContactEmail: string | null
+  }
+  registration?: {
+    id: string
+    gstin: string | null
+    taxpayerType: string | null
+    registrationDate: string | null
+    principalAddressLine1: string | null
+    principalAddressLine2: string | null
+    locality: string | null
+    district: string | null
+    pincode: string | null
+    stateCode: string | null
+    possessionType: string | null
+    locationSource: "manual" | "browser_geolocation"
   }
 }
 
-export type CaRegisterResponse = {
-  user: AuthUser
-  session: AuthSession | null
-  requiresVerification: boolean
-  practice: {
-    id: string
-    name: string
-    status: string
-  }
-}
+export type CaAuthResponse = LoginResponse
 
 export type RegisterPayload = {
   identifier: string
   password: string
   emailRedirectTo?: string
+  caReferralCode: string
   company: {
     legalName: string
     tradeName: string
@@ -177,11 +190,13 @@ export async function login(payload: LoginPayload) {
   return toLoginResponse(response)
 }
 
-export function caLogin(payload: CaLoginPayload) {
-  return apiRequest<CaAuthResponse>("/auth/ca/login", {
+export async function caLogin(payload: CaLoginPayload) {
+  const response = await apiRequest<BackendAuthResponse>("/auth/ca/login", {
     method: "POST",
     body: payload,
   })
+
+  return toLoginResponse(response)
 }
 
 export function getCurrentUser(accessToken: string) {
@@ -229,11 +244,13 @@ export function register(payload: RegisterPayload) {
   })
 }
 
-export function caRegister(payload: CaRegisterPayload) {
-  return apiRequest<CaRegisterResponse>("/auth/ca/register", {
+export async function caRegister(payload: CaRegisterPayload) {
+  const response = await apiRequest<BackendAuthResponse>("/auth/ca/register", {
     method: "POST",
     body: payload,
   })
+
+  return toLoginResponse(response)
 }
 
 export function completeOnboarding(
@@ -255,9 +272,13 @@ type BackendAuthResponse = {
     id: string
     email: string | null
     phoneE164: string | null
+    fullName?: string | null
+    profileImageSeed: string | null
+    profileImageStyle: "glyphs"
   }
   accessToken: string
   accessTokenExpiresIn: number
+  redirectTo?: string
 }
 
 function toLoginResponse(response: BackendAuthResponse): LoginResponse {
@@ -266,6 +287,8 @@ function toLoginResponse(response: BackendAuthResponse): LoginResponse {
       id: response.user.id,
       email: response.user.email,
       phone: response.user.phoneE164,
+      profileImageSeed: response.user.profileImageSeed,
+      profileImageStyle: response.user.profileImageStyle,
     },
     session: {
       accessToken: response.accessToken,

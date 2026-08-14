@@ -2,14 +2,18 @@
 
 import Image from "next/image"
 import { useQuery } from "@tanstack/react-query"
-import { memo, useState } from "react"
+import { memo, useEffect, useState } from "react"
 import { SearchIcon } from "lucide-react"
 
 import { DashboardCommandMenu } from "@/components/dashboard/dashboard-command-menu"
 import { LocaleSwitcher } from "@/components/locale-switcher"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { getCurrentUser } from "@/lib/auth/api"
-import { getStoredAuthSession } from "@/lib/auth/session"
+import {
+  AUTH_SESSION_CHANGE_EVENT,
+  getStoredAuthSession,
+  type StoredAuthSession,
+} from "@/lib/auth/session"
 import { Button } from "@/components/ui/button"
 import { SidebarInput, SidebarTrigger } from "@/components/ui/sidebar"
 import {
@@ -21,16 +25,37 @@ import { getGstStateMeta } from "@/lib/gst-state"
 
 export const DashboardTopbar = memo(function DashboardTopbar() {
   const [isCommandOpen, setIsCommandOpen] = useState(false)
-  const storedSession = getStoredAuthSession()
+  const [storedSession, setStoredSession] = useState<StoredAuthSession | null>(() =>
+    getStoredAuthSession()
+  )
+  const accountType = storedSession?.accountType ?? "business"
+  const userId = storedSession?.user.id ?? ""
   const accessToken = storedSession?.session.accessToken ?? ""
   const { data: currentUser } = useQuery({
-    queryKey: ["auth", "current-user"],
+    queryKey: ["auth", "current-user", accountType, userId],
     queryFn: () => getCurrentUser(accessToken),
-    enabled: accessToken.length > 0,
+    enabled: accessToken.length > 0 && userId.length > 0,
+    refetchOnMount: "always",
     staleTime: 1000 * 60 * 5,
   })
-  const activeGstin = currentUser?.memberships[0]?.gstin ?? null
+  const currentUserForSession =
+    currentUser?.auth.userId === storedSession?.user.id ? currentUser : undefined
+  const activeGstin = currentUserForSession?.memberships[0]?.gstin ?? null
   const stateMeta = activeGstin ? getGstStateMeta(activeGstin) : null
+
+  useEffect(() => {
+    function syncStoredSession() {
+      setStoredSession(getStoredAuthSession())
+    }
+
+    window.addEventListener(AUTH_SESSION_CHANGE_EVENT, syncStoredSession)
+    window.addEventListener("storage", syncStoredSession)
+
+    return () => {
+      window.removeEventListener(AUTH_SESSION_CHANGE_EVENT, syncStoredSession)
+      window.removeEventListener("storage", syncStoredSession)
+    }
+  }, [])
 
   return (
     <>

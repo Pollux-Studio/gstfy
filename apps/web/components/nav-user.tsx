@@ -27,19 +27,23 @@ import { ChevronsUpDownIcon, BadgeCheckIcon, CreditCardIcon, BellIcon, LogOutIco
 
 export function NavUser({
   user,
+  logoutPath = "/auth/login",
+  showAccountLinks = true,
 }: {
   user: {
     name: string
     email: string
     avatar: string
   }
+  logoutPath?: string
+  showAccountLinks?: boolean
 }) {
   const { isMobile } = useSidebar()
   const router = useRouter()
 
   function handleLogout() {
     clearStoredAuthSession()
-    router.replace("/auth/login")
+    router.replace(logoutPath)
   }
 
   return (
@@ -53,7 +57,7 @@ export function NavUser({
           >
             <Avatar>
               <AvatarImage src={user.avatar} alt={user.name} />
-              <AvatarFallback>GF</AvatarFallback>
+              <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
               <span className="truncate font-medium">{user.name}</span>
@@ -72,7 +76,7 @@ export function NavUser({
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                   <Avatar>
                     <AvatarImage src={user.avatar} alt={user.name} />
-                    <AvatarFallback>GF</AvatarFallback>
+                    <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">{user.name}</span>
@@ -81,24 +85,28 @@ export function NavUser({
                 </div>
               </DropdownMenuLabel>
             </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem onClick={() => router.push("/account")}>
-                <BadgeCheckIcon
-                />
-                Account
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <CreditCardIcon
-                />
-                Billing
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <BellIcon
-                />
-                Notifications
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
+            {showAccountLinks ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuItem onClick={() => router.push("/account")}>
+                    <BadgeCheckIcon
+                    />
+                    Account
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <CreditCardIcon
+                    />
+                    Billing
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <BellIcon
+                    />
+                    Notifications
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </>
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
               <LogOutIcon
@@ -110,4 +118,12 @@ export function NavUser({
       </SidebarMenuItem>
     </SidebarMenu>
   )
+}
+
+function getInitials(value: string) {
+  const [first = "", second = ""] = value
+    .split(/\s+|[._-]+/)
+    .filter(Boolean)
+
+  return `${first[0] ?? ""}${second[0] ?? ""}`.toUpperCase() || "GF"
 }

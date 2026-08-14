@@ -43,6 +43,23 @@ export type CaDashboardResponse = {
   }
 }
 
+type RawCaClientRecord = Omit<CaClientRecord, "businessId"> & {
+  businessId?: string | null
+  business_id?: string | null
+  acceptedBusinessId?: string | null
+  accepted_business_id?: string | null
+}
+
+type RawCaClientInviteRecord = Omit<CaClientInviteRecord, "acceptedBusinessId"> & {
+  acceptedBusinessId?: string | null
+  accepted_business_id?: string | null
+}
+
+type RawCaDashboardResponse = Omit<CaDashboardResponse, "clients" | "invites"> & {
+  clients: RawCaClientRecord[]
+  invites: RawCaClientInviteRecord[]
+}
+
 export type CreateCaClientPayload = {
   clientName: string
   clientEmail?: string
@@ -71,21 +88,21 @@ export type CaClientSummaryResponse = {
 }
 
 export function getCaDashboard(accessToken: string) {
-  return apiRequest<CaDashboardResponse>("/ca/clients", {
+  return apiRequest<RawCaDashboardResponse>("/ca/clients", {
     method: "GET",
     accessToken,
-  })
+  }).then(normalizeCaDashboardResponse)
 }
 
 export function createCaClient(
   payload: CreateCaClientPayload,
   accessToken: string
 ) {
-  return apiRequest<CaDashboardResponse>("/ca/clients", {
+  return apiRequest<RawCaDashboardResponse>("/ca/clients", {
     method: "POST",
     body: payload,
     accessToken,
-  })
+  }).then(normalizeCaDashboardResponse)
 }
 
 export function acceptCaInvite(referralCode: string, accessToken: string) {
@@ -104,8 +121,28 @@ export function getCaClientSummary(businessId: string, accessToken: string) {
 }
 
 export function revokeCaClient(businessId: string, accessToken: string) {
-  return apiRequest<CaDashboardResponse>(`/ca/clients/${businessId}/revoke`, {
+  return apiRequest<RawCaDashboardResponse>(`/ca/clients/${businessId}/revoke`, {
     method: "POST",
     accessToken,
-  })
+  }).then(normalizeCaDashboardResponse)
+}
+
+function normalizeCaDashboardResponse(response: RawCaDashboardResponse): CaDashboardResponse {
+  return {
+    ...response,
+    clients: response.clients.map((client) => ({
+      ...client,
+      businessId:
+        client.businessId ??
+        client.business_id ??
+        client.acceptedBusinessId ??
+        client.accepted_business_id ??
+        "",
+    })),
+    invites: response.invites.map((invite) => ({
+      ...invite,
+      acceptedBusinessId:
+        invite.acceptedBusinessId ?? invite.accepted_business_id ?? null,
+    })),
+  }
 }

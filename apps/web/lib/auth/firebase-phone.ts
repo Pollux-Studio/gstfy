@@ -15,7 +15,7 @@ let confirmationPhoneE164 = ""
 
 const recaptchaContainerId = "gstfy-firebase-recaptcha"
 
-export type FirebaseOtpPurpose = "login" | "register"
+export type FirebaseOtpPurpose = "login" | "register" | "account"
 
 export async function sendFirebasePhoneOtp(input: {
   identifier: string

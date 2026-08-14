@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
-import { Toaster } from "sonner"
 
+import { Toaster } from "@/components/ui/toast"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { I18nProvider } from "@/providers/i18n-provider"
 import { AppQueryProvider } from "@/providers/query-provider"
@@ -43,7 +43,7 @@ export default async function RootLayout({
               <ThemeProvider>
                 <TooltipProvider>
                   {children}
-                  <Toaster richColors position="top-right" />
+                  <Toaster />
                 </TooltipProvider>
               </ThemeProvider>
             </I18nProvider>

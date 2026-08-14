@@ -1,25 +1,28 @@
 "use client"
 
 import * as React from "react"
+import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { format, parseISO } from "date-fns"
 import {
   BadgeCheckIcon,
   Building2Icon,
+  CalendarIcon,
   FileTextIcon,
-  LockKeyholeIcon,
-  MapPinnedIcon,
+  KeyRoundIcon,
   PrinterIcon,
   ReceiptTextIcon,
   SaveIcon,
   Settings2Icon,
 } from "lucide-react"
 import { Controller, useForm, useWatch } from "react-hook-form"
-import { toast } from "sonner"
 import { z } from "zod"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
+import { toast } from "@/components/ui/toast"
 import {
   Field,
   FieldDescription,
@@ -28,14 +31,16 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { IndianPhoneInput } from "@/components/ui/indian-phone-input"
 import {
   Select,
   SelectContent,
+  SelectDisplayValue,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Spinner } from "@/components/ui/spinner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getStoredAuthSession } from "@/lib/auth/session"
 import { getAllGstStates } from "@/lib/gst-state"
@@ -45,6 +50,7 @@ import {
   updateGstRateSettings,
   updateInvoiceSettings,
   updatePrinterSettings,
+  verifyBusinessCaReferral,
   type SettingsResponse,
 } from "@/lib/settings/api"
 import { cn } from "@/lib/utils"
@@ -74,6 +80,12 @@ const businessDetailsSchema = z.object({
   district: z.string().trim().min(1, "Enter the district."),
   pincode: z.string().trim().regex(pincodePattern, "Enter a valid 6-digit pincode."),
   possessionType: z.string().trim().min(1, "Enter the possession type."),
+  registrationDate: z
+    .union([
+      z.literal(""),
+      z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Select a valid registration date."),
+    ])
+    .optional(),
 })
 
 const invoiceSettingsSchema = z.object({
@@ -85,12 +97,6 @@ const invoiceSettingsSchema = z.object({
 })
 
 const gstRateSettingsSchema = z.object({
-  defaultGstSlab: z.union([
-    z.literal(5),
-    z.literal(12),
-    z.literal(18),
-    z.literal(28),
-  ]),
   enabledGstSlabs: z
     .array(z.union([z.literal(5), z.literal(12), z.literal(18), z.literal(28)]))
     .min(1, "Enable at least one GST slab."),
@@ -149,25 +155,38 @@ const printerOrientationOptions: Array<{
   { value: "landscape", label: "Landscape" },
 ]
 
+const possessionOptions = [
+  { value: "own", label: "Own" },
+  { value: "rented", label: "Rented" },
+  { value: "leased", label: "Leased" },
+  { value: "consent", label: "Consent" },
+  { value: "shared", label: "Shared" },
+  { value: "other", label: "Other" },
+] as const
+
 const settingsTabs = [
   {
     value: "business",
     label: "Business",
+    description: "GST identity, contacts, CA link",
     icon: <Building2Icon className="size-4" />,
   },
   {
     value: "invoice",
     label: "Invoice",
+    description: "Templates and numbering",
     icon: <FileTextIcon className="size-4" />,
   },
   {
     value: "gst",
     label: "GST Rate",
+    description: "Enabled tax slabs",
     icon: <ReceiptTextIcon className="size-4" />,
   },
   {
     value: "printer",
     label: "Printer",
+    description: "Paper and print behavior",
     icon: <PrinterIcon className="size-4" />,
   },
 ] as const
@@ -177,6 +196,9 @@ export function SettingsPage() {
   const accessToken = storedSession?.session.accessToken ?? ""
   const queryClient = useQueryClient()
   const [isBusinessEditing, setIsBusinessEditing] = React.useState(false)
+  const [caReferralCode, setCaReferralCode] = React.useState("")
+  const [isRegistrationDatePickerOpen, setIsRegistrationDatePickerOpen] =
+    React.useState(false)
 
   const {
     data,
@@ -203,7 +225,6 @@ export function SettingsPage() {
   const gstForm = useForm<GstRateSettingsFormValues>({
     resolver: zodResolver(gstRateSettingsSchema),
     defaultValues: {
-      defaultGstSlab: 18,
       enabledGstSlabs: [5, 12, 18, 28],
     },
   })
@@ -234,13 +255,13 @@ export function SettingsPage() {
       district: data.registration.district,
       pincode: data.registration.pincode,
       possessionType: data.registration.possessionType,
+      registrationDate: data.registration.registrationDate,
     })
     invoiceForm.reset({
       invoiceTemplate: data.invoiceSettings.invoiceTemplate,
       invoicePrefix: data.invoiceSettings.invoicePrefix,
     })
     gstForm.reset({
-      defaultGstSlab: data.gstRateSettings.defaultGstSlab,
       enabledGstSlabs: data.gstRateSettings.enabledGstSlabs,
     })
     printerForm.reset({
@@ -263,10 +284,6 @@ export function SettingsPage() {
     control: gstForm.control,
     name: "enabledGstSlabs",
   })
-  const currentDefaultSlab = useWatch({
-    control: gstForm.control,
-    name: "defaultGstSlab",
-  })
   const autoOpenPrintDialog = useWatch({
     control: printerForm.control,
     name: "autoOpenPrintDialog",
@@ -275,6 +292,13 @@ export function SettingsPage() {
     control: printerForm.control,
     name: "compactPrintLayout",
   })
+  const registrationDateValue = useWatch({
+    control: businessForm.control,
+    name: "registrationDate",
+  })
+  const selectedRegistrationDate = registrationDateValue
+    ? parseISO(registrationDateValue)
+    : undefined
 
   const businessMutation = useMutation({
     mutationFn: (values: BusinessDetailsFormValues) =>
@@ -291,6 +315,10 @@ export function SettingsPage() {
           district: values.district.trim(),
           pincode: values.pincode.trim(),
           possessionType: values.possessionType.trim(),
+          registrationDate:
+            data?.registration.registrationDate ? undefined : (
+              values.registrationDate?.trim() || null
+            ),
         },
         accessToken
       ),
@@ -298,6 +326,24 @@ export function SettingsPage() {
       setSettingsCache(queryClient, nextSettings)
       setIsBusinessEditing(false)
       toast.success("Business details updated.")
+    },
+    onError: (mutationError) => {
+      toast.error(getErrorMessage(mutationError))
+    },
+  })
+
+  const caReferralMutation = useMutation({
+    mutationFn: () =>
+      verifyBusinessCaReferral(
+        {
+          referralCode: caReferralCode.trim().toUpperCase(),
+        },
+        accessToken
+      ),
+    onSuccess: (nextSettings) => {
+      setSettingsCache(queryClient, nextSettings)
+      setCaReferralCode(nextSettings.caReferral.referralCode ?? "")
+      toast.success("CA referral verified and linked.")
     },
     onError: (mutationError) => {
       toast.error(getErrorMessage(mutationError))
@@ -326,7 +372,6 @@ export function SettingsPage() {
     mutationFn: (values: GstRateSettingsFormValues) =>
       updateGstRateSettings(
         {
-          defaultGstSlab: values.defaultGstSlab,
           enabledGstSlabs: values.enabledGstSlabs,
         },
         accessToken
@@ -375,52 +420,67 @@ export function SettingsPage() {
   }
 
   const canEditBusiness = data.permissions.canEditBusiness
+  const canSetRegistrationDate =
+    canEditBusiness && data.registration.registrationDate.trim().length === 0
+  const isCaReferralLinked = data.caReferral.status === "linked"
+  const canAddCaReferral = canEditBusiness && data.caReferral.canAdd
+  const caReferralInputValue =
+    isCaReferralLinked ? data.caReferral.referralCode ?? "" : caReferralCode
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
-      <section className="rounded-2xl border border-border/70 bg-card/80 text-card-foreground">
-        <div className="flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between lg:p-6">
-          <div className="space-y-2">
-            <Badge variant="outline" className="gap-1.5 border-border/70 bg-background/60">
-              <Settings2Icon className="size-3.5" />
-              Workspace settings
-            </Badge>
-            <div className="space-y-1">
-              <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-              <p className="max-w-3xl text-sm text-muted-foreground">
-                Manage the registered business profile, current user preferences,
-                invoice defaults, GST presets, and print behavior for this workspace.
-              </p>
+    <Tabs defaultValue="business" className="contents">
+      <div className="grid w-full flex-1 p-3 pt-3 sm:p-4 lg:grid-cols-[164px_minmax(0,760px)] lg:gap-8 lg:p-5 lg:pt-4 xl:grid-cols-[176px_minmax(0,760px)] xl:gap-7">
+        <aside className="hidden lg:block">
+          <div className="sticky top-20 pr-4">
+            <p className="mb-2 px-2 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Settings
+            </p>
+            <TabsList className="flex h-auto flex-col gap-0.5 rounded-none border-0 bg-transparent p-0 shadow-none">
+              {settingsTabs.map((tab) => (
+                <TabsTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  className="h-auto w-full justify-start gap-2 rounded-none bg-transparent px-2 py-1.5 text-sm font-normal text-muted-foreground shadow-none hover:bg-transparent hover:text-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 data-[state=active]:shadow-none dark:hover:text-blue-400 dark:data-[state=active]:text-blue-400"
+                >
+                  {tab.icon}
+                  <span className="truncate">{tab.label}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+        </aside>
+
+        <main className="min-w-0 space-y-6">
+          <section className="scroll-mt-20 border-b border-border pb-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <Settings2Icon className="size-4 text-muted-foreground" />
+                <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
+              </div>
+              <Badge
+                variant="outline"
+                className="w-fit gap-1.5 bg-background font-mono text-[11px] tracking-[0.16em]"
+              >
+                <ReceiptTextIcon className="size-3.5" />
+                {data.registration.gstin}
+              </Badge>
             </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="gap-1.5 border-border/70 bg-background/60">
-              <Building2Icon className="size-3.5" />
-              {data.business.legalName}
-            </Badge>
-            <Badge variant="outline" className="gap-1.5 border-border/70 bg-background/60 font-mono">
-              <ReceiptTextIcon className="size-3.5" />
-              {data.registration.gstin}
-            </Badge>
-          </div>
-        </div>
-      </section>
+          </section>
 
-      <Tabs defaultValue="business" className="gap-4">
-        <TabsList className="grid h-auto grid-cols-1 gap-2 rounded-2xl border border-border/70 bg-muted/20 p-2 sm:grid-cols-2 xl:grid-cols-4">
-          {settingsTabs.map((tab) => (
-            <TabsTrigger
-              key={tab.value}
-              value={tab.value}
-              className="min-h-11 w-full min-w-0 justify-center gap-2 rounded-xl border border-transparent px-3 py-2.5 text-center font-medium data-[state=active]:border-border/70 data-[state=active]:bg-background sm:justify-start sm:text-left"
-            >
-              {tab.icon}
-              <span className="truncate">{tab.label}</span>
-            </TabsTrigger>
-          ))}
-        </TabsList>
+          <TabsList className="grid h-auto grid-cols-2 gap-2 rounded-none border-0 bg-transparent p-0 shadow-none lg:hidden">
+            {settingsTabs.map((tab) => (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                className="justify-start gap-2 rounded-none bg-transparent px-0 py-2 text-sm font-normal text-muted-foreground shadow-none hover:bg-transparent hover:text-blue-600 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 data-[state=active]:shadow-none dark:hover:text-blue-400 dark:data-[state=active]:text-blue-400"
+              >
+                {tab.icon}
+                <span className="truncate">{tab.label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
 
-        <TabsContent value="business">
+        <TabsContent value="business" className="mt-0">
           <SettingsSection
             icon={<Building2Icon className="size-4" />}
             title="Business details"
@@ -428,38 +488,52 @@ export function SettingsPage() {
             badgeLabel={canEditBusiness ? "Business admin" : "View only"}
           >
             <form onSubmit={businessForm.handleSubmit((values) => businessMutation.mutate(values))}>
-              <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-                <div className="space-y-4">
-                  <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
-                    <div className="mb-3 flex items-center gap-2">
-                      <LockKeyholeIcon className="size-4 text-muted-foreground" />
-                      <h3 className="text-sm font-medium">Registration-controlled fields</h3>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <LockedField label="Legal business name" value={data.business.legalName} />
-                      <LockedField label="Trade name" value={data.business.tradeName} />
-                      <LockedField label="GSTIN" value={data.registration.gstin} mono />
-                      <LockedField label="PAN" value={data.business.pan} mono />
-                      <LockedField
-                        label="Constitution"
-                        value={formatTitleCase(data.business.constitution)}
-                      />
-                      <LockedField
-                        label="Taxpayer type"
-                        value={formatTitleCase(data.registration.taxpayerType)}
-                      />
-                      <LockedField
-                        label="Effective registration date"
-                        value={data.registration.registrationDate}
-                      />
-                      <LockedField
-                        label="State / UT"
-                        value={businessStateMeta?.name ?? data.registration.stateCode}
-                      />
-                    </div>
+              <div className="space-y-6">
+                <div className="space-y-5">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <ReadOnlyDetail
+                      className="sm:col-span-2"
+                      label="Legal business name"
+                      value={data.business.legalName}
+                    />
+                    <ReadOnlyDetail label="Trade name" value={data.business.tradeName} />
+                    <ReadOnlyDetail
+                      label="State / UT"
+                      value={businessStateMeta?.name ?? data.registration.stateCode}
+                    />
+                    <ReadOnlyDetail label="GSTIN" value={data.registration.gstin} mono />
+                    <ReadOnlyDetail label="PAN" value={data.business.pan} mono />
+                    <ReadOnlyDetail
+                      label="Constitution"
+                      value={formatTitleCase(data.business.constitution)}
+                    />
+                    <ReadOnlyDetail
+                      label="Taxpayer type"
+                      value={formatTitleCase(data.registration.taxpayerType)}
+                    />
+                    <ReadOnlyDetail
+                      label="Effective registration date"
+                      value={
+                        data.registration.registrationDate ?
+                          formatDate(data.registration.registrationDate)
+                        : "Not added"
+                      }
+                    />
                   </div>
 
                   <FieldGroup>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Building2Icon className="size-4 text-muted-foreground" />
+                        <h3 className="text-sm font-medium">Editable details</h3>
+                      </div>
+                      {!isBusinessEditing ? (
+                        <span className="text-xs text-muted-foreground">
+                          Click edit to update contacts and address.
+                        </span>
+                      ) : null}
+                    </div>
+
                     <div className="grid gap-4 md:grid-cols-2">
                       <Field>
                         <FieldLabel htmlFor="settings-business-email">Business email</FieldLabel>
@@ -473,10 +547,8 @@ export function SettingsPage() {
                       </Field>
                       <Field>
                         <FieldLabel htmlFor="settings-business-mobile">Business mobile</FieldLabel>
-                        <Input
+                        <IndianPhoneInput
                           id="settings-business-mobile"
-                          placeholder="9876543210"
-                          inputMode="numeric"
                           disabled={!isBusinessEditing || !canEditBusiness}
                           {...businessForm.register("businessMobile")}
                         />
@@ -500,9 +572,8 @@ export function SettingsPage() {
                         <FieldLabel htmlFor="settings-primary-contact-mobile">
                           Primary contact mobile
                         </FieldLabel>
-                        <Input
+                        <IndianPhoneInput
                           id="settings-primary-contact-mobile"
-                          inputMode="numeric"
                           disabled={!isBusinessEditing || !canEditBusiness}
                           {...businessForm.register("primaryContactMobile")}
                         />
@@ -521,26 +592,99 @@ export function SettingsPage() {
                       </Field>
                     </div>
 
-                    <Field>
-                      <FieldLabel htmlFor="settings-address-line-1">Principal address line 1</FieldLabel>
-                      <Input
-                        id="settings-address-line-1"
-                        disabled={!isBusinessEditing || !canEditBusiness}
-                        {...businessForm.register("principalAddressLine1")}
-                      />
-                      <FieldError errors={[businessForm.formState.errors.principalAddressLine1]} />
-                    </Field>
+                    {canSetRegistrationDate ? (
+                      <Field>
+                        <FieldLabel htmlFor="settings-registration-date">
+                          Effective registration date
+                        </FieldLabel>
+                        <PopoverPrimitive.Root
+                          open={isRegistrationDatePickerOpen}
+                          onOpenChange={setIsRegistrationDatePickerOpen}
+                        >
+                          <PopoverPrimitive.Trigger
+                            render={
+                              <Button
+                                type="button"
+                                id="settings-registration-date"
+                                variant="outline"
+                                disabled={!isBusinessEditing || !canEditBusiness}
+                                aria-invalid={Boolean(
+                                  businessForm.formState.errors.registrationDate
+                                )}
+                                className={cn(
+                                  "h-8 w-full justify-between rounded-lg border-input px-2.5 text-left text-sm font-normal",
+                                  !registrationDateValue && "text-muted-foreground"
+                                )}
+                              >
+                                <span>
+                                  {selectedRegistrationDate
+                                    ? format(selectedRegistrationDate, "dd MMM yyyy")
+                                    : "DD MMM YYYY"}
+                                </span>
+                                <CalendarIcon className="size-4 text-muted-foreground" />
+                              </Button>
+                            }
+                          />
+                          <PopoverPrimitive.Portal>
+                            <PopoverPrimitive.Positioner
+                              side="bottom"
+                              sideOffset={4}
+                              align="start"
+                              className="isolate z-50"
+                            >
+                              <PopoverPrimitive.Popup
+                                data-slot="popover-content"
+                                className="relative z-50 w-auto rounded-2xl border border-border bg-popover p-0 text-popover-foreground shadow-md outline-hidden transition duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0"
+                              >
+                                <Calendar
+                                  mode="single"
+                                  selected={selectedRegistrationDate}
+                                  onSelect={(date) => {
+                                    businessForm.setValue(
+                                      "registrationDate",
+                                      date ? format(date, "yyyy-MM-dd") : "",
+                                      {
+                                        shouldDirty: true,
+                                        shouldValidate: true,
+                                      }
+                                    )
+                                    setIsRegistrationDatePickerOpen(false)
+                                  }}
+                                />
+                              </PopoverPrimitive.Popup>
+                            </PopoverPrimitive.Positioner>
+                          </PopoverPrimitive.Portal>
+                        </PopoverPrimitive.Root>
+                        <FieldError errors={[businessForm.formState.errors.registrationDate]} />
+                      </Field>
+                    ) : null}
 
-                    <Field>
-                      <FieldLabel htmlFor="settings-address-line-2">Principal address line 2</FieldLabel>
-                      <Input
-                        id="settings-address-line-2"
-                        disabled={!isBusinessEditing || !canEditBusiness}
-                        {...businessForm.register("principalAddressLine2")}
-                      />
-                    </Field>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field>
+                        <FieldLabel htmlFor="settings-address-line-1">
+                          Principal address line 1
+                        </FieldLabel>
+                        <Input
+                          id="settings-address-line-1"
+                          disabled={!isBusinessEditing || !canEditBusiness}
+                          {...businessForm.register("principalAddressLine1")}
+                        />
+                        <FieldError errors={[businessForm.formState.errors.principalAddressLine1]} />
+                      </Field>
 
-                    <div className="grid gap-4 md:grid-cols-4">
+                      <Field>
+                        <FieldLabel htmlFor="settings-address-line-2">
+                          Principal address line 2
+                        </FieldLabel>
+                        <Input
+                          id="settings-address-line-2"
+                          disabled={!isBusinessEditing || !canEditBusiness}
+                          {...businessForm.register("principalAddressLine2")}
+                        />
+                      </Field>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3">
                       <Field>
                         <FieldLabel htmlFor="settings-locality">Locality / area</FieldLabel>
                         <Input
@@ -569,12 +713,38 @@ export function SettingsPage() {
                         />
                         <FieldError errors={[businessForm.formState.errors.pincode]} />
                       </Field>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
                       <Field>
-                        <FieldLabel htmlFor="settings-possession-type">Nature of possession</FieldLabel>
-                        <Input
-                          id="settings-possession-type"
-                          disabled={!isBusinessEditing || !canEditBusiness}
-                          {...businessForm.register("possessionType")}
+                        <FieldLabel htmlFor="settings-possession-type">
+                          Nature of possession
+                        </FieldLabel>
+                        <Controller
+                          control={businessForm.control}
+                          name="possessionType"
+                          render={({ field }) => (
+                            <Select
+                              value={field.value}
+                              onValueChange={field.onChange}
+                              disabled={!isBusinessEditing || !canEditBusiness}
+                            >
+                              <SelectTrigger id="settings-possession-type" className="w-full">
+                                <SelectDisplayValue
+                                  value={field.value}
+                                  options={possessionOptions}
+                                  placeholder="Choose possession type"
+                                />
+                              </SelectTrigger>
+                              <SelectContent align="start">
+                                {possessionOptions.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
                         />
                         <FieldError errors={[businessForm.formState.errors.possessionType]} />
                       </Field>
@@ -582,29 +752,87 @@ export function SettingsPage() {
                   </FieldGroup>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="rounded-2xl border border-border/70 bg-background p-4">
-                    <div className="mb-3 flex items-center gap-2">
-                      <MapPinnedIcon className="size-4 text-muted-foreground" />
-                      <h3 className="text-sm font-medium">Address status</h3>
+                <div className="space-y-4 border-t border-border pt-5">
+                  <section className="space-y-4">
+                    <div className="flex items-start gap-3">
+                      <span
+                        className={cn(
+                          "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full border",
+                          isCaReferralLinked
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                            : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+                        )}
+                      >
+                        {isCaReferralLinked ? (
+                          <BadgeCheckIcon className="size-4" />
+                        ) : (
+                          <KeyRoundIcon className="size-4" />
+                        )}
+                      </span>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-semibold">CA referral</h3>
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
+                              isCaReferralLinked
+                                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                                : "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                            )}
+                          >
+                            <span className="size-1.5 rounded-full bg-current" />
+                            {isCaReferralLinked ? "Connected" : "Required"}
+                          </span>
+                        </div>
+                        <p className="text-sm leading-6 text-muted-foreground">
+                          {isCaReferralLinked
+                            ? `This workspace is connected to ${data.caReferral.practiceName ?? "your CA"} for client filing access.`
+                            : "Enter the referral code shared by your CA. Once verified, it becomes locked for this business."}
+                        </p>
+                      </div>
                     </div>
-                    <dl className="space-y-3 text-sm">
-                      <MetaRow
-                        label="Location source"
-                        value={formatTitleCase(data.registration.locationSource.replaceAll("_", " "))}
+
+                    <Field>
+                      <FieldLabel htmlFor="settings-ca-referral-code">
+                        Referral code
+                      </FieldLabel>
+                      <Input
+                        id="settings-ca-referral-code"
+                        value={caReferralInputValue}
+                        onChange={(event) =>
+                          setCaReferralCode(event.target.value.toUpperCase().slice(0, 40))
+                        }
+                        placeholder="GSTFY-XXXXXXXX"
+                        disabled={!canAddCaReferral || caReferralMutation.isPending}
+                        className="font-mono uppercase tracking-[0.18em]"
                       />
-                      <MetaRow
-                        label="Active state"
-                        value={businessStateMeta?.name ?? data.registration.stateCode}
-                      />
-                      <MetaRow label="GST role" value={formatTitleCase(data.permissions.role)} />
-                    </dl>
-                  </div>
-                  <FieldDescription className="rounded-xl border border-border bg-muted/30 px-4 py-3">
-                    Locked fields come from the registered GST identity used during onboarding.
-                    If those regulatory values change, update the registration source before editing
-                    workspace operations here.
-                  </FieldDescription>
+                      <FieldDescription>
+                        {isCaReferralLinked && data.caReferral.linkedAt
+                          ? `Verified on ${formatDate(data.caReferral.linkedAt)}. This code cannot be changed.`
+                          : "We verify the code before saving the CA relationship."}
+                      </FieldDescription>
+                    </Field>
+
+                    {!isCaReferralLinked ? (
+                      <Button
+                        type="button"
+                        className="w-full"
+                        disabled={
+                          !canAddCaReferral ||
+                          caReferralMutation.isPending ||
+                          caReferralCode.trim().length === 0
+                        }
+                        onClick={() => caReferralMutation.mutate()}
+                      >
+                        {caReferralMutation.isPending ? (
+                          <Spinner />
+                        ) : (
+                          <BadgeCheckIcon className="size-4" />
+                        )}
+                        Verify and save
+                      </Button>
+                    ) : null}
+                  </section>
                 </div>
               </div>
 
@@ -625,8 +853,12 @@ export function SettingsPage() {
                       type="submit"
                       disabled={businessMutation.isPending || !canEditBusiness}
                     >
-                      <SaveIcon className="size-4" />
-                      {businessMutation.isPending ? "Saving..." : "Save business details"}
+                      {businessMutation.isPending ? (
+                        <Spinner />
+                      ) : (
+                        <SaveIcon className="size-4" />
+                      )}
+                      Save business details
                     </Button>
                   </>
                 : <Button
@@ -642,7 +874,7 @@ export function SettingsPage() {
           </SettingsSection>
         </TabsContent>
 
-        <TabsContent value="invoice">
+        <TabsContent value="invoice" className="mt-0">
           <SettingsSection
             icon={<FileTextIcon className="size-4" />}
             title="Invoice settings"
@@ -651,35 +883,70 @@ export function SettingsPage() {
             <form onSubmit={invoiceForm.handleSubmit((values) => invoiceMutation.mutate(values))}>
               <FieldGroup>
                 <Field>
-                  <FieldLabel htmlFor="settings-invoice-template">Invoice template</FieldLabel>
-                  <Controller
-                    control={invoiceForm.control}
-                    name="invoiceTemplate"
-                    render={({ field }) => (
-                      <Select
-                        value={field.value}
-                        onValueChange={(value) =>
-                          field.onChange(value as SettingsResponse["invoiceSettings"]["invoiceTemplate"])
-                        }
-                      >
-                        <SelectTrigger id="settings-invoice-template" className="w-full">
-                          <SelectValue placeholder="Choose invoice template" />
-                        </SelectTrigger>
-                        <SelectContent align="start">
-                          {invoiceTemplateOptions.map((template) => (
-                            <SelectItem key={template.value} value={template.value}>
-                              <span className="flex min-w-0 flex-col items-start">
-                                <span>{template.label}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {template.description}
-                                </span>
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <FieldLabel>Invoice template</FieldLabel>
+                    <Badge
+                      variant="outline"
+                      className="bg-background font-mono text-[11px] uppercase tracking-[0.14em]"
+                    >
+                      {currentInvoiceTemplate}
+                    </Badge>
+                  </div>
+                  <div
+                    role="radiogroup"
+                    aria-label="Invoice template"
+                    className="-mx-1 overflow-x-auto px-1 pb-2 [scrollbar-color:hsl(var(--border))_transparent] [scrollbar-width:thin]"
+                  >
+                    <div className="flex w-max gap-3">
+                      {invoiceTemplateOptions.map((template) => {
+                        const isSelected = currentInvoiceTemplate === template.value
+
+                        return (
+                          <button
+                            key={template.value}
+                            type="button"
+                            role="radio"
+                            aria-checked={isSelected}
+                            disabled={!canEditBusiness}
+                            onClick={() =>
+                              invoiceForm.setValue("invoiceTemplate", template.value, {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              })
+                            }
+                            className={cn(
+                              "w-56 shrink-0 rounded-2xl border bg-background p-2 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
+                              isSelected
+                                ? "border-foreground"
+                                : "border-border hover:border-foreground/40"
+                            )}
+                          >
+                            <InvoiceTemplatePreview
+                              template={template.value}
+                              prefix={invoicePreviewPrefix || "INV"}
+                              selected={isSelected}
+                            />
+                            <div className="mt-3 space-y-1 px-1 pb-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-medium">{template.label}</p>
+                                {isSelected ? (
+                                  <Badge className="h-5 px-1.5 text-[10px]">
+                                    Selected
+                                  </Badge>
+                                ) : null}
+                              </div>
+                              <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
+                                {template.description}
+                              </p>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <FieldDescription>
+                    Scroll horizontally and select a template. The selected template code is saved with the invoice settings.
+                  </FieldDescription>
                 </Field>
 
                 <Field>
@@ -722,62 +989,26 @@ export function SettingsPage() {
 
               <div className="mt-6 flex justify-end border-t border-border pt-4">
                 <Button type="submit" disabled={invoiceMutation.isPending || !canEditBusiness}>
-                  <SaveIcon className="size-4" />
-                  {invoiceMutation.isPending ? "Saving..." : "Save invoice settings"}
+                  {invoiceMutation.isPending ? (
+                    <Spinner />
+                  ) : (
+                    <SaveIcon className="size-4" />
+                  )}
+                  Save invoice settings
                 </Button>
               </div>
             </form>
           </SettingsSection>
         </TabsContent>
 
-        <TabsContent value="gst">
+        <TabsContent value="gst" className="mt-0">
           <SettingsSection
             icon={<ReceiptTextIcon className="size-4" />}
-            title="GST rate presets"
-            description="These presets only control default invoice suggestions. They do not replace statutory GST rules or line-level tax logic."
+            title="GST rate slabs"
+            description="Control which GST slabs appear while creating invoices. Product-level tax can still differ by HSN."
           >
             <form onSubmit={gstForm.handleSubmit((values) => gstMutation.mutate(values))}>
               <FieldGroup>
-                <Field>
-                  <FieldLabel htmlFor="settings-default-gst-slab">Default GST slab</FieldLabel>
-                  <Controller
-                    control={gstForm.control}
-                    name="defaultGstSlab"
-                    render={({ field }) => (
-                      <Select
-                        value={String(field.value)}
-                        onValueChange={(value) => {
-                          const numericValue = Number(value) as 5 | 12 | 18 | 28
-                          const currentSlabs = gstForm.getValues("enabledGstSlabs")
-                          if (!currentSlabs.includes(numericValue)) {
-                            gstForm.setValue(
-                              "enabledGstSlabs",
-                              [...currentSlabs, numericValue].sort((left, right) => left - right) as GstRateSettingsFormValues["enabledGstSlabs"],
-                              { shouldDirty: true, shouldValidate: true }
-                            )
-                          }
-                          field.onChange(numericValue)
-                        }}
-                      >
-                        <SelectTrigger id="settings-default-gst-slab" className="w-full">
-                          <SelectValue placeholder="Choose default GST slab" />
-                        </SelectTrigger>
-                        <SelectContent align="start">
-                          {gstSlabOptions.map((slab) => (
-                            <SelectItem key={slab} value={String(slab)}>
-                              {`${slab}%`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                  <FieldDescription>
-                    Default intra-state split: CGST {currentDefaultSlab / 2}% + SGST {currentDefaultSlab / 2}%.
-                  </FieldDescription>
-                  <FieldError errors={[gstForm.formState.errors.defaultGstSlab]} />
-                </Field>
-
                 <Field>
                   <FieldLabel>Enabled invoice slabs</FieldLabel>
                   <div className="flex flex-wrap gap-2">
@@ -797,13 +1028,6 @@ export function SettingsPage() {
                               shouldDirty: true,
                               shouldValidate: true,
                             })
-
-                            if (!nextSlabs.includes(gstForm.getValues("defaultGstSlab"))) {
-                              gstForm.setValue("defaultGstSlab", nextSlabs[0], {
-                                shouldDirty: true,
-                                shouldValidate: true,
-                              })
-                            }
                           }}
                         >
                           {slab}%
@@ -812,7 +1036,7 @@ export function SettingsPage() {
                     })}
                   </div>
                   <FieldDescription>
-                    Enable only the slabs your team should see as default invoice choices.
+                    Enable only the slabs your team should see as invoice choices.
                   </FieldDescription>
                   <FieldError errors={[gstForm.formState.errors.enabledGstSlabs]} />
                 </Field>
@@ -820,15 +1044,19 @@ export function SettingsPage() {
 
               <div className="mt-6 flex justify-end border-t border-border pt-4">
                 <Button type="submit" disabled={gstMutation.isPending || !canEditBusiness}>
-                  <SaveIcon className="size-4" />
-                  {gstMutation.isPending ? "Saving..." : "Save GST presets"}
+                  {gstMutation.isPending ? (
+                    <Spinner />
+                  ) : (
+                    <SaveIcon className="size-4" />
+                  )}
+                  Save GST presets
                 </Button>
               </div>
             </form>
           </SettingsSection>
         </TabsContent>
 
-        <TabsContent value="printer">
+        <TabsContent value="printer" className="mt-0">
           <SettingsSection
             icon={<PrinterIcon className="size-4" />}
             title="Printer settings"
@@ -850,7 +1078,11 @@ export function SettingsPage() {
                           }
                         >
                           <SelectTrigger id="settings-paper-size" className="w-full">
-                            <SelectValue placeholder="Choose paper size" />
+                            <SelectDisplayValue
+                              value={field.value}
+                              options={paperSizeOptions}
+                              placeholder="Choose paper size"
+                            />
                           </SelectTrigger>
                           <SelectContent align="start">
                             {paperSizeOptions.map((paperSize) => (
@@ -878,7 +1110,11 @@ export function SettingsPage() {
                           }
                         >
                           <SelectTrigger id="settings-print-orientation" className="w-full">
-                            <SelectValue placeholder="Choose orientation" />
+                            <SelectDisplayValue
+                              value={field.value}
+                              options={printerOrientationOptions}
+                              placeholder="Choose orientation"
+                            />
                           </SelectTrigger>
                           <SelectContent align="start">
                             {printerOrientationOptions.map((orientation) => (
@@ -963,86 +1199,186 @@ export function SettingsPage() {
 
               <div className="mt-6 flex justify-end border-t border-border pt-4">
                 <Button type="submit" disabled={printerMutation.isPending || !canEditBusiness}>
-                  <SaveIcon className="size-4" />
-                  {printerMutation.isPending ? "Saving..." : "Save printer settings"}
+                  {printerMutation.isPending ? (
+                    <Spinner />
+                  ) : (
+                    <SaveIcon className="size-4" />
+                  )}
+                  Save printer settings
                 </Button>
               </div>
             </form>
           </SettingsSection>
         </TabsContent>
-      </Tabs>
-    </div>
+        </main>
+      </div>
+    </Tabs>
   )
 }
 
 function SettingsSection({
   icon,
   title,
-  description,
   badgeLabel,
   children,
 }: {
   icon: React.ReactNode
   title: string
-  description: string
+  description?: string
   badgeLabel?: string
   children: React.ReactNode
 }) {
   return (
-    <section className="rounded-2xl border border-border/70 bg-card/80 text-card-foreground">
-      <div className="border-b border-border/70 px-4 py-4 sm:px-5 lg:px-6">
+    <section className="scroll-mt-20 border-b border-border pb-6">
+      <div className="mb-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">{icon}</span>
               <h2 className="text-base font-semibold">{title}</h2>
             </div>
-            <p className="text-sm text-muted-foreground">{description}</p>
           </div>
           {badgeLabel ? (
-            <Badge variant="outline" className="border-border/70 bg-background/60">
+            <Badge variant="outline" className="bg-background">
               {badgeLabel}
             </Badge>
           ) : null}
         </div>
       </div>
-      <div className="px-4 py-4 sm:px-5 lg:px-6">{children}</div>
+      {children}
     </section>
   )
 }
 
-function LockedField({
+function InvoiceTemplatePreview({
+  template,
+  prefix,
+  selected,
+}: {
+  template: SettingsResponse["invoiceSettings"]["invoiceTemplate"]
+  prefix: string
+  selected: boolean
+}) {
+  const isModern = template === "modern"
+  const isCompact = template === "compact"
+
+  return (
+    <div
+      className={cn(
+        "relative aspect-[3/4] overflow-hidden rounded-xl border bg-white text-zinc-950",
+        selected ? "border-foreground" : "border-border"
+      )}
+    >
+      {isModern ? (
+        <div className="absolute inset-y-0 left-0 w-2 bg-zinc-950" />
+      ) : null}
+      <div className={cn("flex h-full flex-col p-3", isCompact && "p-2.5")}>
+        <div
+          className={cn(
+            "flex items-start justify-between gap-3 border-b border-zinc-200 pb-2",
+            isModern && "border-zinc-900/20"
+          )}
+        >
+          <div>
+            <div className="h-2.5 w-16 rounded-full bg-zinc-950" />
+            <div className="mt-1 h-1.5 w-12 rounded-full bg-zinc-300" />
+          </div>
+          <div className={cn("text-right", isModern && "rounded-md bg-zinc-950 px-2 py-1 text-white")}>
+            <p className="text-[9px] font-semibold uppercase tracking-[0.18em]">Invoice</p>
+            <p className={cn("mt-1 font-mono text-[8px]", !isModern && "text-zinc-500")}>
+              {prefix}-2026-0001
+            </p>
+          </div>
+        </div>
+
+        <div className={cn("grid gap-2 py-3", isCompact ? "grid-cols-2 py-2" : "grid-cols-2")}>
+          <div className="space-y-1.5">
+            <div className="h-1.5 w-10 rounded-full bg-zinc-300" />
+            <div className="h-1.5 w-20 rounded-full bg-zinc-800" />
+            <div className="h-1.5 w-14 rounded-full bg-zinc-200" />
+          </div>
+          <div className="space-y-1.5">
+            <div className="ml-auto h-1.5 w-10 rounded-full bg-zinc-300" />
+            <div className="ml-auto h-1.5 w-16 rounded-full bg-zinc-800" />
+            <div className="ml-auto h-1.5 w-12 rounded-full bg-zinc-200" />
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-lg border border-zinc-200">
+          <div
+            className={cn(
+              "grid grid-cols-[1fr_2rem_2.5rem] gap-2 bg-zinc-100 px-2 py-1.5 text-[8px] font-medium uppercase tracking-[0.12em] text-zinc-500",
+              isCompact && "py-1"
+            )}
+          >
+            <span>Item</span>
+            <span>GST</span>
+            <span className="text-right">Total</span>
+          </div>
+          {Array.from({ length: isCompact ? 5 : 3 }).map((_, index) => (
+            <div
+              key={index}
+              className="grid grid-cols-[1fr_2rem_2.5rem] gap-2 border-t border-zinc-100 px-2 py-1.5"
+            >
+              <span className="h-1.5 rounded-full bg-zinc-300" />
+              <span className="h-1.5 rounded-full bg-zinc-200" />
+              <span className="h-1.5 rounded-full bg-zinc-300" />
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-auto space-y-1.5 pt-3">
+          <div className="ml-auto flex w-24 items-center justify-between gap-3">
+            <span className="h-1.5 w-10 rounded-full bg-zinc-300" />
+            <span className="h-1.5 w-10 rounded-full bg-zinc-200" />
+          </div>
+          <div
+            className={cn(
+              "ml-auto h-7 w-28 rounded-lg",
+              isModern ? "bg-zinc-950" : "bg-zinc-100"
+            )}
+          >
+            <div className={cn("ml-auto h-full w-16 rounded-lg", isModern ? "bg-zinc-700" : "bg-zinc-300")} />
+          </div>
+        </div>
+      </div>
+      {template === "classic" ? (
+        <div className="absolute inset-x-0 top-0 h-1 bg-zinc-950" />
+      ) : null}
+    </div>
+  )
+}
+
+function ReadOnlyDetail({
   label,
   value,
   mono = false,
+  className,
 }: {
   label: string
   value: string
   mono?: boolean
+  className?: string
 }) {
   return (
-    <Field>
-      <FieldLabel>{label}</FieldLabel>
-      <Input
-        value={value}
-        disabled
-        className={cn("border-border/60 bg-muted/20", mono && "font-mono tracking-[0.18em]")}
-      />
-    </Field>
-  )
-}
-
-function MetaRow({
-  label,
-  value,
-}: {
-  label: string
-  value: string
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/10 px-3 py-2.5">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="text-right font-medium">{value}</dd>
+    <div
+      className={cn(
+        "rounded-xl border border-border bg-background px-3 py-2.5",
+        className
+      )}
+    >
+      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-1 min-w-0 truncate text-sm font-medium",
+          mono && "font-mono tracking-[0.16em]"
+        )}
+        title={value}
+      >
+        {value || "Not added"}
+      </p>
     </div>
   )
 }
@@ -1060,6 +1396,7 @@ function createBusinessDefaults(data?: SettingsResponse): BusinessDetailsFormVal
     district: data?.registration.district ?? "",
     pincode: data?.registration.pincode ?? "",
     possessionType: data?.registration.possessionType ?? "",
+    registrationDate: data?.registration.registrationDate ?? "",
   }
 }
 
@@ -1094,6 +1431,14 @@ function formatTitleCase(value: string) {
     .join(" ")
 }
 
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value))
+}
+
 function getTemplateLabel(value: SettingsResponse["invoiceSettings"]["invoiceTemplate"]) {
   return invoiceTemplateOptions.find((template) => template.value === value)?.label ?? "Classic"
 }
@@ -1104,50 +1449,78 @@ function getErrorMessage(error: unknown) {
 
 function SettingsPageSkeleton() {
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
-      <section className="rounded-2xl border border-border/70 bg-card/80 text-card-foreground">
-        <div className="flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between lg:p-6">
+    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-5 p-3 pt-4 sm:p-4 lg:p-6 lg:pt-5">
+      <section className="rounded-2xl border border-border bg-card text-card-foreground">
+        <div className="grid gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:p-6">
           <div className="space-y-3">
             <Skeleton className="h-6 w-36 rounded-full" />
             <Skeleton className="h-8 w-56" />
             <Skeleton className="h-4 w-[22rem] max-w-full" />
-            <Skeleton className="h-4 w-[28rem] max-w-full" />
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Skeleton className="h-8 w-52 rounded-full" />
-            <Skeleton className="h-8 w-44 rounded-full" />
-          </div>
+          <Skeleton className="h-7 w-44 rounded-full" />
         </div>
-      </section>
-
-      <section className="rounded-2xl border border-border/70 bg-muted/20 p-2">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          {settingsTabs.map((tab) => (
-            <Skeleton key={tab.value} className="h-11 rounded-xl" />
+        <div className="grid gap-3 border-t border-border p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-4 lg:p-6 lg:pt-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="h-20 rounded-xl" />
           ))}
         </div>
       </section>
 
-      <section className="rounded-2xl border border-border/70 bg-card/80 text-card-foreground">
-        <div className="border-b border-border/70 px-4 py-4 sm:px-5 lg:px-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-40" />
-              <Skeleton className="h-4 w-[30rem] max-w-full" />
-            </div>
-            <Skeleton className="h-7 w-24 rounded-full" />
+      <div className="grid gap-4 lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start">
+        <section className="rounded-2xl border border-border bg-card p-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:flex-col">
+            {settingsTabs.map((tab) => (
+              <Skeleton key={tab.value} className="h-14 rounded-xl" />
+            ))}
           </div>
-        </div>
+        </section>
 
-        <div className="space-y-6 px-4 py-4 sm:px-5 lg:px-6">
-          <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
-                <Skeleton className="mb-4 h-5 w-52" />
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {Array.from({ length: 8 }).map((_, index) => (
+        <section className="rounded-2xl border border-border bg-card text-card-foreground">
+          <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-2">
+                <Skeleton className="h-5 w-40" />
+                <Skeleton className="h-4 w-[30rem] max-w-full" />
+              </div>
+              <Skeleton className="h-7 w-24 rounded-full" />
+            </div>
+          </div>
+
+          <div className="space-y-6 px-4 py-4 sm:px-5 lg:px-6">
+            <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+                  <Skeleton className="mb-4 h-5 w-52" />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {Array.from({ length: 8 }).map((_, index) => (
+                      <div key={index} className="space-y-2">
+                        <Skeleton className="h-4 w-28" />
+                        <Skeleton className="h-8 w-full rounded-lg" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {Array.from({ length: 2 }).map((_, index) => (
+                      <div key={index} className="space-y-2">
+                        <Skeleton className="h-4 w-28" />
+                        <Skeleton className="h-8 w-full rounded-lg" />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <div key={index} className="space-y-2">
+                        <Skeleton className="h-4 w-28" />
+                        <Skeleton className="h-8 w-full rounded-lg" />
+                      </div>
+                    ))}
+                  </div>
+                  {Array.from({ length: 3 }).map((_, index) => (
                     <div key={index} className="space-y-2">
-                      <Skeleton className="h-4 w-28" />
+                      <Skeleton className="h-4 w-36" />
                       <Skeleton className="h-8 w-full rounded-lg" />
                     </div>
                   ))}
@@ -1155,52 +1528,27 @@ function SettingsPageSkeleton() {
               </div>
 
               <div className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  {Array.from({ length: 2 }).map((_, index) => (
-                    <div key={index} className="space-y-2">
-                      <Skeleton className="h-4 w-28" />
-                      <Skeleton className="h-8 w-full rounded-lg" />
-                    </div>
-                  ))}
-                </div>
-                <div className="grid gap-4 md:grid-cols-3">
-                  {Array.from({ length: 3 }).map((_, index) => (
-                    <div key={index} className="space-y-2">
-                      <Skeleton className="h-4 w-28" />
-                      <Skeleton className="h-8 w-full rounded-lg" />
-                    </div>
-                  ))}
-                </div>
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="space-y-2">
-                    <Skeleton className="h-4 w-36" />
-                    <Skeleton className="h-8 w-full rounded-lg" />
+                <div className="rounded-2xl border border-border/70 bg-background p-4">
+                  <Skeleton className="mb-4 h-5 w-32" />
+                  <div className="space-y-3">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <div key={index} className="flex items-center justify-between gap-3">
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-4 w-28" />
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-border/70 bg-background p-4">
-                <Skeleton className="mb-4 h-5 w-32" />
-                <div className="space-y-3">
-                  {Array.from({ length: 3 }).map((_, index) => (
-                    <div key={index} className="flex items-center justify-between gap-3">
-                      <Skeleton className="h-4 w-24" />
-                      <Skeleton className="h-4 w-28" />
-                    </div>
-                  ))}
                 </div>
+                <Skeleton className="h-24 w-full rounded-xl" />
               </div>
-              <Skeleton className="h-24 w-full rounded-xl" />
+            </div>
+
+            <div className="flex justify-end border-t border-border pt-4">
+              <Skeleton className="h-9 w-40 rounded-lg" />
             </div>
           </div>
-
-          <div className="flex justify-end border-t border-border pt-4">
-            <Skeleton className="h-9 w-40 rounded-lg" />
-          </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   )
 }

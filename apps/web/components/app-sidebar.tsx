@@ -25,13 +25,19 @@ import {
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
+import { getProfileAvatarUrl } from "@/lib/avatar"
 import { getCurrentUser, type CurrentUserResponse } from "@/lib/auth/api"
+import { getCaDashboard, type CaDashboardResponse } from "@/lib/ca/api"
 import {
   currentPlan,
   getVisibleFeatureCategories,
   planLabels,
 } from "@/lib/dashboard/modules"
-import { getStoredAuthSession } from "@/lib/auth/session"
+import {
+  AUTH_SESSION_CHANGE_EVENT,
+  getStoredAuthSession,
+  type StoredAuthSession,
+} from "@/lib/auth/session"
 import {
   Sidebar,
   SidebarContent,
@@ -40,7 +46,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
 
@@ -54,24 +59,67 @@ type SidebarNavItem = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
-  const storedSession = getStoredAuthSession()
+  const [storedSession, setStoredSession] = React.useState<StoredAuthSession | null>(
+    () => getStoredAuthSession()
+  )
+  const accountType = storedSession?.accountType ?? "business"
+  const isCaAccount = accountType === "ca"
+  const userId = storedSession?.user.id ?? ""
   const accessToken = storedSession?.session.accessToken ?? ""
   const { data: currentUser } = useQuery({
-    queryKey: ["auth", "current-user"],
+    queryKey: ["auth", "current-user", accountType, userId],
     queryFn: () => getCurrentUser(accessToken),
-    enabled: accessToken.length > 0,
+    enabled: accessToken.length > 0 && userId.length > 0,
+    refetchOnMount: "always",
     staleTime: 1000 * 60 * 5,
   })
+  const currentUserForSession =
+    currentUser?.auth.userId === storedSession?.user.id ? currentUser : undefined
+  const { data: caDashboard } = useQuery({
+    queryKey: ["ca", "dashboard", userId],
+    queryFn: () => getCaDashboard(accessToken),
+    enabled: isCaAccount && accessToken.length > 0 && userId.length > 0,
+    staleTime: 1000 * 60 * 3,
+  })
 
-  const overviewItem: SidebarNavItem = {
-    title: "Overview",
-    url: "/dashboard",
-    icon: <LayoutDashboardIcon />,
-    isActive: pathname === "/dashboard",
-  }
+  React.useEffect(() => {
+    function syncStoredSession() {
+      setStoredSession(getStoredAuthSession())
+    }
 
-  const visibleCategories = getVisibleFeatureCategories(currentPlan)
-    .map((category) => ({
+    window.addEventListener(AUTH_SESSION_CHANGE_EVENT, syncStoredSession)
+    window.addEventListener("storage", syncStoredSession)
+
+    return () => {
+      window.removeEventListener(AUTH_SESSION_CHANGE_EVENT, syncStoredSession)
+      window.removeEventListener("storage", syncStoredSession)
+    }
+  }, [])
+
+  const overviewItem: SidebarNavItem = React.useMemo(() => {
+    if (isCaAccount) {
+      return {
+        title: "Clients",
+        url: "/ca",
+        icon: <BriefcaseBusinessIcon />,
+        isActive: pathname === "/ca" || pathname.startsWith("/ca/"),
+      }
+    }
+
+    return {
+      title: "Overview",
+      url: "/dashboard",
+      icon: <LayoutDashboardIcon />,
+      isActive: pathname === "/dashboard",
+    }
+  }, [isCaAccount, pathname])
+
+  const visibleCategories = React.useMemo(() => {
+    if (isCaAccount) {
+      return []
+    }
+
+    const categories = getVisibleFeatureCategories(currentPlan).map((category) => ({
       title: category.title,
       items: [
         ...category.items.map((item) => ({
@@ -105,41 +153,48 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       ],
     }))
 
-  visibleCategories.push({
-    title: "CA Workspace",
-    items: [
-      {
-        title: "Clients",
-        url: "/ca",
-        isActive: pathname === "/ca" || pathname.startsWith("/ca/"),
-        icon: <BriefcaseBusinessIcon />,
-      },
-    ],
-  })
+    return categories
+  }, [isCaAccount, pathname])
 
-  const sidebarUser = buildSidebarUser(storedSession?.user ?? null, currentUser)
-  const sidebarTeam = buildSidebarTeam(currentUser)
+  const sidebarUser = React.useMemo(
+    () => buildSidebarUser(storedSession?.user ?? null, currentUserForSession),
+    [storedSession?.user, currentUserForSession]
+  )
+  const sidebarTeam = React.useMemo(
+    () => buildSidebarTeam(accountType, currentUserForSession, caDashboard),
+    [accountType, caDashboard, currentUserForSession]
+  )
 
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <TeamSwitcher teams={[sidebarTeam]} />
+        <TeamSwitcher
+          teams={[sidebarTeam]}
+          label={isCaAccount ? "Practice" : "Workspaces"}
+          showAddBranch={!isCaAccount}
+        />
       </SidebarHeader>
       <SidebarContent>
-        <NavMain overview={overviewItem} categories={visibleCategories} />
+        <NavMain
+          overview={overviewItem}
+          categories={visibleCategories}
+          workspaceLabel={isCaAccount ? "CA Workspace" : "Workspace"}
+        />
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              render={<Link href="/settings" />}
-              data-active={pathname === "/settings" || pathname.startsWith("/settings/")}
-              tooltip="Settings"
-            >
-              <Settings2Icon />
-              <span>Settings</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+          {!isCaAccount ? (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                render={<Link href="/settings" />}
+                data-active={pathname === "/settings" || pathname.startsWith("/settings/")}
+                tooltip="Settings"
+              >
+                <Settings2Icon />
+                <span>Settings</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ) : null}
           <SidebarMenuItem>
             <SidebarMenuButton render={<a href="#" />}>
               <MessageSquareMoreIcon />
@@ -154,18 +209,27 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenuItem>
         </SidebarMenu>
         <SidebarSeparator />
-        <NavUser user={sidebarUser} />
+        <NavUser
+          user={sidebarUser}
+          logoutPath={isCaAccount ? "/auth/ca/login" : "/auth/login"}
+          showAccountLinks={!isCaAccount}
+        />
       </SidebarFooter>
-      <SidebarRail />
     </Sidebar>
   )
 }
 
 function buildSidebarUser(
-  authUser: { email: string | null; phone: string | null } | null,
+  authUser: {
+    email: string | null
+    phone: string | null
+    profileImageSeed?: string | null
+  } | null,
   currentUser?: CurrentUserResponse
 ) {
   const primaryMembership = currentUser?.memberships[0] ?? null
+  const avatarSeed =
+    authUser?.profileImageSeed ?? currentUser?.profile?.profile_image_seed ?? null
   const name =
     currentUser?.profile?.display_name ??
     primaryMembership?.business_name ??
@@ -174,11 +238,26 @@ function buildSidebarUser(
   return {
     name,
     email: authUser?.email ?? authUser?.phone ?? "No identifier",
-    avatar: "",
+    avatar: getProfileAvatarUrl(avatarSeed),
   }
 }
 
-function buildSidebarTeam(currentUser?: CurrentUserResponse) {
+function buildSidebarTeam(
+  accountType: StoredAuthSession["accountType"],
+  currentUser?: CurrentUserResponse,
+  caDashboard?: CaDashboardResponse
+) {
+  if (accountType === "ca") {
+    return {
+      name:
+        caDashboard?.practice.name ??
+        currentUser?.profile?.display_name ??
+        "CA Practice",
+      logo: <BriefcaseBusinessIcon />,
+      plan: "Client filing workspace",
+    }
+  }
+
   const primaryMembership = currentUser?.memberships[0] ?? null
 
   return {

@@ -1,9 +1,11 @@
 import { CaClientSummaryPage } from "@/components/ca/ca-client-summary-page"
 
-export default function CaClientSummaryRoute({
+export default async function CaClientSummaryRoute({
   params,
 }: {
-  params: { businessId: string }
+  params: Promise<{ businessId: string }>
 }) {
-  return <CaClientSummaryPage businessId={params.businessId} />
+  const { businessId } = await params
+
+  return <CaClientSummaryPage businessId={businessId} />
 }

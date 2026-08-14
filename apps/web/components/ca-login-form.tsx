@@ -92,6 +92,7 @@ export function CaLoginForm({
       })
 
       setStoredAuthSession({
+        accountType: "ca",
         user: response.user,
         session: response.session,
       })

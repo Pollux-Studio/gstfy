@@ -22,12 +22,16 @@ import { ChevronsUpDownIcon, PlusIcon } from "lucide-react"
 
 export function TeamSwitcher({
   teams,
+  label = "Workspaces",
+  showAddBranch = true,
 }: {
   teams: {
     name: string
     logo: React.ReactNode
     plan: string
   }[]
+  label?: string
+  showAddBranch?: boolean
 }) {
   const { isMobile } = useSidebar()
   const router = useRouter()
@@ -64,7 +68,7 @@ export function TeamSwitcher({
           >
             <DropdownMenuGroup>
               <DropdownMenuLabel className="text-xs text-muted-foreground">
-                Workspaces
+                {label}
               </DropdownMenuLabel>
               {teams.map((team) => (
                 <DropdownMenuItem
@@ -78,17 +82,21 @@ export function TeamSwitcher({
                 </DropdownMenuItem>
               ))}
             </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem className="gap-2 p-2" onClick={() => router.push("/branches/new")}>
-                <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
-                  <PlusIcon className="size-4" />
-                </div>
-                <div className="font-medium text-muted-foreground">
-                  Add Branch
-                </div>
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
+            {showAddBranch ? (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuItem className="gap-2 p-2" onClick={() => router.push("/branches/new")}>
+                    <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
+                      <PlusIcon className="size-4" />
+                    </div>
+                    <div className="font-medium text-muted-foreground">
+                      Add Branch
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

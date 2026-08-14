@@ -39,6 +39,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { IndianPhoneInput } from "@/components/ui/indian-phone-input"
 import {
   Select,
   SelectContent,
@@ -787,7 +788,7 @@ export function PurchaseFormPage({
                       </Field>
                       <Field>
                         <FieldLabel htmlFor="new-supplier-phone">Phone number</FieldLabel>
-                        <Input
+                        <IndianPhoneInput
                           id="new-supplier-phone"
                           value={supplierDraft.phone}
                           onChange={(event) =>
@@ -796,7 +797,6 @@ export function PurchaseFormPage({
                               phone: event.target.value,
                             }))
                           }
-                          placeholder="+91 9XXXXXXXXX"
                         />
                       </Field>
                     </div>

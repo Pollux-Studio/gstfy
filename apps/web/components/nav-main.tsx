@@ -11,6 +11,7 @@ import {
 export function NavMain({
   overview,
   categories,
+  workspaceLabel = "Workspace",
 }: {
   overview: {
     title: string
@@ -18,6 +19,7 @@ export function NavMain({
     icon?: React.ReactNode
     isActive?: boolean
   }
+  workspaceLabel?: string
   categories: {
     title: string
     items: {
@@ -32,7 +34,7 @@ export function NavMain({
   return (
     <>
       <SidebarGroup>
-        <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+        <SidebarGroupLabel>{workspaceLabel}</SidebarGroupLabel>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

@@ -28,6 +28,38 @@ function SelectValue({ className, ...props }: SelectPrimitive.Value.Props) {
   )
 }
 
+function SelectDisplayValue<TValue extends string | number>({
+  value,
+  options,
+  placeholder,
+  className,
+}: {
+  value: TValue | "" | null | undefined
+  options: ReadonlyArray<{ value: TValue; label: React.ReactNode }>
+  placeholder: string
+  className?: string
+}) {
+  const selectedOption = options.find(
+    (option) => String(option.value) === String(value)
+  )
+  const displayLabel = selectedOption?.label
+  const title = typeof displayLabel === "string" ? displayLabel : undefined
+
+  return (
+    <span
+      data-slot="select-value"
+      className={cn(
+        "flex min-w-0 flex-1 items-center gap-1.5 truncate text-left",
+        !displayLabel && "text-muted-foreground",
+        className
+      )}
+      title={title}
+    >
+      {displayLabel ?? placeholder}
+    </span>
+  )
+}
+
 function SelectTrigger({
   className,
   size = "default",
@@ -197,5 +229,6 @@ export {
   SelectScrollUpButton,
   SelectSeparator,
   SelectTrigger,
+  SelectDisplayValue,
   SelectValue,
 }

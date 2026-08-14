@@ -13,6 +13,7 @@ import {
   CheckIcon,
   EyeIcon,
   EyeOffIcon,
+  KeyRoundIcon,
   LockKeyholeIcon,
 } from "lucide-react"
 import { useMemo, useRef, useState } from "react"
@@ -45,6 +46,7 @@ import {
   InputGroupInput,
   InputGroupText,
 } from "@/components/ui/input-group"
+import { IndianPhoneInput } from "@/components/ui/indian-phone-input"
 import {
   Select,
   SelectContent,
@@ -86,6 +88,7 @@ type AccountFormValues = {
   identifier: string
   password: string
   confirmPassword: string
+  caReferralCode: string
 }
 
 type AccountStage = "credentials" | "otp"
@@ -158,6 +161,7 @@ export function SignupForm({
     identifier: "",
     password: "",
     confirmPassword: "",
+    caReferralCode: "",
   })
 
   const [companyErrors, setCompanyErrors] = useState<FieldErrors<keyof CompanyFormValues>>(
@@ -305,6 +309,11 @@ export function SignupForm({
           confirmPassword: z
             .string()
             .min(1, t("auth.register.errors.confirmPasswordRequired")),
+          caReferralCode: z
+            .string()
+            .trim()
+            .min(1, t("auth.register.errors.caReferralCodeRequired"))
+            .max(40),
         })
         .refine((values) => values.password === values.confirmPassword, {
           path: ["confirmPassword"],
@@ -631,6 +640,7 @@ export function SignupForm({
       const registerResponse = await registerMutation.mutateAsync({
         identifier: normalizedIdentifier,
         password: account.password,
+        caReferralCode: account.caReferralCode.trim().toUpperCase(),
         emailRedirectTo:
           typeof window !== "undefined" ?
             `${window.location.origin}/auth/login`
@@ -659,6 +669,7 @@ export function SignupForm({
       }
 
       setStoredAuthSession({
+        accountType: "business",
         user: registerResponse.user,
         session: registerResponse.session,
       })
@@ -694,6 +705,7 @@ export function SignupForm({
       })
 
       setStoredAuthSession({
+        accountType: "business",
         user: response.user,
         session: response.session,
       })
@@ -885,32 +897,13 @@ export function SignupForm({
                     <FieldLabel htmlFor="business-mobile">
                       {t("auth.register.steps.company.fields.businessMobile")}
                     </FieldLabel>
-                    <InputGroup>
-                      <InputGroupAddon>
-                        <InputGroupText>
-                          <Image
-                            src="/india-flag.png"
-                            alt="India"
-                            width={16}
-                            height={12}
-                            className="h-3 w-4 rounded-[2px] object-cover"
-                          />
-                          <span>+91</span>
-                        </InputGroupText>
-                      </InputGroupAddon>
-                      <InputGroupInput
-                        id="business-mobile"
-                        className="font-mono"
-                        maxLength={10}
-                        autoComplete="tel-national"
-                        inputMode="numeric"
-                        placeholder="0000000000"
-                        value={company.businessMobile}
-                        onChange={(event) =>
-                          updateCompanyValue("businessMobile", normalizePhoneInput(event.target.value))
-                        }
-                      />
-                    </InputGroup>
+                    <IndianPhoneInput
+                      id="business-mobile"
+                      value={company.businessMobile}
+                      onChange={(event) =>
+                        updateCompanyValue("businessMobile", normalizePhoneInput(event.target.value))
+                      }
+                    />
                     <FieldError>{companyErrors.businessMobile}</FieldError>
                   </Field>
                 </div>
@@ -934,35 +927,16 @@ export function SignupForm({
                     <RequiredFieldLabel htmlFor="primary-contact-mobile">
                       {t("auth.register.steps.company.fields.primaryContactMobile")}
                     </RequiredFieldLabel>
-                    <InputGroup>
-                      <InputGroupAddon>
-                        <InputGroupText>
-                          <Image
-                            src="/india-flag.png"
-                            alt="India"
-                            width={16}
-                            height={12}
-                            className="h-3 w-4 rounded-[2px] object-cover"
-                          />
-                          <span>+91</span>
-                        </InputGroupText>
-                      </InputGroupAddon>
-                      <InputGroupInput
-                        id="primary-contact-mobile"
-                        className="font-mono"
-                        maxLength={10}
-                        autoComplete="tel-national"
-                        inputMode="numeric"
-                        placeholder="0000000000"
-                        value={company.primaryContactMobile}
-                        onChange={(event) =>
-                          updateCompanyValue(
-                            "primaryContactMobile",
-                            normalizePhoneInput(event.target.value)
-                          )
-                        }
-                      />
-                    </InputGroup>
+                    <IndianPhoneInput
+                      id="primary-contact-mobile"
+                      value={company.primaryContactMobile}
+                      onChange={(event) =>
+                        updateCompanyValue(
+                          "primaryContactMobile",
+                          normalizePhoneInput(event.target.value)
+                        )
+                      }
+                    />
                     <FieldError>{companyErrors.primaryContactMobile}</FieldError>
                   </Field>
                 </div>
@@ -1365,43 +1339,68 @@ export function SignupForm({
                       <RequiredFieldLabel htmlFor="register-identifier">
                         {t("auth.register.steps.account.identifierLabel")}
                       </RequiredFieldLabel>
-                      <InputGroup>
-                        {phoneMode ? (
-                          <InputGroupAddon>
-                            <InputGroupText>
-                              <Image
-                                src="/india-flag.png"
-                                alt="India"
-                                width={16}
-                                height={12}
-                                className="h-3 w-4 rounded-[2px] object-cover"
-                              />
-                              <span>+91</span>
-                            </InputGroupText>
-                          </InputGroupAddon>
-                        ) : null}
-                        <InputGroupInput
+                      {phoneMode ? (
+                        <IndianPhoneInput
                           id="register-identifier"
-                          type="text"
                           value={account.identifier}
-                          inputMode={phoneMode ? "numeric" : "email"}
-                          placeholder={
-                            phoneMode
-                              ? t("auth.register.steps.account.phonePlaceholder")
-                              : t("auth.register.steps.account.emailPlaceholder")
+                          placeholder={t("auth.register.steps.account.phonePlaceholder")}
+                          autoComplete="tel-national"
+                          onChange={(event) =>
+                            updateAccountValue("identifier", event.target.value)
                           }
-                          autoComplete={phoneMode ? "tel-national" : "email"}
+                        />
+                      ) : (
+                        <InputGroup>
+                          <InputGroupInput
+                            id="register-identifier"
+                            type="text"
+                            value={account.identifier}
+                            inputMode="email"
+                            placeholder={t("auth.register.steps.account.emailPlaceholder")}
+                            autoComplete="email"
+                            onChange={(event) =>
+                              updateAccountValue(
+                                "identifier",
+                                isPhoneMode(event.target.value)
+                                  ? normalizePhoneInput(event.target.value)
+                                  : event.target.value
+                              )
+                            }
+                          />
+                        </InputGroup>
+                      )}
+                      <FieldError>{accountErrors.identifier}</FieldError>
+                    </Field>
+
+                    <Field>
+                      <RequiredFieldLabel htmlFor="register-ca-referral-code">
+                        {t("auth.register.steps.account.caReferralCodeLabel")}
+                      </RequiredFieldLabel>
+                      <InputGroup>
+                        <InputGroupAddon>
+                          <KeyRoundIcon className="size-4" />
+                        </InputGroupAddon>
+                        <InputGroupInput
+                          id="register-ca-referral-code"
+                          type="text"
+                          value={account.caReferralCode}
+                          placeholder={t(
+                            "auth.register.steps.account.caReferralCodePlaceholder"
+                          )}
+                          autoComplete="off"
+                          className="font-mono uppercase tracking-[0.18em]"
                           onChange={(event) =>
                             updateAccountValue(
-                              "identifier",
-                              isPhoneMode(event.target.value)
-                                ? normalizePhoneInput(event.target.value)
-                                : event.target.value
+                              "caReferralCode",
+                              event.target.value.toUpperCase().slice(0, 40)
                             )
                           }
                         />
                       </InputGroup>
-                      <FieldError>{accountErrors.identifier}</FieldError>
+                      <FieldDescription>
+                        {t("auth.register.steps.account.caReferralCodeHelper")}
+                      </FieldDescription>
+                      <FieldError>{accountErrors.caReferralCode}</FieldError>
                     </Field>
 
                     <Field>

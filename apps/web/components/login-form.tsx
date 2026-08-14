@@ -1,6 +1,5 @@
 "use client"
 
-import Image from "next/image"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useMutation } from "@tanstack/react-query"
@@ -40,8 +39,8 @@ import {
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
-  InputGroupText,
 } from "@/components/ui/input-group"
+import { IndianPhoneInput } from "@/components/ui/indian-phone-input"
 import { cn } from "@/lib/utils"
 
 type IdentifierValues = { identifier: string }
@@ -249,6 +248,7 @@ export function LoginForm({
       })
 
       setStoredAuthSession({
+        accountType: "business",
         user: response.user,
         session: response.session,
       })
@@ -271,6 +271,7 @@ export function LoginForm({
       })
 
       setStoredAuthSession({
+        accountType: "business",
         user: response.user,
         session: response.session,
       })
@@ -400,36 +401,29 @@ export function LoginForm({
                 <FieldLabel htmlFor="identifier">
                   {t("auth.login.identifierLabel")}
                 </FieldLabel>
-                <InputGroup>
-                  {phoneMode ? (
-                    <InputGroupAddon>
-                      <InputGroupText>
-                        <Image
-                          src="/india-flag.png"
-                          alt="India"
-                          width={16}
-                          height={12}
-                          className="h-3 w-4 rounded-[2px] object-cover"
-                        />
-                        <span>+91</span>
-                      </InputGroupText>
-                    </InputGroupAddon>
-                  ) : null}
-                  <InputGroupInput
+                {phoneMode ? (
+                  <IndianPhoneInput
                     id="identifier"
-                    type="text"
                     value={rawIdentifier}
-                    inputMode={phoneMode ? "numeric" : "email"}
-                    placeholder={
-                      phoneMode
-                        ? t("auth.login.phonePlaceholder")
-                        : t("auth.login.emailPlaceholder")
-                    }
+                    placeholder={t("auth.login.phonePlaceholder")}
                     autoComplete="username"
                     aria-invalid={!!identifierForm.formState.errors.identifier}
                     onChange={(event) => handleIdentifierChange(event.target.value)}
                   />
-                </InputGroup>
+                ) : (
+                  <InputGroup>
+                    <InputGroupInput
+                      id="identifier"
+                      type="text"
+                      value={rawIdentifier}
+                      inputMode="email"
+                      placeholder={t("auth.login.emailPlaceholder")}
+                      autoComplete="username"
+                      aria-invalid={!!identifierForm.formState.errors.identifier}
+                      onChange={(event) => handleIdentifierChange(event.target.value)}
+                    />
+                  </InputGroup>
+                )}
                 <FieldError errors={[identifierForm.formState.errors.identifier]} />
                 {lookupState === "not-found" ? (
                   <FieldError>{t("auth.login.errors.accountNotFound")}</FieldError>

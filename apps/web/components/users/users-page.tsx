@@ -11,11 +11,11 @@ import {
   Trash2Icon,
   UserPlusIcon,
 } from "lucide-react"
-import { toast } from "sonner"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { toast } from "@/components/ui/toast"
 import {
   Dialog,
   DialogContent,

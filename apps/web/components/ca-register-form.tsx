@@ -114,12 +114,8 @@ export function CaRegisterForm({
           : undefined,
       })
 
-      if (!response.session) {
-        router.push("/auth/ca/login?registered=1")
-        return
-      }
-
       setStoredAuthSession({
+        accountType: "ca",
         user: response.user,
         session: response.session,
       })

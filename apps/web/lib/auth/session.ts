@@ -1,18 +1,45 @@
 import type { AuthSession, AuthUser } from "@/lib/auth/api"
 
 const AUTH_SESSION_STORAGE_KEY = "gstfy.auth.session"
+export const AUTH_SESSION_CHANGE_EVENT = "gstfy.auth.session_changed"
 export const AUTH_LOGGED_IN_COOKIE_NAME = "gstfy.auth.logged_in"
-const AUTH_EXPIRY_SKEW_SECONDS = 30
+export const AUTH_ACCOUNT_TYPE_COOKIE_NAME = "gstfy.auth.account_type"
+const AUTH_REFRESH_BEFORE_EXPIRY_SECONDS = 60
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(
+  /\/$/,
+  ""
+)
+
+export type AuthAccountType = "business" | "ca"
 
 export type StoredAuthSession = {
   isAuthenticated: true
+  accountType: AuthAccountType
   user: AuthUser
   session: AuthSession
 }
 
-type StoredAuthSessionInput = Omit<StoredAuthSession, "isAuthenticated">
+type StoredAuthSessionInput = {
+  user: AuthUser
+  session: AuthSession
+  accountType?: AuthAccountType
+}
 
-export function getStoredAuthSession() {
+type RefreshSessionResponse = {
+  user: {
+    id: string
+    email: string | null
+    phoneE164: string | null
+    profileImageSeed: string | null
+    profileImageStyle: string | null
+  }
+  accessToken: string
+  accessTokenExpiresIn: number
+}
+
+let activeRefreshPromise: Promise<StoredAuthSession | null> | null = null
+
+export function getStoredAuthSession(): StoredAuthSession | null {
   if (typeof window === "undefined") {
     return null
   }
@@ -30,13 +57,9 @@ export function getStoredAuthSession() {
       throw new Error("Invalid auth session payload")
     }
 
-    if (isAuthSessionExpired(parsedValue.session)) {
-      clearStoredAuthSession()
-      return null
-    }
-
     return {
       isAuthenticated: true,
+      accountType: getSafeAccountType(parsedValue.accountType),
       user: parsedValue.user,
       session: parsedValue.session,
     }
@@ -45,6 +68,16 @@ export function getStoredAuthSession() {
     clearAuthCookie()
     return null
   }
+}
+
+export function refreshStoredAuthSession() {
+  if (!activeRefreshPromise) {
+    activeRefreshPromise = refreshAuthSession().finally(() => {
+      activeRefreshPromise = null
+    })
+  }
+
+  return activeRefreshPromise
 }
 
 export function setStoredAuthSession(value: StoredAuthSessionInput) {
@@ -56,11 +89,13 @@ export function setStoredAuthSession(value: StoredAuthSessionInput) {
     AUTH_SESSION_STORAGE_KEY,
     JSON.stringify({
       isAuthenticated: true,
+      accountType: value.accountType ?? "business",
       user: value.user,
       session: value.session,
     } satisfies StoredAuthSession)
   )
-  setAuthCookie()
+  setAuthCookie(value.accountType ?? "business")
+  notifyAuthSessionChange()
 }
 
 export function clearStoredAuthSession() {
@@ -70,6 +105,7 @@ export function clearStoredAuthSession() {
 
   window.sessionStorage.removeItem(AUTH_SESSION_STORAGE_KEY)
   clearAuthCookie()
+  notifyAuthSessionChange()
 }
 
 export function expireAuthSessionAndRedirectToLogin() {
@@ -97,13 +133,92 @@ export function isAuthSessionExpired(session: Partial<AuthSession> | null | unde
   }
 
   const expiresAtMs = session.expiresAt * 1000
-  return Date.now() >= expiresAtMs - AUTH_EXPIRY_SKEW_SECONDS * 1000
+  return Date.now() >= expiresAtMs
 }
 
-function setAuthCookie() {
+export function shouldRefreshAuthSession(
+  session: Partial<AuthSession> | null | undefined
+) {
+  const delayMs = getAuthRefreshDelayMs(session)
+  return delayMs !== null && delayMs <= 0
+}
+
+export function getAuthRefreshDelayMs(
+  session: Partial<AuthSession> | null | undefined
+) {
+  if (!session?.expiresAt) {
+    return null
+  }
+
+  return session.expiresAt * 1000 - Date.now() - AUTH_REFRESH_BEFORE_EXPIRY_SECONDS * 1000
+}
+
+async function refreshAuthSession() {
+  const currentSession = getStoredAuthSession()
+
+  if (!currentSession) {
+    return null
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth/session`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    })
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        clearStoredAuthSession()
+      }
+
+      return null
+    }
+
+    const payload = (await response.json()) as RefreshSessionResponse
+    const nextSession: StoredAuthSessionInput = {
+      accountType: currentSession.accountType,
+      user: {
+        id: payload.user.id,
+        email: payload.user.email,
+        phone: payload.user.phoneE164,
+        profileImageSeed: payload.user.profileImageSeed,
+        profileImageStyle:
+          payload.user.profileImageStyle === "glyphs" ? "glyphs" : undefined,
+      },
+      session: {
+        accessToken: payload.accessToken,
+        expiresAt: Math.floor(Date.now() / 1000) + payload.accessTokenExpiresIn,
+      },
+    }
+
+    setStoredAuthSession(nextSession)
+
+    return {
+      isAuthenticated: true,
+      accountType: nextSession.accountType ?? "business",
+      user: nextSession.user,
+      session: nextSession.session,
+    } satisfies StoredAuthSession
+  } catch {
+    return null
+  }
+}
+
+function getSafeAccountType(value: unknown): AuthAccountType {
+  return value === "ca" ? "ca" : "business"
+}
+
+function setAuthCookie(accountType: AuthAccountType) {
   document.cookie = `${AUTH_LOGGED_IN_COOKIE_NAME}=1; path=/; SameSite=Lax`
+  document.cookie = `${AUTH_ACCOUNT_TYPE_COOKIE_NAME}=${accountType}; path=/; SameSite=Lax`
 }
 
 function clearAuthCookie() {
   document.cookie = `${AUTH_LOGGED_IN_COOKIE_NAME}=; path=/; Max-Age=0; SameSite=Lax`
+  document.cookie = `${AUTH_ACCOUNT_TYPE_COOKIE_NAME}=; path=/; Max-Age=0; SameSite=Lax`
+}
+
+function notifyAuthSessionChange() {
+  window.dispatchEvent(new Event(AUTH_SESSION_CHANGE_EVENT))
 }

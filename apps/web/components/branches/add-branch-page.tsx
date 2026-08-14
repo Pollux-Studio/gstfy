@@ -6,7 +6,6 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, Controller, useWatch } from "react-hook-form"
 import * as React from "react"
 import { z } from "zod"
-import { toast } from "sonner"
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -20,6 +19,7 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { toast } from "@/components/ui/toast"
 import {
   Field,
   FieldDescription,
@@ -28,12 +28,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-  InputGroupText,
-} from "@/components/ui/input-group"
+import { IndianPhoneInput } from "@/components/ui/indian-phone-input"
 import {
   Select,
   SelectContent,
@@ -286,22 +281,10 @@ export function AddBranchPage() {
 
                 <Field>
                   <RequiredFieldLabel htmlFor="manager-phone">Mobile number</RequiredFieldLabel>
-                  <InputGroup>
-                    <InputGroupAddon>
-                      <InputGroupText>+91</InputGroupText>
-                    </InputGroupAddon>
-                    <InputGroupInput
-                      id="manager-phone"
-                      maxLength={10}
-                      inputMode="numeric"
-                      placeholder="0000000000"
-                      {...form.register("managerPhone", {
-                        onChange: (event) => {
-                          event.target.value = event.target.value.replace(/\D/g, "").slice(0, 10)
-                        },
-                      })}
-                    />
-                  </InputGroup>
+                  <IndianPhoneInput
+                    id="manager-phone"
+                    {...form.register("managerPhone")}
+                  />
                   <FieldError errors={[form.formState.errors.managerPhone]} />
                 </Field>
               </div>

@@ -5,9 +5,9 @@ import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useMutation } from "@tanstack/react-query"
 import { ArrowLeftIcon, KeyRoundIcon, ShieldCheckIcon } from "lucide-react"
-import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { toast } from "@/components/ui/toast"
 import {
   Field,
   FieldDescription,

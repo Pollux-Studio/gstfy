@@ -12,10 +12,10 @@ import {
   ShieldCheckIcon,
   UserPlusIcon,
 } from "lucide-react"
-import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { toast } from "@/components/ui/toast"
 import {
   Field,
   FieldDescription,
@@ -55,14 +55,15 @@ const initialFormState: ClientFormState = {
 export function CaDashboardPage() {
   const queryClient = useQueryClient()
   const storedSession = getStoredAuthSession()
+  const userId = storedSession?.user.id ?? ""
   const accessToken = storedSession?.session.accessToken ?? ""
   const [formState, setFormState] = React.useState<ClientFormState>(initialFormState)
   const [latestInvite, setLatestInvite] = React.useState<CaClientInviteRecord | null>(null)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["ca", "dashboard"],
+    queryKey: ["ca", "dashboard", userId],
     queryFn: () => getCaDashboard(accessToken),
-    enabled: accessToken.length > 0,
+    enabled: accessToken.length > 0 && userId.length > 0,
     staleTime: 1000 * 60 * 3,
   })
 
@@ -81,7 +82,7 @@ export function CaDashboardPage() {
         accessToken
       ),
     onSuccess: (nextData) => {
-      queryClient.setQueryData(["ca", "dashboard"], nextData)
+      queryClient.setQueryData(["ca", "dashboard", userId], nextData)
       setFormState(initialFormState)
       setLatestInvite(nextData.invites[0] ?? null)
       toast.success("Client invite created.")
@@ -94,7 +95,7 @@ export function CaDashboardPage() {
   const revokeMutation = useMutation({
     mutationFn: (businessId: string) => revokeCaClient(businessId, accessToken),
     onSuccess: (nextData) => {
-      queryClient.setQueryData(["ca", "dashboard"], nextData)
+      queryClient.setQueryData(["ca", "dashboard", userId], nextData)
       toast.success("CA access revoked for this client.")
     },
     onError: (mutationError) => {
@@ -301,20 +302,27 @@ export function CaDashboardPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          render={<Link href={`/ca/clients/${client.businessId}`} />}
-                        >
-                          Open
-                          <ExternalLinkIcon className="size-3.5" />
-                        </Button>
+                        {client.businessId ?
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            render={<Link href={`/ca/clients/${client.businessId}`} />}
+                          >
+                            Open
+                            <ExternalLinkIcon className="size-3.5" />
+                          </Button>
+                        : (
+                          <Button type="button" variant="outline" size="sm" disabled>
+                            Open
+                            <ExternalLinkIcon className="size-3.5" />
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          disabled={revokeMutation.isPending}
+                          disabled={revokeMutation.isPending || !client.businessId}
                           onClick={() => revokeMutation.mutate(client.businessId)}
                         >
                           Revoke

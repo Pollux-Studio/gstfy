@@ -32,7 +32,28 @@ export type SettingsResponse = {
     email: string | null
     phoneE164: string | null
     displayName: string | null
+    profileImageSeed: string | null
+    profileImageStyle: "glyphs"
     locale: "en" | "ta" | "hi"
+    lastLoginAt: string | null
+  }
+  securityActivity: {
+    lastLoginAt: string | null
+    recentSessions: Array<{
+      id: string
+      userAgent: string | null
+      ipAddress: string | null
+      expiresAt: string
+      revokedAt: string | null
+      createdAt: string
+    }>
+  }
+  caReferral: {
+    referralCode: string | null
+    practiceName: string | null
+    status: "linked" | "not_linked"
+    linkedAt: string | null
+    canAdd: boolean
   }
   invoiceSettings: {
     invoiceTemplate: "classic" | "modern" | "compact"
@@ -40,10 +61,7 @@ export type SettingsResponse = {
     previewInvoiceNumber: string
   }
   gstRateSettings: {
-    defaultGstSlab: 5 | 12 | 18 | 28
     enabledGstSlabs: Array<5 | 12 | 18 | 28>
-    cgstRate: number
-    sgstRate: number
   }
   printerSettings: {
     paperSize: "A4" | "A5" | "THERMAL_80MM"
@@ -69,12 +87,22 @@ export type UpdateBusinessDetailsPayload = {
   district: string
   pincode: string
   possessionType: string
+  registrationDate?: string | null
 }
 
 export type UpdateUserSettingsPayload = {
   displayName?: string | null
   locale: "en" | "ta" | "hi"
-  phoneE164?: string
+}
+
+export type VerifyBusinessCaReferralPayload = {
+  referralCode: string
+}
+
+export type ChangeUserPasswordPayload = {
+  currentPassword: string
+  newPassword: string
+  confirmPassword: string
 }
 
 export type UpdateInvoiceSettingsPayload = {
@@ -83,7 +111,6 @@ export type UpdateInvoiceSettingsPayload = {
 }
 
 export type UpdateGstRateSettingsPayload = {
-  defaultGstSlab: 5 | 12 | 18 | 28
   enabledGstSlabs: Array<5 | 12 | 18 | 28>
 }
 
@@ -118,6 +145,43 @@ export function updateUserSettings(
 ) {
   return apiRequest<SettingsResponse>("/settings/user", {
     method: "PATCH",
+    body: payload,
+    accessToken,
+  })
+}
+
+export function verifyBusinessCaReferral(
+  payload: VerifyBusinessCaReferralPayload,
+  accessToken: string
+) {
+  return apiRequest<SettingsResponse>("/settings/business/ca-referral", {
+    method: "POST",
+    body: payload,
+    accessToken,
+  })
+}
+
+export function regenerateUserProfileImage(accessToken: string) {
+  return apiRequest<SettingsResponse>("/settings/user/avatar", {
+    method: "POST",
+    accessToken,
+  })
+}
+
+export function verifyUserPhone(idToken: string, accessToken: string) {
+  return apiRequest<SettingsResponse>("/settings/user/phone/verify", {
+    method: "POST",
+    body: { idToken },
+    accessToken,
+  })
+}
+
+export function changeUserPassword(
+  payload: ChangeUserPasswordPayload,
+  accessToken: string
+) {
+  return apiRequest<{ success: true }>("/settings/user/password", {
+    method: "POST",
     body: payload,
     accessToken,
   })
