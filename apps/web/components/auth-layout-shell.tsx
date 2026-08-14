@@ -11,7 +11,7 @@ export function AuthLayoutShell({
 }>) {
   const pathname = usePathname()
 
-  if (pathname === "/register") {
+  if (pathname === "/auth/register") {
     return <div className="min-h-svh bg-background">{children}</div>
   }
 

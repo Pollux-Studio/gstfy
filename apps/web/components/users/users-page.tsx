@@ -1,13 +1,17 @@
 "use client"
 
 import * as React from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
+  BadgeCheckIcon,
+  Building2Icon,
   MoreHorizontalIcon,
   PencilLineIcon,
   ShieldCheckIcon,
   Trash2Icon,
   UserPlusIcon,
 } from "lucide-react"
+import { toast } from "sonner"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +53,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -57,6 +62,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { getStoredAuthSession } from "@/lib/auth/session"
 import {
   getPermissionCategories,
   permissionActionKeys,
@@ -64,28 +70,49 @@ import {
   type PermissionModuleKey,
 } from "@/lib/dashboard/modules"
 import {
-  mockUsers,
-  type ModulePermissionState,
+  createUser,
+  deleteUser,
+  getUsers,
+  updateUser,
+  type PermissionPresetKey,
+  type UserBranchRecord,
   type UserPermissionMap,
+  type UserProvisioningRecord,
+  type UserPresetRecord,
   type UserRecord,
   type UserStatus,
-} from "@/lib/users/mock-users"
+  type UserStatusValue,
+} from "@/lib/users/api"
+import {
+  buildPresetPermissions,
+  clonePermissionMap,
+  countGrantedActions,
+  countGrantedModules,
+  createEmptyPermissionMap,
+  createPermissionEntry,
+  hasAtLeastOnePermission,
+} from "@/lib/users/presets"
 import { cn } from "@/lib/utils"
 
 type SheetMode = "create" | "edit"
+type EditablePresetKey = Exclude<PermissionPresetKey, "owner">
 
 type UserFormState = {
   name: string
   contact: string
   designation: string
   status: UserStatus
+  permissionPreset: EditablePresetKey
   permissions: UserPermissionMap
+  branchIds: string[]
+  primaryBranchId: string | null
 }
 
 type UserFormErrors = {
   name?: string
   contact?: string
   permissions?: string
+  branchIds?: string
 }
 
 const permissionCategories = getPermissionCategories()
@@ -94,14 +121,6 @@ const moduleTitleMap = new Map(
     category.items.map((item) => [item.module, item.title] as const)
   )
 )
-
-const designationOptions = [
-  "Owner",
-  "Manager",
-  "Cashier",
-  "Accountant",
-  "Operations",
-] as const
 
 const statusOptions: UserStatus[] = ["Active", "Inactive"]
 
@@ -112,58 +131,6 @@ const permissionActionLabels: Record<PermissionActionKey, string> = {
   delete: "Delete",
 }
 
-function createPermissionEntry(
-  permissions?: ModulePermissionState
-): ModulePermissionState {
-  return {
-    view: permissions?.view ?? false,
-    create: permissions?.create ?? false,
-    edit: permissions?.edit ?? false,
-    delete: permissions?.delete ?? false,
-  }
-}
-
-function clonePermissionMap(permissions: UserPermissionMap): UserPermissionMap {
-  return Object.fromEntries(
-    Object.entries(permissions).map(([module, value]) => [
-      module,
-      createPermissionEntry(value),
-    ])
-  )
-}
-
-function createEmptyPermissionMap(): UserPermissionMap {
-  const permissions: UserPermissionMap = {}
-
-  permissionCategories.forEach((category) => {
-    category.items.forEach((item) => {
-      permissions[item.module] = createPermissionEntry()
-    })
-  })
-
-  return permissions
-}
-
-function createEmptyUserForm(): UserFormState {
-  return {
-    name: "",
-    contact: "",
-    designation: "Cashier",
-    status: "Active",
-    permissions: createEmptyPermissionMap(),
-  }
-}
-
-function createFormFromUser(user: UserRecord): UserFormState {
-  return {
-    name: user.name,
-    contact: user.contact,
-    designation: user.designation,
-    status: user.status,
-    permissions: clonePermissionMap(user.permissions),
-  }
-}
-
 function getInitials(name: string) {
   return name
     .split(" ")
@@ -171,24 +138,6 @@ function getInitials(name: string) {
     .join("")
     .slice(0, 2)
     .toUpperCase()
-}
-
-function countGrantedModules(permissions: UserPermissionMap) {
-  return Object.values(permissions).filter((permission) =>
-    permissionActionKeys.some((action) => permission?.[action])
-  ).length
-}
-
-function countGrantedActions(permissions: UserPermissionMap) {
-  return Object.values(permissions).reduce(
-    (count, permission) =>
-      count +
-      permissionActionKeys.reduce(
-        (total, action) => total + (permission?.[action] ? 1 : 0),
-        0
-      ),
-    0
-  )
 }
 
 function getAccessSummary(permissions: UserPermissionMap) {
@@ -211,16 +160,49 @@ function getAccessSummary(permissions: UserPermissionMap) {
   }
 }
 
-function hasAtLeastOnePermission(permissions: UserPermissionMap) {
-  return countGrantedActions(permissions) > 0
+function createEmptyUserForm(
+  presets: UserPresetRecord[],
+  branches: UserBranchRecord[]
+): UserFormState {
+  const defaultPreset = presets[0]?.key ?? "cashier"
+  const primaryBranch = branches.find((branch) => branch.isPrimary) ?? branches[0] ?? null
+  const requiresBranch =
+    presets.find((preset) => preset.key === defaultPreset)?.branchSelection === "required"
+
+  return {
+    name: "",
+    contact: "",
+    designation:
+      presets.find((preset) => preset.key === defaultPreset)?.defaultDesignation ??
+      "Cashier",
+    status: "Active",
+    permissionPreset: defaultPreset,
+    permissions: buildPresetPermissions(defaultPreset),
+    branchIds: requiresBranch && primaryBranch ? [primaryBranch.id] : [],
+    primaryBranchId: requiresBranch && primaryBranch ? primaryBranch.id : null,
+  }
 }
 
-function createUserId() {
-  return `usr_${Date.now()}`
+function createFormFromUser(user: UserRecord): UserFormState {
+  return {
+    name: user.name,
+    contact: user.contact,
+    designation: user.designation,
+    status: user.status === "Invited" ? "Active" : user.status,
+    permissionPreset:
+      user.permissionPreset === "owner" ? "manager" : user.permissionPreset,
+    permissions: clonePermissionMap(user.permissions),
+    branchIds: [...user.branchIds],
+    primaryBranchId: user.primaryBranchId,
+  }
 }
 
-function validateForm(form: UserFormState): UserFormErrors {
+function validateForm(
+  form: UserFormState,
+  presets: UserPresetRecord[]
+): UserFormErrors {
   const errors: UserFormErrors = {}
+  const activePreset = presets.find((preset) => preset.key === form.permissionPreset)
 
   if (!form.name.trim()) {
     errors.name = "Enter the user name."
@@ -230,6 +212,10 @@ function validateForm(form: UserFormState): UserFormErrors {
     errors.contact = "Enter an email or phone number."
   }
 
+  if (activePreset?.branchSelection === "required" && form.branchIds.length === 0) {
+    errors.branchIds = "Select at least one branch for this preset."
+  }
+
   if (!hasAtLeastOnePermission(form.permissions)) {
     errors.permissions = "Grant at least one module action."
   }
@@ -237,27 +223,134 @@ function validateForm(form: UserFormState): UserFormErrors {
   return errors
 }
 
+function toApiStatus(status: UserStatus): UserStatusValue {
+  switch (status) {
+    case "Active":
+      return "active"
+    case "Inactive":
+      return "inactive"
+    case "Invited":
+      return "invited"
+  }
+}
+
 export function UsersPage() {
-  const [users, setUsers] = React.useState<UserRecord[]>(mockUsers)
+  const storedSession = getStoredAuthSession()
+  const accessToken = storedSession?.session.accessToken ?? ""
+  const queryClient = useQueryClient()
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["users"],
+    queryFn: () => getUsers(accessToken),
+    enabled: accessToken.length > 0,
+    staleTime: 1000 * 60 * 5,
+  })
+
   const [sheetMode, setSheetMode] = React.useState<SheetMode | null>(null)
   const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null)
   const [userPendingDelete, setUserPendingDelete] = React.useState<UserRecord | null>(null)
-  const [formState, setFormState] = React.useState<UserFormState>(createEmptyUserForm)
+  const [provisioningResult, setProvisioningResult] =
+    React.useState<UserProvisioningRecord | null>(null)
+  const [formState, setFormState] = React.useState<UserFormState>({
+    name: "",
+    contact: "",
+    designation: "",
+    status: "Active",
+    permissionPreset: "cashier",
+    permissions: createEmptyPermissionMap(),
+    branchIds: [],
+    primaryBranchId: null,
+  })
   const [formErrors, setFormErrors] = React.useState<UserFormErrors>({})
+
+  const users = React.useMemo(() => data?.users ?? [], [data?.users])
+  const presets = data?.presets ?? []
+  const branches = data?.branches ?? []
+  const businessName = data?.meta.businessName ?? "Primary Branch"
+  const getBranchDisplayName = React.useCallback(
+    (branch: UserBranchRecord) =>
+      branch.isPrimary && branch.name === "Primary Branch" ? businessName : branch.name,
+    [businessName]
+  )
+  const selectedPrimaryBranch =
+    branches.find((branch) => branch.id === formState.primaryBranchId) ??
+    branches.find((branch) => branch.id === formState.branchIds[0]) ??
+    null
+  const selectedPrimaryBranchName =
+    (selectedPrimaryBranch ? getBranchDisplayName(selectedPrimaryBranch) : null) ??
+    "Select primary branch"
 
   const selectedUser = React.useMemo(
     () => users.find((user) => user.id === selectedUserId) ?? null,
     [selectedUserId, users]
   )
 
+  const upsertMutation = useMutation({
+    mutationFn: (payload: {
+      mode: SheetMode
+      userId?: string
+      formState: UserFormState
+    }) => {
+      const body = {
+        name: payload.formState.name.trim(),
+        contact: payload.formState.contact.trim(),
+        designation: payload.formState.designation.trim(),
+        status: toApiStatus(payload.formState.status),
+        permissionPreset: payload.formState.permissionPreset,
+        branchIds: payload.formState.branchIds,
+        ...(payload.formState.primaryBranchId ?
+          { primaryBranchId: payload.formState.primaryBranchId }
+        : {}),
+        permissions: payload.formState.permissions,
+      }
+
+      return payload.mode === "edit" && payload.userId ?
+          updateUser(payload.userId, body, accessToken)
+        : createUser(body, accessToken)
+    },
+    onSuccess: (nextData, payload) => {
+      queryClient.setQueryData(["users"], nextData)
+      closeSheet()
+      setProvisioningResult(payload.mode === "create" ? nextData.provisioning : null)
+      toast.success(
+        payload.mode === "edit" ?
+          "User access updated."
+        : "Workspace user created."
+      )
+    },
+    onError: (mutationError) => {
+      toast.error(getErrorMessage(mutationError))
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (userId: string) => deleteUser(userId, accessToken),
+    onSuccess: (nextData) => {
+      queryClient.setQueryData(["users"], nextData)
+      setUserPendingDelete(null)
+      toast.success("Workspace user deleted.")
+    },
+    onError: (mutationError) => {
+      toast.error(getErrorMessage(mutationError))
+    },
+  })
+
   function openCreateSheet() {
+    if (!data) {
+      return
+    }
+
     setSelectedUserId(null)
-    setFormState(createEmptyUserForm())
+    setFormState(createEmptyUserForm(data.presets, data.branches))
     setFormErrors({})
     setSheetMode("create")
   }
 
   function openEditSheet(user: UserRecord) {
+    if (!user.canEdit) {
+      return
+    }
+
     setSelectedUserId(user.id)
     setFormState(createFormFromUser(user))
     setFormErrors({})
@@ -270,19 +363,37 @@ export function UsersPage() {
     setFormErrors({})
   }
 
-  function confirmDelete(user: UserRecord) {
-    setUserPendingDelete(user)
-  }
+  function handlePresetChange(nextPreset: EditablePresetKey) {
+    const preset = presets.find((item) => item.key === nextPreset)
+    const primaryBranch = branches.find((branch) => branch.isPrimary) ?? branches[0] ?? null
 
-  function handleDeleteConfirmed() {
-    if (!userPendingDelete) {
-      return
-    }
+    setFormState((currentState) => {
+      const nextBranchIds =
+        preset?.branchSelection === "required" && currentState.branchIds.length === 0 && primaryBranch ?
+          [primaryBranch.id]
+        : currentState.branchIds
 
-    setUsers((currentUsers) =>
-      currentUsers.filter((item) => item.id !== userPendingDelete.id)
-    )
-    setUserPendingDelete(null)
+      return {
+        ...currentState,
+        permissionPreset: nextPreset,
+        designation: preset?.defaultDesignation ?? currentState.designation,
+        permissions:
+          nextPreset === "custom" ?
+            createEmptyPermissionMap()
+          : buildPresetPermissions(nextPreset),
+        branchIds: nextBranchIds,
+        primaryBranchId:
+          nextBranchIds.length === 0 ? null
+          : currentState.primaryBranchId && nextBranchIds.includes(currentState.primaryBranchId) ?
+            currentState.primaryBranchId
+          : nextBranchIds[0] ?? null,
+      }
+    })
+    setFormErrors((currentErrors) => ({
+      ...currentErrors,
+      branchIds: undefined,
+      permissions: undefined,
+    }))
   }
 
   function handlePermissionToggle(
@@ -291,6 +402,7 @@ export function UsersPage() {
   ) {
     setFormState((currentState) => ({
       ...currentState,
+      permissionPreset: "custom",
       permissions: {
         ...currentState.permissions,
         [module]: {
@@ -302,40 +414,67 @@ export function UsersPage() {
     setFormErrors((currentErrors) => ({ ...currentErrors, permissions: undefined }))
   }
 
+  function handleBranchToggle(branchId: string) {
+    setFormState((currentState) => {
+      const exists = currentState.branchIds.includes(branchId)
+      const branchIds =
+        exists ?
+          currentState.branchIds.filter((currentBranchId) => currentBranchId !== branchId)
+        : [...currentState.branchIds, branchId]
+
+      return {
+        ...currentState,
+        branchIds,
+        primaryBranchId:
+          branchIds.length === 0 ? null
+          : currentState.primaryBranchId && branchIds.includes(currentState.primaryBranchId) ?
+            currentState.primaryBranchId
+          : branchIds[0] ?? null,
+      }
+    })
+    setFormErrors((currentErrors) => ({ ...currentErrors, branchIds: undefined }))
+  }
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    const nextErrors = validateForm(formState)
+    const nextErrors = validateForm(formState, presets)
 
     if (Object.keys(nextErrors).length > 0) {
       setFormErrors(nextErrors)
       return
     }
 
-    if (sheetMode === "edit" && selectedUser) {
-      setUsers((currentUsers) =>
-        currentUsers.map((user) =>
-          user.id === selectedUser.id ?
-            {
-              ...user,
-              ...formState,
-              permissions: clonePermissionMap(formState.permissions),
-            }
-          : user
-        )
-      )
-    } else {
-      setUsers((currentUsers) => [
-        {
-          id: createUserId(),
-          ...formState,
-          permissions: clonePermissionMap(formState.permissions),
-        },
-        ...currentUsers,
-      ])
+    upsertMutation.mutate({
+      mode: sheetMode ?? "create",
+      userId: selectedUser?.id,
+      formState,
+    })
+  }
+
+  function handleDeleteConfirmed() {
+    if (!userPendingDelete) {
+      return
     }
 
-    closeSheet()
+    deleteMutation.mutate(userPendingDelete.id)
+  }
+
+  if (isLoading) {
+    return <UsersPageSkeleton />
+  }
+
+  if (!data) {
+    return (
+      <div className="flex flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
+        <section className="rounded-2xl border border-destructive/30 bg-card p-6">
+          <h1 className="text-lg font-semibold">Users unavailable</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {getErrorMessage(error) || "Unable to load workspace users right now."}
+          </p>
+        </section>
+      </div>
+    )
   }
 
   return (
@@ -351,16 +490,16 @@ export function UsersPage() {
               <div className="space-y-1">
                 <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
                 <p className="max-w-2xl text-sm text-muted-foreground">
-                  Add team members and control module-level access for each user.
+                  Add team members, assign a preset like Cashier or Manager, and scope their access to the right branch.
                 </p>
               </div>
             </div>
-            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+            {data.meta.canManageUsers ? (
               <Button type="button" className="h-10 rounded-xl" onClick={openCreateSheet}>
                 <UserPlusIcon className="size-4" />
                 Add User
               </Button>
-            </div>
+            ) : null}
           </div>
         </section>
 
@@ -370,19 +509,20 @@ export function UsersPage() {
               <div>
                 <h2 className="text-base font-semibold">Available users</h2>
                 <p className="text-sm text-muted-foreground">
-                  Review access, update permissions, or remove a user from the workspace.
+                  Review branch assignments, update access presets, or remove a workspace user.
                 </p>
               </div>
               <Badge variant="outline">{users.length} users</Badge>
             </div>
           </div>
           <div className="app-scrollbar overflow-x-auto">
-            <Table className="min-w-[920px]">
+            <Table className="min-w-[1080px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead>User</TableHead>
                   <TableHead>Contact</TableHead>
                   <TableHead>Designation</TableHead>
+                  <TableHead>Branches</TableHead>
                   <TableHead>Access summary</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-16 text-right">Actions</TableHead>
@@ -399,16 +539,45 @@ export function UsersPage() {
                           <Avatar>
                             <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                           </Avatar>
-                          <div className="min-w-0">
-                            <p className="truncate font-medium">{user.name}</p>
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate font-medium">{user.name}</p>
+                              {user.isSystemManaged ? (
+                                <Badge variant="outline" className="gap-1.5">
+                                  <BadgeCheckIcon className="size-3.5" />
+                                  Owner sync
+                                </Badge>
+                              ) : null}
+                            </div>
                             <p className="text-xs text-muted-foreground">
-                              {user.status === "Active" ? "Workspace access enabled" : "Access paused"}
+                              {user.linkedAuthUser ?
+                                "Ready for GSTFY login"
+                              : "Stored as a workspace-only user profile"}
                             </p>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">{user.contact}</TableCell>
-                      <TableCell>{user.designation}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <p className="font-medium">{user.designation}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatPresetLabel(user.permissionPreset)}
+                          </p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <p className="font-medium">
+                            {user.branchNames[0] ?? "No branch assigned"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {user.branchNames.length > 1 ?
+                              `${user.branchNames.length} branches linked`
+                            : "Primary scope"}
+                          </p>
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <div className="space-y-1">
                           <p className="font-medium">{accessSummary.totals}</p>
@@ -429,35 +598,43 @@ export function UsersPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                className="aria-expanded:bg-muted"
-                              />
-                            }
-                          >
-                            <MoreHorizontalIcon className="size-4" />
-                            <span className="sr-only">Open user actions</span>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" sideOffset={8} className="w-40">
-                            <DropdownMenuItem onClick={() => openEditSheet(user)}>
-                              <PencilLineIcon className="text-muted-foreground" />
-                              <span>Edit</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => confirmDelete(user)}
+                        {user.canEdit || user.canDelete ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              render={
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="aria-expanded:bg-muted"
+                                />
+                              }
                             >
-                              <Trash2Icon className="text-muted-foreground" />
-                              <span>Delete</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              <MoreHorizontalIcon className="size-4" />
+                              <span className="sr-only">Open user actions</span>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" sideOffset={8} className="w-44">
+                              {user.canEdit ? (
+                                <DropdownMenuItem onClick={() => openEditSheet(user)}>
+                                  <PencilLineIcon className="text-muted-foreground" />
+                                  <span>Edit access</span>
+                                </DropdownMenuItem>
+                              ) : null}
+                              {user.canEdit && user.canDelete ? <DropdownMenuSeparator /> : null}
+                              {user.canDelete ? (
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => setUserPendingDelete(user)}
+                                >
+                                  <Trash2Icon className="text-muted-foreground" />
+                                  <span>Delete</span>
+                                </DropdownMenuItem>
+                              ) : null}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Locked</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   )
@@ -469,7 +646,7 @@ export function UsersPage() {
       </div>
 
       <Sheet open={sheetMode !== null} onOpenChange={(open) => !open && closeSheet()}>
-        <SheetContent className="w-full sm:max-w-2xl">
+        <SheetContent className="w-full sm:max-w-3xl">
           <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
             <SheetHeader className="border-b border-border px-4 py-4">
               <SheetTitle>
@@ -477,8 +654,8 @@ export function UsersPage() {
               </SheetTitle>
               <SheetDescription>
                 {sheetMode === "edit" ?
-                  "Update user details and module-level permissions for this workspace."
-                : "Create a user profile and define which modules they can access."}
+                  "Update the branch scope and module actions for this workspace user."
+                : "Choose a preset such as Cashier or Manager, then fine-tune module access if needed."}
               </SheetDescription>
             </SheetHeader>
 
@@ -520,7 +697,7 @@ export function UsersPage() {
                           contact: undefined,
                         }))
                       }}
-                      placeholder="owner@gstfy.in or +91 98765 43210"
+                      placeholder="owner@gstfy.in or 9876543210"
                     />
                     <FieldError>{formErrors.contact}</FieldError>
                   </Field>
@@ -529,26 +706,17 @@ export function UsersPage() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field>
                     <FieldLabel htmlFor="user-designation">Designation</FieldLabel>
-                    <Select
+                    <Input
+                      id="user-designation"
                       value={formState.designation}
-                      onValueChange={(value) =>
+                      onChange={(event) =>
                         setFormState((currentState) => ({
                           ...currentState,
-                          designation: value ?? currentState.designation,
+                          designation: event.target.value,
                         }))
                       }
-                    >
-                      <SelectTrigger id="user-designation" className="w-full">
-                        <SelectValue placeholder="Select designation" />
-                      </SelectTrigger>
-                      <SelectContent align="start" sideOffset={8}>
-                        {designationOptions.map((designation) => (
-                          <SelectItem key={designation} value={designation}>
-                            {designation}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Branch manager, cashier, accountant..."
+                    />
                   </Field>
 
                   <Field>
@@ -578,9 +746,142 @@ export function UsersPage() {
 
                 <div className="space-y-3">
                   <div className="space-y-1">
+                    <h3 className="text-sm font-medium">Preset access</h3>
+                    <FieldDescription>
+                      Pick a default permission pack first. You can still adjust individual module actions below.
+                    </FieldDescription>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {presets.map((preset) => {
+                      const isActive = formState.permissionPreset === preset.key
+
+                      return (
+                        <button
+                          key={preset.key}
+                          type="button"
+                          onClick={() => handlePresetChange(preset.key)}
+                          className={cn(
+                            "rounded-2xl border p-3 text-left transition-colors",
+                            isActive ?
+                              "border-foreground bg-muted/40"
+                            : "border-border bg-background hover:bg-muted/20"
+                          )}
+                        >
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="font-medium">{preset.label}</p>
+                              <Badge
+                                variant={isActive ? "default" : "outline"}
+                                className="shrink-0"
+                              >
+                                {preset.branchSelection === "required" ? "Branch required" : "Flexible"}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {preset.description}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Default role: {preset.defaultDesignation}
+                            </p>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Building2Icon className="size-4 text-muted-foreground" />
+                      <h3 className="text-sm font-medium">Branch access</h3>
+                    </div>
+                    <FieldDescription>
+                      Scope this user to the branches they actually operate in. Manager, Cashier, and Operations presets require at least one branch.
+                    </FieldDescription>
+                  </div>
+                  <FieldError>{formErrors.branchIds}</FieldError>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {branches.map((branch) => {
+                      const isSelected = formState.branchIds.includes(branch.id)
+                      const branchDisplayName = getBranchDisplayName(branch)
+
+                      return (
+                        <button
+                          key={branch.id}
+                          type="button"
+                          onClick={() => handleBranchToggle(branch.id)}
+                          className={cn(
+                            "rounded-2xl border p-4 text-left transition-colors",
+                            isSelected ?
+                              "border-foreground bg-muted/40"
+                            : "border-border bg-background hover:bg-muted/20"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <p className="font-medium">{branchDisplayName}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {branch.code} • {formatBranchType(branch.type)}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap justify-end gap-2">
+                              {branch.isPrimary ? <Badge variant="outline">Primary</Badge> : null}
+                              {isSelected ? <Badge>Selected</Badge> : null}
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {formState.branchIds.length > 0 ? (
+                    <Field>
+                      <FieldLabel htmlFor="primary-branch">Primary branch</FieldLabel>
+                      <Select
+                        key={`primary-branch-${selectedPrimaryBranchName}-${formState.branchIds.join("-")}`}
+                        value={formState.primaryBranchId ?? formState.branchIds[0] ?? ""}
+                        onValueChange={(value) =>
+                          setFormState((currentState) => ({
+                            ...currentState,
+                            primaryBranchId: value,
+                          }))
+                        }
+                      >
+                        <SelectTrigger id="primary-branch" className="w-full">
+                          <span
+                            data-slot="select-value"
+                            className="flex flex-1 items-center gap-1.5 text-left line-clamp-1"
+                          >
+                            {selectedPrimaryBranchName}
+                          </span>
+                        </SelectTrigger>
+                        <SelectContent align="start">
+                          {branches
+                            .filter((branch) => formState.branchIds.includes(branch.id))
+                            .map((branch) => {
+                              const branchDisplayName = getBranchDisplayName(branch)
+
+                              return (
+                                <SelectItem
+                                  key={`${branch.id}-${branchDisplayName}`}
+                                  value={branch.id}
+                                >
+                                  {branchDisplayName}
+                                </SelectItem>
+                              )
+                            })}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  ) : null}
+                </div>
+
+                <div className="space-y-3">
+                  <div className="space-y-1">
                     <h3 className="text-sm font-medium">Module access</h3>
                     <FieldDescription>
-                      Only modules available in the current business plan are shown here.
+                      Adjust individual actions if this user needs something more specific than the preset default.
                     </FieldDescription>
                   </div>
                   <FieldError>{formErrors.permissions}</FieldError>
@@ -641,8 +942,12 @@ export function UsersPage() {
               <Button type="button" variant="outline" onClick={closeSheet}>
                 Cancel
               </Button>
-              <Button type="submit">
-                {sheetMode === "edit" ? "Save changes" : "Create user"}
+              <Button type="submit" disabled={upsertMutation.isPending}>
+                {upsertMutation.isPending ?
+                  "Saving..."
+                : sheetMode === "edit" ?
+                  "Save changes"
+                : "Create user"}
               </Button>
             </div>
           </form>
@@ -658,7 +963,7 @@ export function UsersPage() {
             <DialogTitle>Delete user</DialogTitle>
             <DialogDescription>
               {userPendingDelete ?
-                `Remove ${userPendingDelete.name} from this workspace? This action only updates the frontend list in this demo.`
+                `Remove ${userPendingDelete.name} from this workspace?`
               : "Remove this user from the workspace?"}
             </DialogDescription>
           </DialogHeader>
@@ -666,12 +971,135 @@ export function UsersPage() {
             <Button type="button" variant="outline" onClick={() => setUserPendingDelete(null)}>
               Cancel
             </Button>
-            <Button type="button" variant="destructive" onClick={handleDeleteConfirmed}>
-              Delete user
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDeleteConfirmed}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete user"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={provisioningResult !== null}
+        onOpenChange={(open) => !open && setProvisioningResult(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Login ready</DialogTitle>
+            <DialogDescription>
+              {provisioningResult?.temporaryPassword ?
+                "Share these first-login details with the team member. They can change the password later from Forgot password."
+              : "This contact is already linked to a GSTFY login. The user can sign in with their existing credentials."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {provisioningResult ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border bg-muted/30 p-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    Login ID
+                  </p>
+                  <p className="text-sm font-medium">{provisioningResult.identifier}</p>
+                </div>
+                {provisioningResult.temporaryPassword ? (
+                  <div className="mt-4 space-y-1">
+                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                      Temporary password
+                    </p>
+                    <p className="font-mono text-sm">{provisioningResult.temporaryPassword}</p>
+                  </div>
+                ) : null}
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                {provisioningResult.temporaryPassword ?
+                  "If the user signs in with a mobile number, the current login screen will continue through OTP after account lookup. Use email contact when you want a direct password login."
+                : "No new password was created because this contact already belongs to an existing GSTFY account."}
+              </p>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button type="button" onClick={() => setProvisioningResult(null)}>
+              Done
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+function formatBranchType(value: string) {
+  switch (value) {
+    case "retail_store":
+      return "Retail store"
+    case "warehouse":
+      return "Warehouse"
+    case "office":
+      return "Office"
+    default:
+      return value
+  }
+}
+
+function formatPresetLabel(value: PermissionPresetKey) {
+  switch (value) {
+    case "owner":
+      return "Owner"
+    case "manager":
+      return "Manager"
+    case "cashier":
+      return "Cashier"
+    case "accountant":
+      return "Accountant"
+    case "operations":
+      return "Operations"
+    case "custom":
+      return "Custom"
+  }
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Something went wrong. Please try again."
+}
+
+function UsersPageSkeleton() {
+  return (
+    <div className="flex flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
+      <section className="rounded-2xl border border-border bg-card text-card-foreground shadow-sm">
+        <div className="flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between lg:p-6">
+          <div className="space-y-3">
+            <Skeleton className="h-6 w-24 rounded-full" />
+            <Skeleton className="h-8 w-28" />
+            <Skeleton className="h-4 w-[24rem] max-w-full" />
+          </div>
+          <Skeleton className="h-10 w-28 rounded-xl" />
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card text-card-foreground shadow-sm">
+        <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">
+          <div className="space-y-2">
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-4 w-[24rem] max-w-full" />
+          </div>
+        </div>
+        <div className="space-y-3 px-4 py-4 sm:px-5 lg:px-6">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="grid grid-cols-6 gap-3">
+              {Array.from({ length: 6 }).map((__, itemIndex) => (
+                <Skeleton key={itemIndex} className="h-12 w-full rounded-xl" />
+              ))}
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   )
 }

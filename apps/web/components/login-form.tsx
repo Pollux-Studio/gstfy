@@ -2,12 +2,11 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useMutation } from "@tanstack/react-query"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import {
-  CheckIcon,
   EyeIcon,
   EyeOffIcon,
   GalleryVerticalEndIcon,
@@ -21,11 +20,12 @@ import { z } from "zod"
 import {
   login as loginWithPassword,
   lookupIdentifier,
+  sendOtp,
   type LookupIdentifierResponse,
+  verifyOtp,
 } from "@/lib/auth/api"
 import { setStoredAuthSession } from "@/lib/auth/session"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Field,
@@ -46,7 +46,9 @@ import { cn } from "@/lib/utils"
 
 type IdentifierValues = { identifier: string }
 type PasswordValues = { password: string }
+type OtpValues = { token: string }
 type Account = LookupIdentifierResponse["account"]
+type LoginStep = "identifier" | "password" | "otp"
 
 export function LoginForm({
   className,
@@ -57,12 +59,15 @@ export function LoginForm({
 }) {
   const { t } = useTranslation()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const nextPath = sanitizeNextPath(searchParams.get("next"))
   const shouldReduceMotion = useReducedMotion()
-  const [step, setStep] = useState<"identifier" | "password">("identifier")
+  const [step, setStep] = useState<LoginStep>("identifier")
   const [lookupState, setLookupState] = useState<"idle" | "not-found">("idle")
   const [account, setAccount] = useState<Account | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [authError, setAuthError] = useState("")
+  const [otpFeedback, setOtpFeedback] = useState("")
 
   const identifierSchema = useMemo(
     () =>
@@ -101,6 +106,17 @@ export function LoginForm({
     [t]
   )
 
+  const otpSchema = useMemo(
+    () =>
+      z.object({
+        token: z
+          .string()
+          .trim()
+          .regex(/^\d{6}$/, t("auth.login.errors.invalidOtp")),
+      }),
+    [t]
+  )
+
   const identifierForm = useForm<IdentifierValues>({
     resolver: zodResolver(identifierSchema),
     mode: "onChange",
@@ -119,6 +135,15 @@ export function LoginForm({
     },
   })
 
+  const otpForm = useForm<OtpValues>({
+    resolver: zodResolver(otpSchema),
+    mode: "onChange",
+    reValidateMode: "onChange",
+    defaultValues: {
+      token: "",
+    },
+  })
+
   const rawIdentifier = useWatch({
     control: identifierForm.control,
     name: "identifier",
@@ -127,6 +152,11 @@ export function LoginForm({
   const rawPassword = useWatch({
     control: passwordForm.control,
     name: "password",
+    defaultValue: "",
+  })
+  const rawOtp = useWatch({
+    control: otpForm.control,
+    name: "token",
     defaultValue: "",
   })
 
@@ -138,15 +168,31 @@ export function LoginForm({
     mutationFn: loginWithPassword,
   })
 
+  const sendOtpMutation = useMutation({
+    mutationFn: sendOtp,
+  })
+
+  const verifyOtpMutation = useMutation({
+    mutationFn: verifyOtp,
+  })
+
   const phoneMode = isPhoneMode(rawIdentifier)
+  const normalizedIdentifier = phoneMode
+    ? normalizePhone(rawIdentifier)
+    : rawIdentifier.trim().toLowerCase()
   const canContinue =
     rawIdentifier.trim().length > 0 &&
     identifierForm.formState.isValid &&
-    !lookupMutation.isPending
+    !lookupMutation.isPending &&
+    !sendOtpMutation.isPending
   const canLogin =
     rawPassword.length > 0 &&
     passwordForm.formState.isValid &&
     !loginMutation.isPending
+  const canVerifyOtp =
+    rawOtp.trim().length === 6 &&
+    otpForm.formState.isValid &&
+    !verifyOtpMutation.isPending
   const transition = shouldReduceMotion
     ? { duration: 0 }
     : { duration: 0.24, ease: "easeOut" as const }
@@ -154,23 +200,42 @@ export function LoginForm({
   async function handleIdentifierSubmit(values: IdentifierValues) {
     setLookupState("idle")
     setAuthError("")
+    setOtpFeedback("")
 
     try {
       const response = await lookupMutation.mutateAsync(values.identifier)
+      const nextPhoneMode = isPhoneMode(values.identifier)
+
       setAccount(response.account)
-      setStep("password")
       setShowPassword(false)
       passwordForm.reset()
-    } catch (error) {
-      setAccount(null)
-      setLookupState("not-found")
+      otpForm.reset()
 
-      if (error instanceof Error && !/account not found/i.test(error.message)) {
-        identifierForm.setError("identifier", {
-          type: "server",
-          message: error.message,
+      if (nextPhoneMode) {
+        await sendOtpMutation.mutateAsync({
+          identifier: normalizePhone(values.identifier),
+          purpose: "login",
         })
+        setOtpFeedback(t("auth.login.otpSent"))
+        setStep("otp")
+        return
       }
+
+      setStep("password")
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : t("auth.login.errors.generic")
+
+      if (/account not found/i.test(message)) {
+        setAccount(null)
+        setLookupState("not-found")
+        return
+      }
+
+      identifierForm.setError("identifier", {
+        type: "server",
+        message,
+      })
     }
   }
 
@@ -179,7 +244,7 @@ export function LoginForm({
 
     try {
       const response = await loginMutation.mutateAsync({
-        identifier: rawIdentifier,
+        identifier: normalizedIdentifier,
         password: rawPassword,
       })
 
@@ -188,10 +253,48 @@ export function LoginForm({
         session: response.session,
       })
 
-      router.push("/dashboard")
+      router.push(nextPath)
     } catch (error) {
       setAuthError(
         error instanceof Error ? error.message : t("auth.login.errors.generic")
+      )
+    }
+  }
+
+  async function handleOtpSubmit(values: OtpValues) {
+    setAuthError("")
+
+    try {
+      const response = await verifyOtpMutation.mutateAsync({
+        identifier: normalizePhone(rawIdentifier),
+        token: values.token,
+      })
+
+      setStoredAuthSession({
+        user: response.user,
+        session: response.session,
+      })
+
+      router.push(nextPath)
+    } catch (error) {
+      setAuthError(
+        error instanceof Error ? error.message : t("auth.login.errors.otpGeneric")
+      )
+    }
+  }
+
+  async function handleResendOtp() {
+    setAuthError("")
+
+    try {
+      await sendOtpMutation.mutateAsync({
+        identifier: normalizePhone(rawIdentifier),
+        purpose: "login",
+      })
+      setOtpFeedback(t("auth.login.otpSent"))
+    } catch (error) {
+      setAuthError(
+        error instanceof Error ? error.message : t("auth.login.errors.otpGeneric")
       )
     }
   }
@@ -211,8 +314,32 @@ export function LoginForm({
       setLookupState("idle")
     }
 
+    if (authError) {
+      setAuthError("")
+    }
+
+    if (otpFeedback) {
+      setOtpFeedback("")
+    }
+
     if (identifierForm.formState.errors.identifier) {
       identifierForm.clearErrors("identifier")
+    }
+  }
+
+  function handleOtpChange(nextValue: string) {
+    otpForm.setValue("token", nextValue.replace(/\D/g, "").slice(0, 6), {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    })
+
+    if (authError) {
+      setAuthError("")
+    }
+
+    if (otpFeedback) {
+      setOtpFeedback("")
     }
   }
 
@@ -220,14 +347,24 @@ export function LoginForm({
     setStep("identifier")
     setLookupState("idle")
     setAuthError("")
+    setOtpFeedback("")
     setAccount(null)
     setShowPassword(false)
     passwordForm.reset()
+    otpForm.reset()
     loginMutation.reset()
     lookupMutation.reset()
+    sendOtpMutation.reset()
+    verifyOtpMutation.reset()
   }
 
   const passwordRegistration = passwordForm.register("password")
+  const stepDescription =
+    step === "identifier"
+      ? t("auth.login.stepOneDescription")
+      : step === "password"
+        ? t("auth.login.stepTwoDescription")
+        : t("auth.login.stepOtpDescription")
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
@@ -239,11 +376,7 @@ export function LoginForm({
           <span className="sr-only">GSTFY</span>
         </div>
         <h1 className="text-xl font-bold">{t("auth.login.title")}</h1>
-        <FieldDescription>
-          {step === "identifier"
-            ? t("auth.login.stepOneDescription")
-            : t("auth.login.stepTwoDescription")}
-        </FieldDescription>
+        <FieldDescription>{stepDescription}</FieldDescription>
         {registrationBanner ? (
           <FieldDescription className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
             {registrationBanner}
@@ -294,9 +427,7 @@ export function LoginForm({
                     }
                     autoComplete="username"
                     aria-invalid={!!identifierForm.formState.errors.identifier}
-                    onChange={(event) =>
-                      handleIdentifierChange(event.target.value)
-                    }
+                    onChange={(event) => handleIdentifierChange(event.target.value)}
                   />
                 </InputGroup>
                 <FieldError errors={[identifierForm.formState.errors.identifier]} />
@@ -306,12 +437,8 @@ export function LoginForm({
               </Field>
 
               <Field>
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={!canContinue}
-                >
-                  {lookupMutation.isPending
+                <Button type="submit" className="w-full" disabled={!canContinue}>
+                  {lookupMutation.isPending || sendOtpMutation.isPending
                     ? t("auth.login.checkingAccount")
                     : t("auth.login.continue")}
                 </Button>
@@ -323,9 +450,18 @@ export function LoginForm({
                   nativeButton={false}
                   variant="outline"
                   className="w-full"
-                  render={<Link href="/register" />}
+                  render={<Link href="/auth/register" />}
                 >
                   {t("auth.login.createAccount")}
+                </Button>
+                <Button
+                  type="button"
+                  nativeButton={false}
+                  variant="ghost"
+                  className="w-full"
+                  render={<Link href="/auth/ca/login" />}
+                >
+                  Login or register as a CA
                 </Button>
                 <FieldDescription className="text-center">
                   {t("auth.login.registerHint")}
@@ -333,7 +469,7 @@ export function LoginForm({
               </Field>
             </FieldGroup>
           </motion.form>
-        ) : (
+        ) : step === "password" ? (
           <motion.form
             key="password-step"
             onSubmit={passwordForm.handleSubmit(handlePasswordSubmit)}
@@ -344,31 +480,7 @@ export function LoginForm({
             noValidate
           >
             <FieldGroup>
-              <div className="rounded-xl border border-border bg-muted/40 p-3.5 shadow-xs">
-                <div className="flex items-center gap-3">
-                  <Avatar size="lg" className="ring-1 ring-border">
-                    <AvatarFallback>
-                      {getAccountInitials(account?.displayName)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1 space-y-1.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-medium">
-                        {account?.displayName}
-                      </p>
-                      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
-                        <CheckIcon className="size-3.5" />
-                        {t("auth.login.gstStatusActive")}
-                      </Badge>
-                    </div>
-                    {account?.gstin ? (
-                      <p className="font-mono text-xs tracking-[0.16em] text-muted-foreground uppercase">
-                        {account.gstin}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
+              <AccountSummary account={account} />
 
               <Field>
                 <div className="flex items-center justify-between gap-3">
@@ -376,7 +488,7 @@ export function LoginForm({
                     {t("auth.login.passwordLabel")}
                   </FieldLabel>
                   <Link
-                    href="/forgot-password"
+                    href="/auth/forgot-password"
                     className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                   >
                     {t("auth.login.forgotPassword")}
@@ -427,11 +539,7 @@ export function LoginForm({
               </Field>
 
               <Field className="gap-3">
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={!canLogin}
-                >
+                <Button type="submit" className="w-full" disabled={!canLogin}>
                   {loginMutation.isPending
                     ? t("auth.login.signingIn")
                     : t("auth.login.login")}
@@ -443,6 +551,80 @@ export function LoginForm({
                   onClick={handleResetToIdentifier}
                 >
                   {t("auth.login.useDifferentIdentifier")}
+                </Button>
+              </Field>
+            </FieldGroup>
+          </motion.form>
+        ) : (
+          <motion.form
+            key="otp-step"
+            onSubmit={otpForm.handleSubmit(handleOtpSubmit)}
+            initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: shouldReduceMotion ? 0 : -12 }}
+            transition={transition}
+            noValidate
+          >
+            <FieldGroup>
+              <AccountSummary account={account} />
+
+              <Field>
+                <FieldLabel htmlFor="login-otp">
+                  {t("auth.login.otpLabel")}
+                </FieldLabel>
+                <InputGroup>
+                  <InputGroupInput
+                    id="login-otp"
+                    type="text"
+                    value={rawOtp}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder={t("auth.login.otpPlaceholder")}
+                    aria-invalid={!!otpForm.formState.errors.token}
+                    className="font-mono tracking-[0.3em]"
+                    onChange={(event) => handleOtpChange(event.target.value)}
+                  />
+                </InputGroup>
+                <FieldDescription>
+                  {t("auth.login.phoneOtpDescription")}
+                </FieldDescription>
+                <FieldError errors={[otpForm.formState.errors.token]} />
+                {authError ? (
+                  <FieldDescription className="text-destructive">
+                    {authError}
+                  </FieldDescription>
+                ) : null}
+                {otpFeedback ? (
+                  <FieldDescription className="text-emerald-600 dark:text-emerald-400">
+                    {otpFeedback}
+                  </FieldDescription>
+                ) : null}
+              </Field>
+
+              <Field className="gap-3">
+                <Button type="submit" className="w-full" disabled={!canVerifyOtp}>
+                  {verifyOtpMutation.isPending
+                    ? t("auth.login.verifyingOtp")
+                    : t("auth.login.verifyOtp")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={sendOtpMutation.isPending}
+                  onClick={handleResendOtp}
+                >
+                  {sendOtpMutation.isPending
+                    ? t("auth.login.resendingOtp")
+                    : t("auth.login.resendOtp")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={handleResetToIdentifier}
+                >
+                  {t("auth.login.backToIdentifier")}
                 </Button>
               </Field>
             </FieldGroup>
@@ -459,6 +641,37 @@ export function LoginForm({
           }}
         />
       </FieldDescription>
+    </div>
+  )
+}
+
+function AccountSummary({
+  account,
+}: {
+  account: Account | null
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-muted/40 p-3.5">
+      <div className="flex items-center gap-3">
+        <Avatar size="lg" className="ring-1 ring-border">
+          <AvatarFallback>{getAccountInitials(account?.displayName)}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <p className="truncate text-sm font-medium">{account?.displayName}</p>
+            <span
+              className="ml-auto size-2.5 shrink-0 rounded-full bg-emerald-500"
+              aria-label="Active"
+              title="Active"
+            />
+          </div>
+          {account?.gstin ? (
+            <p className="font-mono text-xs tracking-[0.16em] text-muted-foreground uppercase">
+              {account.gstin}
+            </p>
+          ) : null}
+        </div>
+      </div>
     </div>
   )
 }
@@ -505,4 +718,12 @@ function getAccountInitials(displayName?: string | null) {
   }
 
   return parts.map((part) => part[0]?.toUpperCase() ?? "").join("")
+}
+
+function sanitizeNextPath(value: string | null) {
+  if (!value?.startsWith("/") || value.startsWith("//")) {
+    return "/dashboard"
+  }
+
+  return value
 }

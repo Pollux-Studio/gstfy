@@ -1,37 +1,37 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useQuery } from "@tanstack/react-query"
 import {
+  BriefcaseBusinessIcon,
   Building2Icon,
   CreditCardIcon,
   FileChartColumnIcon,
   GalleryVerticalEndIcon,
   HandCoinsIcon,
   LayoutDashboardIcon,
-  PlugZapIcon,
   LifeBuoyIcon,
   MessageSquareMoreIcon,
   ReceiptTextIcon,
-  ScrollTextIcon,
   Settings2Icon,
   ShieldCheckIcon,
   ShoppingCartIcon,
-  SparklesIcon,
-  TruckIcon,
   UsersIcon,
   WarehouseIcon,
 } from "lucide-react"
-import { canAccess } from "@repo/core/lib/featureFlags"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
+import { getCurrentUser, type CurrentUserResponse } from "@/lib/auth/api"
 import {
   currentPlan,
   getVisibleFeatureCategories,
   planLabels,
 } from "@/lib/dashboard/modules"
+import { getStoredAuthSession } from "@/lib/auth/session"
 import {
   Sidebar,
   SidebarContent,
@@ -52,23 +52,16 @@ type SidebarNavItem = {
   disabled?: boolean
 }
 
-const data = {
-  user: {
-    name: "GSTFY Demo",
-    email: "owner@gstfy.in",
-    avatar: "",
-  },
-  teams: [
-    {
-      name: "Gstfy",
-      logo: <GalleryVerticalEndIcon />,
-      plan: `${planLabels[currentPlan]} plan`,
-    },
-  ],
-}
-
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
+  const storedSession = getStoredAuthSession()
+  const accessToken = storedSession?.session.accessToken ?? ""
+  const { data: currentUser } = useQuery({
+    queryKey: ["auth", "current-user"],
+    queryFn: () => getCurrentUser(accessToken),
+    enabled: accessToken.length > 0,
+    staleTime: 1000 * 60 * 5,
+  })
 
   const overviewItem: SidebarNavItem = {
     title: "Overview",
@@ -90,13 +83,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           disabled: item.url === "#",
           icon:
             item.module === "invoices" ? <CreditCardIcon /> :
-            item.module === "einvoice" ? <ScrollTextIcon /> :
-            item.module === "ewaybill" ? <TruckIcon /> :
             item.module === "pos" ? <Building2Icon /> :
             item.module === "purchases" ? <ShoppingCartIcon /> :
             item.module === "expenses" ? <HandCoinsIcon /> :
             item.module === "gstr" ? <ReceiptTextIcon /> :
-            item.module === "aireview" ? <SparklesIcon /> :
             item.module === "inventory" ? <WarehouseIcon /> :
             item.module === "parties" ? <UsersIcon /> :
             item.module === "reports" ? <FileChartColumnIcon /> :
@@ -115,10 +105,25 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       ],
     }))
 
+  visibleCategories.push({
+    title: "CA Workspace",
+    items: [
+      {
+        title: "Clients",
+        url: "/ca",
+        isActive: pathname === "/ca" || pathname.startsWith("/ca/"),
+        icon: <BriefcaseBusinessIcon />,
+      },
+    ],
+  })
+
+  const sidebarUser = buildSidebarUser(storedSession?.user ?? null, currentUser)
+  const sidebarTeam = buildSidebarTeam(currentUser)
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <TeamSwitcher teams={data.teams} />
+        <TeamSwitcher teams={[sidebarTeam]} />
       </SidebarHeader>
       <SidebarContent>
         <NavMain overview={overviewItem} categories={visibleCategories} />
@@ -126,19 +131,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton render={<a href="#" />}>
+            <SidebarMenuButton
+              render={<Link href="/settings" />}
+              data-active={pathname === "/settings" || pathname.startsWith("/settings/")}
+              tooltip="Settings"
+            >
               <Settings2Icon />
               <span>Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
-          {canAccess("integrations", currentPlan) ? (
-            <SidebarMenuItem>
-              <SidebarMenuButton render={<a href="#" />}>
-                <PlugZapIcon />
-                <span>Integrations</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ) : null}
           <SidebarMenuItem>
             <SidebarMenuButton render={<a href="#" />}>
               <MessageSquareMoreIcon />
@@ -153,9 +154,51 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenuItem>
         </SidebarMenu>
         <SidebarSeparator />
-        <NavUser user={data.user} />
+        <NavUser user={sidebarUser} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )
+}
+
+function buildSidebarUser(
+  authUser: { email: string | null; phone: string | null } | null,
+  currentUser?: CurrentUserResponse
+) {
+  const primaryMembership = currentUser?.memberships[0] ?? null
+  const name =
+    currentUser?.profile?.display_name ??
+    primaryMembership?.business_name ??
+    getUserDisplayName(authUser?.email, authUser?.phone)
+
+  return {
+    name,
+    email: authUser?.email ?? authUser?.phone ?? "No identifier",
+    avatar: "",
+  }
+}
+
+function buildSidebarTeam(currentUser?: CurrentUserResponse) {
+  const primaryMembership = currentUser?.memberships[0] ?? null
+
+  return {
+    name:
+      primaryMembership?.business_name ??
+      currentUser?.profile?.display_name ??
+      "GSTFY Workspace",
+    logo: <GalleryVerticalEndIcon />,
+    plan: primaryMembership?.gstin ?? `${planLabels[currentPlan]} plan`,
+  }
+}
+
+function getUserDisplayName(email?: string | null, phone?: string | null) {
+  if (email) {
+    return email.split("@")[0] ?? email
+  }
+
+  if (phone) {
+    return phone
+  }
+
+  return "GSTFY User"
 }

@@ -1,0 +1,115 @@
+import { existsSync, readFileSync } from "node:fs"
+import { resolve } from "node:path"
+import { fileURLToPath } from "node:url"
+
+import { z } from "zod"
+
+loadLocalEnv()
+
+const envSchema = z.object({
+  NODE_ENV: z
+    .enum(["development", "test", "production"])
+    .default("development"),
+  PORT: z.coerce.number().int().positive().default(4000),
+  HOST: z.string().default("0.0.0.0"),
+  DATABASE_URL: z
+    .string()
+    .min(1)
+    .default("postgres://postgres:postgres@localhost:5432/gstfy"),
+  WEB_ORIGIN: z.string().url().default("http://localhost:3000"),
+  APP_BASE_DOMAIN: z.string().default("localhost:3000"),
+  COOKIE_DOMAIN: z.string().optional(),
+  COOKIE_SECURE: z.coerce.boolean().default(false),
+  JWT_ACCESS_SECRET: z
+    .string()
+    .min(32, "JWT_ACCESS_SECRET must be at least 32 characters")
+    .default("dev-only-change-before-production-gstfy-secret"),
+  JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: z.coerce.boolean().default(false),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  MAIL_FROM: z.string().default("GSTFY <no-reply@gstfy.in>"),
+  AUTO_RUN_MIGRATIONS: z.coerce.boolean().default(true),
+  FIREBASE_PROJECT_ID: z.string().optional(),
+  FIREBASE_CLIENT_EMAIL: z.string().optional(),
+  FIREBASE_PRIVATE_KEY: z.string().optional(),
+  GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
+}).superRefine((env, ctx) => {
+  if (
+    env.NODE_ENV === "production" &&
+    env.JWT_ACCESS_SECRET === "dev-only-change-before-production-gstfy-secret"
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["JWT_ACCESS_SECRET"],
+      message: "JWT_ACCESS_SECRET must be changed in production.",
+    })
+  }
+})
+
+export type AppEnv = z.infer<typeof envSchema>
+
+let cachedEnv: AppEnv | null = null
+
+export function getEnv() {
+  cachedEnv ??= envSchema.parse(process.env)
+  return cachedEnv
+}
+
+function loadLocalEnv() {
+  const candidates = [
+    resolve(process.cwd(), ".env"),
+    fileURLToPath(new URL("../../.env", import.meta.url)),
+  ]
+  const loadedPaths = new Set<string>()
+
+  for (const candidate of candidates) {
+    if (loadedPaths.has(candidate) || !existsSync(candidate)) {
+      continue
+    }
+
+    loadedPaths.add(candidate)
+    const contents = readFileSync(candidate, "utf8")
+
+    for (const line of contents.split(/\r?\n/)) {
+      const trimmedLine = line.trim()
+
+      if (!trimmedLine || trimmedLine.startsWith("#")) {
+        continue
+      }
+
+      const separatorIndex = trimmedLine.indexOf("=")
+
+      if (separatorIndex === -1) {
+        continue
+      }
+
+      const key = trimmedLine.slice(0, separatorIndex).trim()
+      const value = normalizeEnvValue(trimmedLine.slice(separatorIndex + 1))
+
+      if (!key || value === "" || process.env[key] !== undefined) {
+        continue
+      }
+
+      process.env[key] = value
+    }
+  }
+}
+
+function normalizeEnvValue(value: string) {
+  const trimmedValue = value.trim()
+  const quote = trimmedValue[0]
+
+  if (
+    (quote === "\"" || quote === "'") &&
+    trimmedValue.endsWith(quote) &&
+    trimmedValue.length >= 2
+  ) {
+    return trimmedValue.slice(1, -1)
+  }
+
+  return trimmedValue
+}

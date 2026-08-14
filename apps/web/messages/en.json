@@ -9,9 +9,13 @@
       "title": "Welcome to GSTFY",
       "stepOneDescription": "Enter your business email or Indian mobile number.",
       "stepTwoDescription": "Confirm your password to continue.",
+      "stepOtpDescription": "Enter the 6-digit OTP sent to your mobile number.",
       "identifierLabel": "Email or phone number",
       "emailPlaceholder": "owner@gstfy.in",
       "phonePlaceholder": "0000000000",
+      "phoneOtpDescription": "We sent an SMS verification code to your registered mobile number.",
+      "otpLabel": "OTP",
+      "otpPlaceholder": "000000",
       "checkingAccount": "Checking account...",
       "continue": "Continue",
       "or": "OR",
@@ -27,7 +31,13 @@
       "registrationSuccessPhone": "Account created successfully. Complete phone verification, then sign in to finish setup.",
       "blockedMessage": "Authentication API is not connected yet. The UI flow is ready.",
       "signingIn": "Signing in...",
+      "verifyingOtp": "Verifying OTP...",
+      "resendingOtp": "Resending OTP...",
       "login": "Login",
+      "verifyOtp": "Verify OTP",
+      "resendOtp": "Resend OTP",
+      "otpSent": "A fresh OTP has been sent to your mobile number.",
+      "backToIdentifier": "Use a different email or phone",
       "useDifferentIdentifier": "Use a different email or phone",
       "sampleHint": "Try `{primaryEmail}`, `{secondaryEmail}`, `{demoEmail}`, `{primaryPhone}`, `{secondaryPhone}`, or `{demoPhone}`.",
       "termsNotice": "By clicking continue, you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.",
@@ -35,8 +45,10 @@
         "identifierRequired": "Enter your email or phone number.",
         "invalidPhone": "Enter a valid 10-digit mobile number.",
         "invalidEmail": "Enter a valid email address.",
+        "invalidOtp": "Enter a valid 6-digit OTP.",
         "accountNotFound": "We couldn't find an account for that email or phone number.",
         "passwordRequired": "Enter your password.",
+        "otpGeneric": "Unable to verify the OTP right now. Please try again.",
         "generic": "Unable to sign in right now. Please try again."
       }
     },
@@ -170,6 +182,8 @@
           "stepTitle": "Account",
           "heading": "Create login credentials",
           "description": "Use your business email or Indian phone number to finish account setup.",
+          "phoneVerificationHeading": "Verify your phone number",
+          "phoneVerificationDescription": "Your workspace is created. Enter the 6-digit OTP sent to your mobile number to finish sign up.",
           "identifierLabel": "Email or phone number",
           "emailPlaceholder": "owner@gstfy.in",
           "phonePlaceholder": "0000000000",
@@ -178,9 +192,18 @@
           "confirmPasswordLabel": "Confirm password",
           "confirmPasswordPlaceholder": "Re-enter your password",
           "passwordHelper": "Use at least 8 characters with one number and one special character.",
+          "phoneOtpDescription": "Check the SMS sent to your registered number and enter the OTP here.",
+          "otpLabel": "OTP",
+          "otpPlaceholder": "000000",
           "cta": "Create account",
           "submitting": "Creating account...",
-          "verificationRequired": "Account created. Verify your email or phone with Supabase to finish setup, then sign in.",
+          "verifyingOtp": "Verifying OTP...",
+          "resendingOtp": "Resending OTP...",
+          "verifyOtp": "Verify OTP",
+          "resendOtp": "Resend OTP",
+          "otpSent": "A fresh OTP has been sent to your mobile number.",
+          "backToCredentials": "Back to account details",
+          "verificationRequired": "Account created. Verify your email or phone to finish setup, then sign in.",
           "blockedMessage": "Registration API is not connected yet. The UI flow is ready.",
           "backToReview": "Back to branch setup"
         }
@@ -250,6 +273,7 @@
         "identifierRequired": "Enter your email or phone number.",
         "invalidPhone": "Enter a valid 10-digit mobile number.",
         "invalidEmail": "Enter a valid email address.",
+        "invalidOtp": "Enter a valid 6-digit OTP.",
         "generic": "Unable to complete registration right now. Please try again.",
         "passwordLength": "Password must be at least 8 characters long.",
         "passwordNumber": "Password must include at least one number.",
@@ -260,8 +284,33 @@
     },
     "forgotPassword": {
       "title": "Forgot password",
-      "description": "This recovery step is UI-only for now. Backend reset wiring can be added later.",
-      "backToLogin": "Back to login"
+      "description": "Enter the email address on your GSTFY account and we will send you a password reset link.",
+      "emailLabel": "Account email",
+      "emailPlaceholder": "owner@gstfy.in",
+      "emailHelper": "Phone-based accounts can still access GSTFY with OTP login.",
+      "cta": "Send reset link",
+      "submitting": "Sending reset link...",
+      "success": "If this email exists in GSTFY, a password reset link has been sent.",
+      "backToLogin": "Back to login",
+      "errors": {
+        "invalidEmail": "Enter a valid email address.",
+        "generic": "Unable to send the reset link right now. Please try again."
+      }
+    },
+    "resetPassword": {
+      "title": "Set a new password",
+      "description": "Choose a new password for your GSTFY account.",
+      "loading": "Validating your recovery link...",
+      "passwordLabel": "New password",
+      "passwordPlaceholder": "Create a new password",
+      "confirmPasswordLabel": "Confirm new password",
+      "confirmPasswordPlaceholder": "Re-enter your new password",
+      "cta": "Update password",
+      "submitting": "Updating password...",
+      "errors": {
+        "invalidLink": "This password reset link is invalid or has expired. Request a new link from Forgot password.",
+        "generic": "Unable to update the password right now. Please try again."
+      }
     }
   }
 }

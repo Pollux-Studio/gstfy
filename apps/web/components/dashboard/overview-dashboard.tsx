@@ -9,7 +9,6 @@ import {
   FileTextIcon,
   Layers3Icon,
   PackageSearchIcon,
-  PlugZapIcon,
   ReceiptTextIcon,
   ShoppingBagIcon,
   ShoppingCartIcon,
@@ -324,77 +323,44 @@ export const OverviewDashboard = memo(function OverviewDashboard() {
         </DashboardCard>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.85fr)]">
-        <DashboardCard className="overflow-hidden">
-          <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <h2 className="text-base font-semibold">Low Stock</h2>
-                <p className="text-sm text-muted-foreground">
-                  Top 10 products that need immediate replenishment.
-                </p>
-              </div>
-              <Badge className="gap-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                <FileWarningIcon className="size-3.5" />
-                10 low-stock items
-              </Badge>
+      <DashboardCard className="overflow-hidden">
+        <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <h2 className="text-base font-semibold">Low Stock</h2>
+              <p className="text-sm text-muted-foreground">
+                Top 10 products that need immediate replenishment.
+              </p>
             </div>
+            <Badge className="gap-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+              <FileWarningIcon className="size-3.5" />
+              10 low-stock items
+            </Badge>
           </div>
-          <div className="app-scrollbar max-h-[332px] overflow-y-auto overflow-x-auto">
-            <Table className="min-w-[620px]">
-              <TableHeader className="sticky top-0 z-10 bg-card">
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>HSN Code</TableHead>
-                  <TableHead>Name of Product</TableHead>
-                  <TableHead className="text-right">Current Stock</TableHead>
+        </div>
+        <div className="app-scrollbar max-h-[332px] overflow-y-auto overflow-x-auto">
+          <Table className="min-w-[620px]">
+            <TableHeader className="sticky top-0 z-10 bg-card">
+              <TableRow className="hover:bg-transparent">
+                <TableHead>HSN Code</TableHead>
+                <TableHead>Name of Product</TableHead>
+                <TableHead className="text-right">Current Stock</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {overviewDashboardData.lowStockItems.map((item) => (
+                <TableRow key={`${item.hsnCode}-${item.productName}`}>
+                  <TableCell className="font-mono">{item.hsnCode}</TableCell>
+                  <TableCell className="font-medium">{item.productName}</TableCell>
+                  <TableCell className="text-right font-mono font-semibold">
+                    {item.currentStock}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {overviewDashboardData.lowStockItems.map((item) => (
-                  <TableRow key={`${item.hsnCode}-${item.productName}`}>
-                    <TableCell className="font-mono">{item.hsnCode}</TableCell>
-                    <TableCell className="font-medium">{item.productName}</TableCell>
-                    <TableCell className="text-right font-mono font-semibold">
-                      {item.currentStock}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </DashboardCard>
-
-        <DashboardCard className="overflow-hidden">
-          <div className="flex h-full flex-col justify-between gap-6 p-4 sm:p-5 lg:p-6">
-            <div className="space-y-4">
-              <Badge variant="outline" className="gap-1.5">
-                <PlugZapIcon className="size-3.5" />
-                Integrations
-              </Badge>
-              <div className="space-y-2">
-                <h2 className="text-base font-semibold">Connect any integration</h2>
-                <p className="text-sm text-muted-foreground">
-                  Bring your commerce, payment, and banking channels into one
-                  GST-ready workspace.
-                </p>
-              </div>
-            </div>
-
-            <div className="relative flex min-h-[180px] items-center justify-center overflow-hidden rounded-2xl border border-dashed border-primary/20 bg-muted/30">
-              <div className="absolute inset-0 bg-radial-[circle_at_center] from-primary/12 via-transparent to-transparent" />
-              <div className="absolute size-28 rounded-full border border-primary/15 bg-primary/5 animate-pulse" />
-              <div className="absolute size-40 rounded-full border border-primary/10" />
-              <div className="relative flex size-16 items-center justify-center rounded-2xl border border-primary/20 bg-background/90 text-primary shadow-sm">
-                <PlugZapIcon className="size-8 animate-pulse" />
-              </div>
-            </div>
-
-            <Button type="button" className="h-10 rounded-xl">
-              Connect Integration
-            </Button>
-          </div>
-        </DashboardCard>
-      </div>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </DashboardCard>
 
       <DashboardCard className="overflow-hidden">
         <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">

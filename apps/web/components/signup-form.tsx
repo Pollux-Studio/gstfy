@@ -22,6 +22,8 @@ import { z } from "zod"
 import {
   type CompleteOnboardingPayload,
   register as registerAccount,
+  sendOtp,
+  verifyOtp,
 } from "@/lib/auth/api"
 import { setStoredAuthSession } from "@/lib/auth/session"
 import { getAllGstStates } from "@/lib/gst-state"
@@ -86,6 +88,8 @@ type AccountFormValues = {
   confirmPassword: string
 }
 
+type AccountStage = "credentials" | "otp"
+
 type FieldErrors<T extends string> = Partial<Record<T, string>>
 type RegistrationLocationStatus = "idle" | "requesting" | "success" | "error"
 
@@ -108,6 +112,11 @@ export function SignupForm({
   const [step, setStep] = useState<RegisterStep>("company")
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [accountStage, setAccountStage] = useState<AccountStage>("credentials")
+  const [otpToken, setOtpToken] = useState("")
+  const [phoneVerificationIdentifier, setPhoneVerificationIdentifier] = useState("")
+  const [phoneVerificationError, setPhoneVerificationError] = useState("")
+  const [phoneVerificationFeedback, setPhoneVerificationFeedback] = useState("")
   const [isRegistrationDatePickerOpen, setIsRegistrationDatePickerOpen] = useState(false)
   const [registrationLocationStatus, setRegistrationLocationStatus] =
     useState<RegistrationLocationStatus>("idle")
@@ -163,6 +172,14 @@ export function SignupForm({
 
   const registerMutation = useMutation({
     mutationFn: registerAccount,
+  })
+
+  const sendOtpMutation = useMutation({
+    mutationFn: sendOtp,
+  })
+
+  const verifyOtpMutation = useMutation({
+    mutationFn: verifyOtp,
   })
 
   const companySchema = useMemo(
@@ -293,6 +310,17 @@ export function SignupForm({
           path: ["confirmPassword"],
           message: t("auth.register.errors.passwordMismatch"),
         }),
+    [t]
+  )
+
+  const otpSchema = useMemo(
+    () =>
+      z.object({
+        token: z
+          .string()
+          .trim()
+          .regex(/^\d{6}$/, t("auth.register.errors.invalidOtp")),
+      }),
     [t]
   )
 
@@ -549,6 +577,11 @@ export function SignupForm({
       return
     }
     setSubmitFeedback(null)
+    setAccountStage("credentials")
+    setPhoneVerificationIdentifier("")
+    setPhoneVerificationError("")
+    setPhoneVerificationFeedback("")
+    setOtpToken("")
     setStep("account")
   }
 
@@ -599,13 +632,28 @@ export function SignupForm({
         identifier: normalizedIdentifier,
         password: account.password,
         emailRedirectTo:
-          typeof window !== "undefined" ? `${window.location.origin}/login` : undefined,
+          typeof window !== "undefined" ?
+            `${window.location.origin}/auth/login`
+          : undefined,
         ...onboardingPayload,
       })
 
       if (!registerResponse.session) {
+        if (phoneMode) {
+          await sendOtpMutation.mutateAsync({
+            identifier: normalizedIdentifier,
+            purpose: "register",
+          })
+          setPhoneVerificationIdentifier(normalizedIdentifier)
+          setPhoneVerificationError("")
+          setPhoneVerificationFeedback(t("auth.register.steps.account.otpSent"))
+          setOtpToken("")
+          setAccountStage("otp")
+          return
+        }
+
         router.push(
-          `/login?registered=1&verification=${phoneMode ? "phone" : "email"}`
+          `/auth/login?registered=1&verification=${phoneMode ? "phone" : "email"}`
         )
         return
       }
@@ -625,9 +673,68 @@ export function SignupForm({
     }
   }
 
+  async function handlePhoneVerificationSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const result = otpSchema.safeParse({ token: otpToken })
+
+    if (!result.success) {
+      const issue = result.error.issues[0]
+      setPhoneVerificationError(issue?.message ?? t("auth.register.errors.invalidOtp"))
+      return
+    }
+
+    setPhoneVerificationError("")
+
+    try {
+      const response = await verifyOtpMutation.mutateAsync({
+        identifier: phoneVerificationIdentifier,
+        token: result.data.token,
+        purpose: "register",
+      })
+
+      setStoredAuthSession({
+        user: response.user,
+        session: response.session,
+      })
+
+      router.push("/dashboard")
+    } catch (error) {
+      setPhoneVerificationError(
+        error instanceof Error ? error.message : t("auth.register.errors.generic")
+      )
+    }
+  }
+
+  async function handleResendPhoneOtp() {
+    setPhoneVerificationError("")
+
+    try {
+      await sendOtpMutation.mutateAsync({
+        identifier: phoneVerificationIdentifier,
+        purpose: "register",
+      })
+      setPhoneVerificationFeedback(t("auth.register.steps.account.otpSent"))
+    } catch (error) {
+      setPhoneVerificationError(
+        error instanceof Error ? error.message : t("auth.register.errors.generic")
+      )
+    }
+  }
+
+  function handleBackToCredentials() {
+    setAccountStage("credentials")
+    setOtpToken("")
+    setPhoneVerificationError("")
+    setPhoneVerificationFeedback("")
+    verifyOtpMutation.reset()
+    sendOtpMutation.reset()
+  }
+
   const stepContentWidth = "max-w-md"
   const shouldCenterStepContent =
-    !compactStepHasErrors && (step === "company" || step === "account")
+    !compactStepHasErrors &&
+    (step === "company" || (step === "account" && accountStage === "credentials"))
 
   return (
     <div
@@ -1225,7 +1332,11 @@ export function SignupForm({
         {step === "account" ? (
           <form
             className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto]"
-            onSubmit={handleAccountSubmit}
+            onSubmit={
+              accountStage === "credentials"
+                ? handleAccountSubmit
+                : handlePhoneVerificationSubmit
+            }
             noValidate
           >
             <div
@@ -1237,172 +1348,266 @@ export function SignupForm({
               <FieldGroup className="w-full gap-4 pb-4">
                 <div className="flex flex-col items-center gap-1 text-center">
                   <h1 className="text-xl font-bold sm:text-2xl">
-                    {t("auth.register.steps.account.heading")}
+                    {accountStage === "credentials"
+                      ? t("auth.register.steps.account.heading")
+                      : t("auth.register.steps.account.phoneVerificationHeading")}
                   </h1>
                   <p className="text-sm text-balance text-muted-foreground">
-                    {t("auth.register.steps.account.description")}
+                    {accountStage === "credentials"
+                      ? t("auth.register.steps.account.description")
+                      : t("auth.register.steps.account.phoneVerificationDescription")}
                   </p>
                 </div>
 
-                <Field>
-                  <RequiredFieldLabel htmlFor="register-identifier">
-                    {t("auth.register.steps.account.identifierLabel")}
-                  </RequiredFieldLabel>
-                  <InputGroup>
-                    {phoneMode ? (
-                      <InputGroupAddon>
-                        <InputGroupText>
-                          <Image
-                            src="/india-flag.png"
-                            alt="India"
-                            width={16}
-                            height={12}
-                            className="h-3 w-4 rounded-[2px] object-cover"
-                          />
-                          <span>+91</span>
-                        </InputGroupText>
-                      </InputGroupAddon>
+                {accountStage === "credentials" ? (
+                  <>
+                    <Field>
+                      <RequiredFieldLabel htmlFor="register-identifier">
+                        {t("auth.register.steps.account.identifierLabel")}
+                      </RequiredFieldLabel>
+                      <InputGroup>
+                        {phoneMode ? (
+                          <InputGroupAddon>
+                            <InputGroupText>
+                              <Image
+                                src="/india-flag.png"
+                                alt="India"
+                                width={16}
+                                height={12}
+                                className="h-3 w-4 rounded-[2px] object-cover"
+                              />
+                              <span>+91</span>
+                            </InputGroupText>
+                          </InputGroupAddon>
+                        ) : null}
+                        <InputGroupInput
+                          id="register-identifier"
+                          type="text"
+                          value={account.identifier}
+                          inputMode={phoneMode ? "numeric" : "email"}
+                          placeholder={
+                            phoneMode
+                              ? t("auth.register.steps.account.phonePlaceholder")
+                              : t("auth.register.steps.account.emailPlaceholder")
+                          }
+                          autoComplete={phoneMode ? "tel-national" : "email"}
+                          onChange={(event) =>
+                            updateAccountValue(
+                              "identifier",
+                              isPhoneMode(event.target.value)
+                                ? normalizePhoneInput(event.target.value)
+                                : event.target.value
+                            )
+                          }
+                        />
+                      </InputGroup>
+                      <FieldError>{accountErrors.identifier}</FieldError>
+                    </Field>
+
+                    <Field>
+                      <RequiredFieldLabel htmlFor="register-password">
+                        {t("auth.register.steps.account.passwordLabel")}
+                      </RequiredFieldLabel>
+                      <InputGroup>
+                        <InputGroupAddon>
+                          <LockKeyholeIcon className="size-4" />
+                        </InputGroupAddon>
+                        <InputGroupInput
+                          id="register-password"
+                          type={showPassword ? "text" : "password"}
+                          placeholder={t("auth.register.steps.account.passwordPlaceholder")}
+                          autoComplete="new-password"
+                          value={account.password}
+                          onChange={(event) => updateAccountValue("password", event.target.value)}
+                        />
+                        <InputGroupAddon align="inline-end">
+                          <InputGroupButton
+                            aria-label={
+                              showPassword
+                                ? t("auth.login.hidePassword")
+                                : t("auth.login.showPassword")
+                            }
+                            onClick={() => setShowPassword((currentValue) => !currentValue)}
+                          >
+                            {showPassword ? (
+                              <EyeOffIcon className="size-4" />
+                            ) : (
+                              <EyeIcon className="size-4" />
+                            )}
+                          </InputGroupButton>
+                        </InputGroupAddon>
+                      </InputGroup>
+                      <FieldError>{accountErrors.password}</FieldError>
+                    </Field>
+
+                    <Field>
+                      <RequiredFieldLabel htmlFor="register-confirm-password">
+                        {t("auth.register.steps.account.confirmPasswordLabel")}
+                      </RequiredFieldLabel>
+                      <InputGroup>
+                        <InputGroupAddon>
+                          <LockKeyholeIcon className="size-4" />
+                        </InputGroupAddon>
+                        <InputGroupInput
+                          id="register-confirm-password"
+                          type={showConfirmPassword ? "text" : "password"}
+                          placeholder={t(
+                            "auth.register.steps.account.confirmPasswordPlaceholder"
+                          )}
+                          autoComplete="new-password"
+                          value={account.confirmPassword}
+                          onChange={(event) =>
+                            updateAccountValue("confirmPassword", event.target.value)
+                          }
+                        />
+                        <InputGroupAddon align="inline-end">
+                          <InputGroupButton
+                            aria-label={
+                              showConfirmPassword
+                                ? t("auth.login.hidePassword")
+                                : t("auth.login.showPassword")
+                            }
+                            onClick={() =>
+                              setShowConfirmPassword((currentValue) => !currentValue)
+                            }
+                          >
+                            {showConfirmPassword ? (
+                              <EyeOffIcon className="size-4" />
+                            ) : (
+                              <EyeIcon className="size-4" />
+                            )}
+                          </InputGroupButton>
+                        </InputGroupAddon>
+                      </InputGroup>
+                      <FieldError>{accountErrors.confirmPassword}</FieldError>
+                      <FieldDescription>
+                        {t("auth.register.steps.account.passwordHelper")}
+                      </FieldDescription>
+                    </Field>
+
+                    {submitFeedback ? (
+                      <FieldDescription
+                        className={cn(
+                          submitFeedback.type === "error" && "text-destructive"
+                        )}
+                      >
+                        {submitFeedback.message}
+                      </FieldDescription>
                     ) : null}
-                    <InputGroupInput
-                      id="register-identifier"
-                      type="text"
-                      value={account.identifier}
-                      inputMode={phoneMode ? "numeric" : "email"}
-                      placeholder={
-                        phoneMode
-                          ? t("auth.register.steps.account.phonePlaceholder")
-                          : t("auth.register.steps.account.emailPlaceholder")
-                      }
-                      autoComplete="email"
-                      onChange={(event) =>
-                        updateAccountValue(
-                          "identifier",
-                          isPhoneMode(event.target.value)
-                            ? normalizePhoneInput(event.target.value)
-                            : event.target.value
-                        )
-                      }
-                    />
-                  </InputGroup>
-                  <FieldError>{accountErrors.identifier}</FieldError>
-                </Field>
 
-                <Field>
-                  <RequiredFieldLabel htmlFor="register-password">
-                    {t("auth.register.steps.account.passwordLabel")}
-                  </RequiredFieldLabel>
-                  <InputGroup>
-                    <InputGroupAddon>
-                      <LockKeyholeIcon className="size-4" />
-                    </InputGroupAddon>
-                    <InputGroupInput
-                      id="register-password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder={t("auth.register.steps.account.passwordPlaceholder")}
-                      autoComplete="new-password"
-                      value={account.password}
-                      onChange={(event) => updateAccountValue("password", event.target.value)}
-                    />
-                    <InputGroupAddon align="inline-end">
-                      <InputGroupButton
-                        aria-label={
-                          showPassword
-                            ? t("auth.login.hidePassword")
-                            : t("auth.login.showPassword")
-                        }
-                        onClick={() => setShowPassword((currentValue) => !currentValue)}
+                    <FieldDescription className="px-6 text-center">
+                      {t("auth.register.backToLoginText.before")}{" "}
+                      <Link
+                        href="/auth/login"
+                        className="underline underline-offset-4 hover:text-foreground"
                       >
-                        {showPassword ? (
-                          <EyeOffIcon className="size-4" />
-                        ) : (
-                          <EyeIcon className="size-4" />
-                        )}
-                      </InputGroupButton>
-                    </InputGroupAddon>
-                  </InputGroup>
-                  <FieldError>{accountErrors.password}</FieldError>
-                </Field>
-
-                <Field>
-                  <RequiredFieldLabel htmlFor="register-confirm-password">
-                    {t("auth.register.steps.account.confirmPasswordLabel")}
-                  </RequiredFieldLabel>
-                  <InputGroup>
-                    <InputGroupAddon>
-                      <LockKeyholeIcon className="size-4" />
-                    </InputGroupAddon>
-                    <InputGroupInput
-                      id="register-confirm-password"
-                      type={showConfirmPassword ? "text" : "password"}
-                      placeholder={t(
-                        "auth.register.steps.account.confirmPasswordPlaceholder"
-                      )}
-                      autoComplete="new-password"
-                      value={account.confirmPassword}
-                      onChange={(event) =>
-                        updateAccountValue("confirmPassword", event.target.value)
-                      }
-                    />
-                    <InputGroupAddon align="inline-end">
-                      <InputGroupButton
-                        aria-label={
-                          showConfirmPassword
-                            ? t("auth.login.hidePassword")
-                            : t("auth.login.showPassword")
-                        }
-                        onClick={() =>
-                          setShowConfirmPassword((currentValue) => !currentValue)
-                        }
-                      >
-                        {showConfirmPassword ? (
-                          <EyeOffIcon className="size-4" />
-                        ) : (
-                          <EyeIcon className="size-4" />
-                        )}
-                      </InputGroupButton>
-                    </InputGroupAddon>
-                  </InputGroup>
-                  <FieldError>{accountErrors.confirmPassword}</FieldError>
-                  <FieldDescription>
-                    {t("auth.register.steps.account.passwordHelper")}
-                  </FieldDescription>
-                </Field>
-
-                {submitFeedback ? (
-                  <FieldDescription
-                    className={cn(
-                      submitFeedback.type === "error" && "text-destructive"
-                    )}
-                  >
-                    {submitFeedback.message}
-                  </FieldDescription>
-                ) : null}
-
-                <FieldDescription className="px-6 text-center">
-                  {t("auth.register.backToLoginText.before")}{" "}
-                  <Link
-                    href="/login"
-                    className="underline underline-offset-4 hover:text-foreground"
-                  >
-                    {t("auth.register.backToLoginText.link")}
-                  </Link>
-                </FieldDescription>
+                        {t("auth.register.backToLoginText.link")}
+                      </Link>
+                    </FieldDescription>
+                  </>
+                ) : (
+                  <>
+                    <Field>
+                      <FieldLabel htmlFor="register-phone-otp">
+                        {t("auth.register.steps.account.otpLabel")}
+                      </FieldLabel>
+                      <InputGroup>
+                        <InputGroupAddon>
+                          <InputGroupText>
+                            <Image
+                              src="/india-flag.png"
+                              alt="India"
+                              width={16}
+                              height={12}
+                              className="h-3 w-4 rounded-[2px] object-cover"
+                            />
+                            <span>+91</span>
+                          </InputGroupText>
+                        </InputGroupAddon>
+                        <InputGroupInput
+                          id="register-phone-otp"
+                          type="text"
+                          value={otpToken}
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          placeholder={t("auth.register.steps.account.otpPlaceholder")}
+                          className="font-mono tracking-[0.3em]"
+                          onChange={(event) => {
+                            setOtpToken(event.target.value.replace(/\D/g, "").slice(0, 6))
+                            if (phoneVerificationError) {
+                              setPhoneVerificationError("")
+                            }
+                            if (phoneVerificationFeedback) {
+                              setPhoneVerificationFeedback("")
+                            }
+                          }}
+                        />
+                      </InputGroup>
+                      <FieldDescription>
+                        {t("auth.register.steps.account.phoneOtpDescription")}
+                      </FieldDescription>
+                      {phoneVerificationError ? (
+                        <FieldError>{phoneVerificationError}</FieldError>
+                      ) : null}
+                      {phoneVerificationFeedback ? (
+                        <FieldDescription className="text-emerald-600 dark:text-emerald-400">
+                          {phoneVerificationFeedback}
+                        </FieldDescription>
+                      ) : null}
+                    </Field>
+                  </>
+                )}
               </FieldGroup>
             </div>
             <div className="flex flex-col gap-3 border-t bg-background pt-3">
-              <Button
-                type="submit"
-                disabled={registerMutation.isPending}
-                className="w-full"
-              >
-                {registerMutation.isPending
-                  ? t("auth.register.steps.account.submitting")
-                  : t("auth.register.steps.account.cta")}
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => setStep("registration")}>
-                <ArrowLeftIcon className="size-4" />
-                {t("auth.register.actions.backToRegistration")}
-              </Button>
+              {accountStage === "credentials" ? (
+                <>
+                  <Button
+                    type="submit"
+                    disabled={registerMutation.isPending}
+                    className="w-full"
+                  >
+                    {registerMutation.isPending
+                      ? t("auth.register.steps.account.submitting")
+                      : t("auth.register.steps.account.cta")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setStep("registration")}
+                  >
+                    <ArrowLeftIcon className="size-4" />
+                    {t("auth.register.actions.backToRegistration")}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    type="submit"
+                    disabled={verifyOtpMutation.isPending}
+                    className="w-full"
+                  >
+                    {verifyOtpMutation.isPending
+                      ? t("auth.register.steps.account.verifyingOtp")
+                      : t("auth.register.steps.account.verifyOtp")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    disabled={sendOtpMutation.isPending}
+                    onClick={handleResendPhoneOtp}
+                  >
+                    {sendOtpMutation.isPending
+                      ? t("auth.register.steps.account.resendingOtp")
+                      : t("auth.register.steps.account.resendOtp")}
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={handleBackToCredentials}>
+                    <ArrowLeftIcon className="size-4" />
+                    {t("auth.register.steps.account.backToCredentials")}
+                  </Button>
+                </>
+              )}
             </div>
           </form>
         ) : null}

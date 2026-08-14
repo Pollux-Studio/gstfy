@@ -25,8 +25,6 @@ const featureCategories: SidebarFeatureCategory[] = [
     title: "Sales",
     items: [
       { module: "invoices", title: "Invoices", url: "#" },
-      { module: "einvoice", title: "E-Invoice", url: "#" },
-      { module: "ewaybill", title: "E-Way Bill", url: "#" },
       { module: "pos", title: "POS", url: "#" },
     ],
   },
@@ -39,10 +37,7 @@ const featureCategories: SidebarFeatureCategory[] = [
   },
   {
     title: "Compliance",
-    items: [
-      { module: "gstr", title: "GST Returns", url: "#" },
-      { module: "aireview", title: "AI Review", url: "#" },
-    ],
+    items: [{ module: "gstr", title: "GST Returns", url: "#" }],
   },
   {
     title: "Inventory",

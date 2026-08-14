@@ -1,0 +1,788 @@
+import argon2 from "argon2"
+import { and, eq, gt, isNull } from "drizzle-orm"
+import { SignJWT } from "jose"
+
+import { getEnv } from "../../config/env.js"
+import { db } from "../../db/client.js"
+import {
+  businessMembers,
+  businessProfiles,
+  businesses,
+  caPracticeMembers,
+  caPractices,
+  emailVerificationTokens,
+  passwordResetTokens,
+  sessions,
+  users,
+  type BusinessRecord,
+  type UserRecord,
+} from "../../db/schema/index.js"
+import { createUrlToken, sha256 } from "../../utils/crypto.js"
+import { HttpError } from "../../utils/http-error.js"
+import { createTenantSlug } from "../../utils/tenant-slug.js"
+import { verifyFirebaseIdToken } from "../firebase/firebase-admin.js"
+import { MailService } from "../mail/mail.service.js"
+import type {
+  BusinessRegisterInput,
+  CaRegisterInput,
+  ForgotPasswordInput,
+  IdentifierLoginInput,
+  LoginInput,
+  LookupIdentifierInput,
+  PhoneTokenVerifyInput,
+  ResetPasswordInput,
+  VerifyEmailInput,
+  WorkspaceRegisterInput,
+} from "./auth.schemas.js"
+
+type RequestContext = {
+  userAgent?: string
+  ipAddress?: string
+}
+
+type AuthSessionPayload = {
+  user: PublicUser
+  accessToken: string
+  accessTokenExpiresIn: number
+  refreshToken: string
+  redirectTo: string
+}
+
+type PublicUser = {
+  id: string
+  email: string | null
+  phoneE164: string | null
+  fullName: string | null
+  emailVerified: boolean
+  phoneVerified: boolean
+}
+
+const refreshCookieName = "gstfy_refresh"
+const accessTokenEncoder = new TextEncoder()
+
+export class AuthService {
+  private readonly env = getEnv()
+  private readonly mailService = new MailService()
+
+  getRefreshCookieName() {
+    return refreshCookieName
+  }
+
+  async lookupIdentifier(input: LookupIdentifierInput) {
+    const identifier = input.identifier.trim()
+    const user = isPhoneIdentifier(identifier)
+      ? await db.query.users.findFirst({
+          where: eq(users.phoneE164, toIndianE164(identifier)),
+        })
+      : await db.query.users.findFirst({
+          where: eq(users.email, normalizeEmail(identifier)),
+        })
+
+    if (!user || user.status !== "active") {
+      throw new HttpError(404, "Account not found.")
+    }
+
+    const business = await this.findPrimaryBusiness(user.id)
+
+    if (!business) {
+      throw new HttpError(404, "Business account not found.")
+    }
+
+    return {
+      account: {
+        id: user.id,
+        displayName: business.tradeName || user.fullName || user.email || user.phoneE164,
+        gstin: null,
+        email: user.email,
+        phone: user.phoneE164,
+      },
+    }
+  }
+
+  async registerBusiness(input: BusinessRegisterInput, context: RequestContext) {
+    const email = normalizeEmail(input.email)
+    const passwordHash = await argon2.hash(input.password, {
+      type: argon2.argon2id,
+    })
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        const [user] = await tx
+          .insert(users)
+          .values({
+            email,
+            passwordHash,
+            fullName: input.fullName.trim(),
+          })
+          .returning()
+
+        if (!user) {
+          throw new HttpError(500, "Unable to create user.")
+        }
+
+        const tenantSlug = await this.createUniqueTenantSlug(
+          input.company.tradeName,
+          async (slug) => {
+            const existing = await tx.query.businesses.findFirst({
+              where: eq(businesses.tenantSlug, slug),
+            })
+            return Boolean(existing)
+          }
+        )
+
+        const [business] = await tx
+          .insert(businesses)
+          .values({
+            tenantSlug,
+            legalName: input.company.legalName.trim(),
+            tradeName: input.company.tradeName.trim(),
+            pan: input.company.pan.trim().toUpperCase(),
+            constitution: input.company.constitution.trim(),
+            createdBy: user.id,
+          })
+          .returning()
+
+        if (!business) {
+          throw new HttpError(500, "Unable to create business.")
+        }
+
+        await tx.insert(businessMembers).values({
+          businessId: business.id,
+          userId: user.id,
+          role: "owner",
+          status: "active",
+        })
+
+        return {
+          user,
+          business,
+        }
+      })
+
+      await this.sendEmailVerification(result.user)
+
+      return this.createAuthSession({
+        user: result.user,
+        redirectTo: this.getBusinessRedirect(result.business),
+        context,
+      })
+    } catch (error) {
+      throw mapDatabaseError(error)
+    }
+  }
+
+  async registerWorkspace(input: WorkspaceRegisterInput) {
+    const identifier = input.identifier.trim()
+    const phoneRegistration = isPhoneIdentifier(identifier)
+    const email = phoneRegistration ? null : normalizeEmail(identifier)
+    const phoneE164 = phoneRegistration ? toIndianE164(identifier) : null
+    const passwordHash = await argon2.hash(input.password, {
+      type: argon2.argon2id,
+    })
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        const [user] = await tx
+          .insert(users)
+          .values({
+            email,
+            phoneE164,
+            passwordHash,
+            fullName: input.company.primaryContactName.trim(),
+          })
+          .returning()
+
+        if (!user) {
+          throw new HttpError(500, "Unable to create user.")
+        }
+
+        const tenantSlug = await this.createUniqueTenantSlug(
+          input.company.tradeName,
+          async (slug) => {
+            const existing = await tx.query.businesses.findFirst({
+              where: eq(businesses.tenantSlug, slug),
+            })
+            return Boolean(existing)
+          }
+        )
+
+        const [business] = await tx
+          .insert(businesses)
+          .values({
+            tenantSlug,
+            legalName: input.company.legalName.trim(),
+            tradeName: input.company.tradeName.trim(),
+            pan: input.company.pan.trim().toUpperCase(),
+            constitution: input.company.constitution.trim(),
+            createdBy: user.id,
+          })
+          .returning()
+
+        if (!business) {
+          throw new HttpError(500, "Unable to create business.")
+        }
+
+        await tx.insert(businessMembers).values({
+          businessId: business.id,
+          userId: user.id,
+          role: "owner",
+          status: "active",
+        })
+
+        await tx.insert(businessProfiles).values({
+          businessId: business.id,
+          gstin: input.registration.gstin.trim().toUpperCase(),
+          businessEmail: input.company.businessEmail?.trim() || null,
+          businessMobile: input.company.businessMobile?.trim() || null,
+          primaryContactName: input.company.primaryContactName.trim(),
+          primaryContactEmail: input.company.primaryContactEmail.trim().toLowerCase(),
+          primaryContactMobile: input.company.primaryContactMobile.trim(),
+          addressLine1: input.registration.principalAddressLine1.trim(),
+          addressLine2: input.registration.principalAddressLine2?.trim() || null,
+          locality: input.registration.locality.trim(),
+          district: input.registration.district.trim(),
+          pincode: input.registration.pincode.trim(),
+          stateCode: input.registration.stateCode.trim(),
+        })
+
+        return {
+          user,
+        }
+      })
+
+      if (result.user.email) {
+        await this.sendEmailVerification(result.user)
+      }
+
+      return {
+        user: {
+          id: result.user.id,
+          email: result.user.email,
+          phone: result.user.phoneE164,
+        },
+        session: null,
+        requiresVerification: true,
+        onboardingStatus: "pending",
+      }
+    } catch (error) {
+      throw mapDatabaseError(error)
+    }
+  }
+
+  async registerCa(input: CaRegisterInput, context: RequestContext) {
+    const email = normalizeEmail(input.email)
+    const passwordHash = await argon2.hash(input.password, {
+      type: argon2.argon2id,
+    })
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        const [user] = await tx
+          .insert(users)
+          .values({
+            email,
+            passwordHash,
+            fullName: input.fullName.trim(),
+          })
+          .returning()
+
+        if (!user) {
+          throw new HttpError(500, "Unable to create user.")
+        }
+
+        const [practice] = await tx
+          .insert(caPractices)
+          .values({
+            ownerUserId: user.id,
+            practiceName: input.practiceName.trim(),
+            contactEmail: email,
+          })
+          .returning()
+
+        if (!practice) {
+          throw new HttpError(500, "Unable to create CA practice.")
+        }
+
+        await tx.insert(caPracticeMembers).values({
+          practiceId: practice.id,
+          userId: user.id,
+          role: "owner",
+          status: "active",
+        })
+
+        return {
+          user,
+          practice,
+        }
+      })
+
+      await this.sendEmailVerification(result.user)
+
+      return this.createAuthSession({
+        user: result.user,
+        redirectTo: "/ca",
+        context,
+      })
+    } catch (error) {
+      throw mapDatabaseError(error)
+    }
+  }
+
+  async loginBusiness(input: LoginInput, context: RequestContext) {
+    const user = await this.verifyPasswordLogin(input)
+    const business = await this.findPrimaryBusiness(user.id)
+
+    if (!business) {
+      throw new HttpError(404, "Business account not found.")
+    }
+
+    await this.markLastLogin(user.id)
+
+    return this.createAuthSession({
+      user,
+      redirectTo: this.getBusinessRedirect(business),
+      context,
+    })
+  }
+
+  async loginBusinessWithIdentifier(
+    input: IdentifierLoginInput,
+    context: RequestContext
+  ) {
+    if (isPhoneIdentifier(input.identifier)) {
+      throw new HttpError(400, "Use OTP login for phone number accounts.")
+    }
+
+    return this.loginBusiness(
+      {
+        email: normalizeEmail(input.identifier),
+        password: input.password,
+      },
+      context
+    )
+  }
+
+  async loginCa(input: LoginInput, context: RequestContext) {
+    const user = await this.verifyPasswordLogin(input)
+    const practice = await this.findPrimaryCaPractice(user.id)
+
+    if (!practice) {
+      throw new HttpError(404, "CA account not found.")
+    }
+
+    await this.markLastLogin(user.id)
+
+    return this.createAuthSession({
+      user,
+      redirectTo: "/ca",
+      context,
+    })
+  }
+
+  async verifyPhoneToken(input: PhoneTokenVerifyInput, context: RequestContext) {
+    const decodedToken = await verifyFirebaseIdToken(input.idToken)
+    const phoneE164 = normalizeE164Phone(decodedToken.phone_number)
+
+    const user = await db.query.users.findFirst({
+      where: eq(users.phoneE164, phoneE164),
+    })
+
+    if (!user || user.status !== "active") {
+      throw new HttpError(404, "Phone account not found.")
+    }
+
+    const business = await this.findPrimaryBusiness(user.id)
+
+    if (!business) {
+      throw new HttpError(404, "Business account not found.")
+    }
+
+    await db
+      .update(users)
+      .set({
+        phoneVerifiedAt: user.phoneVerifiedAt ?? new Date(),
+        lastLoginAt: new Date(),
+      })
+      .where(eq(users.id, user.id))
+
+    return this.createAuthSession({
+      user: {
+        ...user,
+        phoneVerifiedAt: user.phoneVerifiedAt ?? new Date(),
+        lastLoginAt: new Date(),
+      },
+      redirectTo: this.getBusinessRedirect(business),
+      context,
+    })
+  }
+
+  async getSession(refreshToken: string | undefined) {
+    if (!refreshToken) {
+      throw new HttpError(401, "Not authenticated.")
+    }
+
+    const tokenHash = sha256(refreshToken)
+    const session = await db.query.sessions.findFirst({
+      where: and(
+        eq(sessions.refreshTokenHash, tokenHash),
+        isNull(sessions.revokedAt),
+        gt(sessions.expiresAt, new Date())
+      ),
+    })
+
+    if (!session) {
+      throw new HttpError(401, "Session expired.")
+    }
+
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, session.userId),
+    })
+
+    if (!user || user.status !== "active") {
+      throw new HttpError(401, "Session expired.")
+    }
+
+    const accessToken = await this.createAccessToken(user)
+
+    return {
+      user: toPublicUser(user),
+      accessToken,
+      accessTokenExpiresIn: this.env.JWT_ACCESS_TTL_SECONDS,
+    }
+  }
+
+  async logout(refreshToken: string | undefined) {
+    if (!refreshToken) {
+      return
+    }
+
+    await db
+      .update(sessions)
+      .set({
+        revokedAt: new Date(),
+      })
+      .where(eq(sessions.refreshTokenHash, sha256(refreshToken)))
+  }
+
+  async forgotPassword(input: ForgotPasswordInput) {
+    const user = await db.query.users.findFirst({
+      where: eq(users.email, normalizeEmail(input.email)),
+    })
+
+    if (!user) {
+      return
+    }
+
+    const token = createUrlToken()
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60)
+
+    await db.insert(passwordResetTokens).values({
+      userId: user.id,
+      tokenHash: sha256(token),
+      expiresAt,
+    })
+
+    const resetUrl = `${this.env.WEB_ORIGIN}/auth/reset-password?token=${encodeURIComponent(token)}`
+    await this.mailService.sendMail({
+      to: input.email,
+      subject: "Reset your GSTFY password",
+      text: `Use this link to reset your GSTFY password: ${resetUrl}`,
+    })
+  }
+
+  async resetPassword(input: ResetPasswordInput) {
+    const tokenHash = sha256(input.token)
+    const resetToken = await db.query.passwordResetTokens.findFirst({
+      where: and(
+        eq(passwordResetTokens.tokenHash, tokenHash),
+        isNull(passwordResetTokens.consumedAt),
+        gt(passwordResetTokens.expiresAt, new Date())
+      ),
+    })
+
+    if (!resetToken) {
+      throw new HttpError(400, "Password reset link is invalid or expired.")
+    }
+
+    const passwordHash = await argon2.hash(input.password, {
+      type: argon2.argon2id,
+    })
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({
+          passwordHash,
+        })
+        .where(eq(users.id, resetToken.userId))
+
+      await tx
+        .update(passwordResetTokens)
+        .set({
+          consumedAt: new Date(),
+        })
+        .where(eq(passwordResetTokens.id, resetToken.id))
+    })
+  }
+
+  async verifyEmail(input: VerifyEmailInput) {
+    const tokenHash = sha256(input.token)
+    const verificationToken = await db.query.emailVerificationTokens.findFirst({
+      where: and(
+        eq(emailVerificationTokens.tokenHash, tokenHash),
+        isNull(emailVerificationTokens.consumedAt),
+        gt(emailVerificationTokens.expiresAt, new Date())
+      ),
+    })
+
+    if (!verificationToken) {
+      throw new HttpError(400, "Email verification link is invalid or expired.")
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({
+          emailVerifiedAt: new Date(),
+        })
+        .where(eq(users.id, verificationToken.userId))
+
+      await tx
+        .update(emailVerificationTokens)
+        .set({
+          consumedAt: new Date(),
+        })
+        .where(eq(emailVerificationTokens.id, verificationToken.id))
+    })
+  }
+
+  private async verifyPasswordLogin(input: LoginInput) {
+    const email = normalizeEmail(input.email)
+    const user = await db.query.users.findFirst({
+      where: eq(users.email, email),
+    })
+
+    if (!user || user.status !== "active" || !user.passwordHash) {
+      throw new HttpError(401, "Invalid email or password.")
+    }
+
+    const isPasswordValid = await argon2.verify(user.passwordHash, input.password)
+
+    if (!isPasswordValid) {
+      throw new HttpError(401, "Invalid email or password.")
+    }
+
+    return user
+  }
+
+  private async createAuthSession(input: {
+    user: UserRecord
+    redirectTo: string
+    context: RequestContext
+  }): Promise<AuthSessionPayload> {
+    const refreshToken = createUrlToken(48)
+    const refreshTokenHash = sha256(refreshToken)
+    const expiresAt = new Date(
+      Date.now() + this.env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000
+    )
+    const [session] = await db
+      .insert(sessions)
+      .values({
+        userId: input.user.id,
+        refreshTokenHash,
+        expiresAt,
+        userAgent: input.context.userAgent,
+        ipAddress: input.context.ipAddress,
+      })
+      .returning()
+
+    if (!session) {
+      throw new HttpError(500, "Unable to create session.")
+    }
+
+    return {
+      user: toPublicUser(input.user),
+      accessToken: await this.createAccessToken(input.user),
+      accessTokenExpiresIn: this.env.JWT_ACCESS_TTL_SECONDS,
+      refreshToken,
+      redirectTo: input.redirectTo,
+    }
+  }
+
+  private createAccessToken(user: UserRecord) {
+    return new SignJWT({
+      email: user.email,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setSubject(user.id)
+      .setIssuedAt()
+      .setExpirationTime(`${this.env.JWT_ACCESS_TTL_SECONDS}s`)
+      .sign(accessTokenEncoder.encode(this.env.JWT_ACCESS_SECRET))
+  }
+
+  private async sendEmailVerification(user: UserRecord) {
+    if (!user.email) {
+      return
+    }
+
+    const token = createUrlToken()
+    await db.insert(emailVerificationTokens).values({
+      userId: user.id,
+      tokenHash: sha256(token),
+      email: user.email,
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
+    })
+
+    const verifyUrl = `${this.env.WEB_ORIGIN}/auth/verify-email?token=${encodeURIComponent(token)}`
+    await this.mailService.sendMail({
+      to: user.email,
+      subject: "Verify your GSTFY email",
+      text: `Use this link to verify your GSTFY email: ${verifyUrl}`,
+    })
+  }
+
+  private findPrimaryBusiness(userId: string) {
+    return db
+      .select({
+        id: businesses.id,
+        tenantSlug: businesses.tenantSlug,
+        legalName: businesses.legalName,
+        tradeName: businesses.tradeName,
+        pan: businesses.pan,
+        constitution: businesses.constitution,
+        status: businesses.status,
+        createdBy: businesses.createdBy,
+        createdAt: businesses.createdAt,
+        updatedAt: businesses.updatedAt,
+      })
+      .from(businessMembers)
+      .innerJoin(businesses, eq(businesses.id, businessMembers.businessId))
+      .where(
+        and(
+          eq(businessMembers.userId, userId),
+          eq(businessMembers.status, "active")
+        )
+      )
+      .limit(1)
+      .then((items) => items[0] ?? null)
+  }
+
+  private findPrimaryCaPractice(userId: string) {
+    return db
+      .select({
+        id: caPractices.id,
+        ownerUserId: caPractices.ownerUserId,
+        practiceName: caPractices.practiceName,
+        status: caPractices.status,
+        contactEmail: caPractices.contactEmail,
+        contactPhoneE164: caPractices.contactPhoneE164,
+        createdAt: caPractices.createdAt,
+        updatedAt: caPractices.updatedAt,
+      })
+      .from(caPracticeMembers)
+      .innerJoin(caPractices, eq(caPractices.id, caPracticeMembers.practiceId))
+      .where(
+        and(
+          eq(caPracticeMembers.userId, userId),
+          eq(caPracticeMembers.status, "active")
+        )
+      )
+      .limit(1)
+      .then((items) => items[0] ?? null)
+  }
+
+  private async markLastLogin(userId: string) {
+    await db
+      .update(users)
+      .set({
+        lastLoginAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+  }
+
+  private getBusinessRedirect(business: Pick<BusinessRecord, "tenantSlug">) {
+    const baseDomain = this.env.APP_BASE_DOMAIN.replace(/^https?:\/\//, "")
+
+    if (baseDomain.startsWith("localhost")) {
+      return "/dashboard"
+    }
+
+    return `https://${business.tenantSlug}.${baseDomain}/dashboard`
+  }
+
+  private async createUniqueTenantSlug(
+    tradeName: string,
+    exists: (slug: string) => Promise<boolean>
+  ) {
+    const baseSlug = createTenantSlug(tradeName)
+    let slug = baseSlug
+    let suffix = 2
+
+    while (await exists(slug)) {
+      slug = `${baseSlug}-${suffix}`
+      suffix += 1
+    }
+
+    return slug
+  }
+}
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase()
+}
+
+function isPhoneIdentifier(identifier: string) {
+  return /^[+\d\s()-]+$/.test(identifier.trim())
+}
+
+function toIndianE164(identifier: string) {
+  let digits = identifier.replace(/\D/g, "")
+
+  if (digits.startsWith("91") && digits.length > 10) {
+    digits = digits.slice(2)
+  }
+
+  digits = digits.slice(0, 10)
+
+  if (!/^[6-9]\d{9}$/.test(digits)) {
+    throw new HttpError(400, "Enter a valid 10-digit Indian mobile number.")
+  }
+
+  return `+91${digits}`
+}
+
+function normalizeE164Phone(phoneNumber: string | undefined) {
+  if (!phoneNumber || !/^\+[1-9]\d{7,14}$/.test(phoneNumber)) {
+    throw new HttpError(400, "Firebase token does not contain a valid phone number.")
+  }
+
+  return phoneNumber
+}
+
+function toPublicUser(user: UserRecord): PublicUser {
+  return {
+    id: user.id,
+    email: user.email,
+    phoneE164: user.phoneE164,
+    fullName: user.fullName,
+    emailVerified: Boolean(user.emailVerifiedAt),
+    phoneVerified: Boolean(user.phoneVerifiedAt),
+  }
+}
+
+function mapDatabaseError(error: unknown): unknown {
+  if (error instanceof HttpError) {
+    return error
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === "23505"
+  ) {
+    return new HttpError(409, "An account with these details already exists.")
+  }
+
+  return error
+}

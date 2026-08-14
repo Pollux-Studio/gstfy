@@ -1,3 +1,5 @@
+import { expireAuthSessionAndRedirectToLogin } from "@/lib/auth/session"
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -34,6 +36,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}) 
   const payload = await parseResponse(response)
 
   if (!response.ok) {
+    if (response.status === 401 && accessToken) {
+      expireAuthSessionAndRedirectToLogin()
+    }
+
     throw new ApiError(extractErrorMessage(payload), response.status, payload)
   }
 

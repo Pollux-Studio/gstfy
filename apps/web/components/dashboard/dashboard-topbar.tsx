@@ -1,12 +1,15 @@
 "use client"
 
 import Image from "next/image"
+import { useQuery } from "@tanstack/react-query"
 import { memo, useState } from "react"
 import { SearchIcon } from "lucide-react"
 
 import { DashboardCommandMenu } from "@/components/dashboard/dashboard-command-menu"
 import { LocaleSwitcher } from "@/components/locale-switcher"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { getCurrentUser } from "@/lib/auth/api"
+import { getStoredAuthSession } from "@/lib/auth/session"
 import { Button } from "@/components/ui/button"
 import { SidebarInput, SidebarTrigger } from "@/components/ui/sidebar"
 import {
@@ -14,12 +17,20 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { overviewDashboardData } from "@/lib/dashboard/mock-overview"
 import { getGstStateMeta } from "@/lib/gst-state"
 
 export const DashboardTopbar = memo(function DashboardTopbar() {
-  const stateMeta = getGstStateMeta(overviewDashboardData.business.gstin)
   const [isCommandOpen, setIsCommandOpen] = useState(false)
+  const storedSession = getStoredAuthSession()
+  const accessToken = storedSession?.session.accessToken ?? ""
+  const { data: currentUser } = useQuery({
+    queryKey: ["auth", "current-user"],
+    queryFn: () => getCurrentUser(accessToken),
+    enabled: accessToken.length > 0,
+    staleTime: 1000 * 60 * 5,
+  })
+  const activeGstin = currentUser?.memberships[0]?.gstin ?? null
+  const stateMeta = activeGstin ? getGstStateMeta(activeGstin) : null
 
   return (
     <>
@@ -81,7 +92,7 @@ export const DashboardTopbar = memo(function DashboardTopbar() {
                 <div className="space-y-0.5">
                   <p className="text-xs font-medium">{stateMeta.name}</p>
                   <p className="font-mono text-[11px] text-muted-foreground">
-                    {overviewDashboardData.business.gstin}
+                    {activeGstin}
                   </p>
                 </div>
               </TooltipContent>

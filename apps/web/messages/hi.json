@@ -9,9 +9,13 @@
       "title": "GSTFY में आपका स्वागत है",
       "stepOneDescription": "अपना व्यावसायिक ईमेल या भारतीय मोबाइल नंबर दर्ज करें।",
       "stepTwoDescription": "जारी रखने के लिए अपना पासवर्ड पुष्टि करें।",
+      "stepOtpDescription": "अपने मोबाइल नंबर पर भेजा गया 6 अंकों का OTP दर्ज करें।",
       "identifierLabel": "ईमेल या फोन नंबर",
       "emailPlaceholder": "owner@gstfy.in",
       "phonePlaceholder": "0000000000",
+      "phoneOtpDescription": "हमने आपके पंजीकृत मोबाइल नंबर पर SMS OTP भेजा है।",
+      "otpLabel": "OTP",
+      "otpPlaceholder": "000000",
       "checkingAccount": "खाता जाँचा जा रहा है...",
       "continue": "जारी रखें",
       "or": "या",
@@ -27,7 +31,13 @@
       "registrationSuccessPhone": "अकाउंट सफलतापूर्वक बन गया। फोन सत्यापन पूरा करें, फिर सेटअप पूरा करने के लिए साइन इन करें।",
       "blockedMessage": "Authentication API अभी कनेक्ट नहीं है। UI फ्लो तैयार है।",
       "signingIn": "साइन इन हो रहा है...",
+      "verifyingOtp": "OTP सत्यापित किया जा रहा है...",
+      "resendingOtp": "OTP दोबारा भेजा जा रहा है...",
       "login": "लॉग इन",
+      "verifyOtp": "OTP सत्यापित करें",
+      "resendOtp": "OTP फिर भेजें",
+      "otpSent": "आपके मोबाइल नंबर पर नया OTP भेज दिया गया है।",
+      "backToIdentifier": "कोई दूसरा ईमेल या फोन नंबर इस्तेमाल करें",
       "useDifferentIdentifier": "कोई दूसरा ईमेल या फोन नंबर इस्तेमाल करें",
       "sampleHint": "`{primaryEmail}`, `{secondaryEmail}`, `{demoEmail}`, `{primaryPhone}`, `{secondaryPhone}`, या `{demoPhone}` आज़माएं।",
       "termsNotice": "जारी रखकर, आप हमारी <terms>सेवा की शर्तों</terms> और <privacy>गोपनीयता नीति</privacy> से सहमत होते हैं।",
@@ -35,8 +45,10 @@
         "identifierRequired": "अपना ईमेल या फोन नंबर दर्ज करें।",
         "invalidPhone": "सही 10 अंकों वाला मोबाइल नंबर दर्ज करें।",
         "invalidEmail": "सही ईमेल पता दर्ज करें।",
+        "invalidOtp": "सही 6 अंकों वाला OTP दर्ज करें।",
         "accountNotFound": "उस ईमेल या फोन नंबर के लिए कोई खाता नहीं मिला।",
         "passwordRequired": "अपना पासवर्ड दर्ज करें।",
+        "otpGeneric": "अभी OTP सत्यापित नहीं हो सका। कृपया फिर से प्रयास करें।",
         "generic": "अभी साइन इन नहीं हो सका। कृपया फिर से प्रयास करें।"
       }
     },
@@ -170,6 +182,8 @@
           "stepTitle": "अकाउंट",
           "heading": "लॉगिन क्रेडेंशियल बनाएं",
           "description": "अकाउंट सेटअप पूरा करने के लिए अपना व्यावसायिक ईमेल या भारतीय फोन नंबर उपयोग करें।",
+          "phoneVerificationHeading": "अपना फोन नंबर सत्यापित करें",
+          "phoneVerificationDescription": "आपका workspace बन गया है। साइन अप पूरा करने के लिए मोबाइल पर भेजा गया 6 अंकों का OTP दर्ज करें।",
           "identifierLabel": "ईमेल या फोन नंबर",
           "emailPlaceholder": "owner@gstfy.in",
           "phonePlaceholder": "0000000000",
@@ -178,9 +192,18 @@
           "confirmPasswordLabel": "पासवर्ड की पुष्टि करें",
           "confirmPasswordPlaceholder": "पासवर्ड दोबारा दर्ज करें",
           "passwordHelper": "कम से कम 8 अक्षर, एक संख्या और एक विशेष अक्षर का उपयोग करें।",
+          "phoneOtpDescription": "अपने पंजीकृत मोबाइल नंबर पर आए SMS से OTP यहाँ दर्ज करें।",
+          "otpLabel": "OTP",
+          "otpPlaceholder": "000000",
           "cta": "अकाउंट बनाएं",
           "submitting": "अकाउंट बनाया जा रहा है...",
-          "verificationRequired": "अकाउंट बन गया है। सेटअप पूरा करने के लिए Supabase में अपना ईमेल या फोन सत्यापित करें, फिर साइन इन करें।",
+          "verifyingOtp": "OTP सत्यापित किया जा रहा है...",
+          "resendingOtp": "OTP दोबारा भेजा जा रहा है...",
+          "verifyOtp": "OTP सत्यापित करें",
+          "resendOtp": "OTP फिर भेजें",
+          "otpSent": "आपके मोबाइल नंबर पर नया OTP भेज दिया गया है।",
+          "backToCredentials": "अकाउंट विवरण पर वापस जाएं",
+          "verificationRequired": "अकाउंट बन गया है। सेटअप पूरा करने के लिए अपना ईमेल या फोन सत्यापित करें, फिर साइन इन करें।",
           "blockedMessage": "रजिस्ट्रेशन API अभी कनेक्ट नहीं है। UI फ्लो तैयार है।",
           "backToReview": "Branch setup पर वापस जाएं"
         }
@@ -250,6 +273,7 @@
         "identifierRequired": "अपना ईमेल या फोन नंबर दर्ज करें।",
         "invalidPhone": "सही 10 अंकों वाला मोबाइल नंबर दर्ज करें।",
         "invalidEmail": "सही ईमेल पता दर्ज करें।",
+        "invalidOtp": "सही 6 अंकों वाला OTP दर्ज करें।",
         "generic": "अभी रजिस्ट्रेशन पूरा नहीं हो सका। कृपया फिर से प्रयास करें।",
         "passwordLength": "पासवर्ड कम से कम 8 अक्षरों का होना चाहिए।",
         "passwordNumber": "पासवर्ड में कम से कम एक संख्या होनी चाहिए।",
@@ -260,8 +284,33 @@
     },
     "forgotPassword": {
       "title": "पासवर्ड भूल गए",
-      "description": "यह रिकवरी चरण अभी केवल UI है। बाद में backend reset wiring जोड़ी जा सकती है।",
-      "backToLogin": "लॉगिन पर वापस जाएं"
+      "description": "अपने GSTFY खाते की ईमेल आईडी दर्ज करें और हम आपको पासवर्ड रीसेट लिंक भेजेंगे।",
+      "emailLabel": "अकाउंट ईमेल",
+      "emailPlaceholder": "owner@gstfy.in",
+      "emailHelper": "फोन आधारित अकाउंट अभी भी OTP लॉगिन से GSTFY में प्रवेश कर सकते हैं।",
+      "cta": "रीसेट लिंक भेजें",
+      "submitting": "रीसेट लिंक भेजा जा रहा है...",
+      "success": "यदि यह ईमेल GSTFY में मौजूद है, तो पासवर्ड रीसेट लिंक भेज दिया गया है।",
+      "backToLogin": "लॉगिन पर वापस जाएं",
+      "errors": {
+        "invalidEmail": "सही ईमेल पता दर्ज करें।",
+        "generic": "अभी रीसेट लिंक नहीं भेजा जा सका। कृपया फिर से प्रयास करें।"
+      }
+    },
+    "resetPassword": {
+      "title": "नया पासवर्ड सेट करें",
+      "description": "अपने GSTFY खाते के लिए नया पासवर्ड चुनें।",
+      "loading": "आपका रिकवरी लिंक सत्यापित किया जा रहा है...",
+      "passwordLabel": "नया पासवर्ड",
+      "passwordPlaceholder": "नया पासवर्ड बनाएं",
+      "confirmPasswordLabel": "नया पासवर्ड पुष्टि करें",
+      "confirmPasswordPlaceholder": "नया पासवर्ड फिर से दर्ज करें",
+      "cta": "पासवर्ड अपडेट करें",
+      "submitting": "पासवर्ड अपडेट हो रहा है...",
+      "errors": {
+        "invalidLink": "यह पासवर्ड रीसेट लिंक अमान्य है या समाप्त हो चुका है। Forgot password से नया लिंक मांगें।",
+        "generic": "अभी पासवर्ड अपडेट नहीं हो सका। कृपया फिर से प्रयास करें।"
+      }
     }
   }
 }

@@ -1,159 +1,162 @@
-# Turborepo starter
+# Gstfy
 
-This Turborepo starter is maintained by the Turborepo core team.
+Gstfy is a GST compliance and business operations SaaS for Indian small and micro businesses. The product focus is simple GST billing, filing summaries, business operations, and role-based team access.
 
-## Using this example
+This repository is a Turborepo monorepo with the web app and the custom backend service.
 
-Run the following command:
+## Apps
 
-```sh
-npx create-turbo@latest
+- `apps/web` - Next.js web app.
+- `apps/backend` - Fastify + PostgreSQL backend.
+
+## Packages
+
+- `packages/ui` - shared UI package.
+- `packages/core` - shared business constants and feature access helpers.
+- `packages/eslint-config` - shared ESLint config.
+- `packages/typescript-config` - shared TypeScript config.
+
+## Requirements
+
+- Node.js 18 or newer.
+- pnpm 9.
+- PostgreSQL running locally or reachable through `DATABASE_URL`.
+
+## Install
+
+```bash
+pnpm install
 ```
 
-## What's inside?
+## Environment
 
-This Turborepo includes the following packages/apps:
+Backend defaults are defined in `apps/backend/.env.example`.
 
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+```bash
+cp apps/backend/.env.example apps/backend/.env
 ```
 
-Without global `turbo`, use your package manager:
+The default local database URL is:
 
-```sh
-cd my-turborepo
-npx turbo build
-pnpm dlx turbo build
-pnpm exec turbo build
+```env
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/gstfy
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+The web app reads the backend URL from:
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo build --filter=docs
+```env
+NEXT_PUBLIC_API_URL=http://localhost:4000
 ```
 
-Without global `turbo`:
+Phone OTP uses Firebase Authentication. The web app needs the public Firebase web app config:
 
-```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+```env
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_APP_ID=
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+NEXT_PUBLIC_FIREBASE_DISABLE_APP_VERIFICATION=false
 ```
 
-### Develop
+The backend verifies Firebase phone sign-in ID tokens with Firebase Admin. Use either service account env values:
 
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
+```env
+FIREBASE_PROJECT_ID=
+FIREBASE_CLIENT_EMAIL=
+FIREBASE_PRIVATE_KEY=
 ```
 
-Without global `turbo`, use your package manager:
+Or set `GOOGLE_APPLICATION_CREDENTIALS` to a local service-account JSON file path. If `FIREBASE_PRIVATE_KEY` is stored in `.env`, keep newlines escaped as `\n`.
 
-```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
+## Database
+
+Create the local database once:
+
+```bash
+createdb gstfy
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+Migrations run automatically when `apps/backend` starts. Migration files live in `apps/backend/drizzle` and applied migrations are recorded in `public.gstfy_migrations`.
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+Disable automatic migrations only when an external deployment pipeline manages them:
 
-```sh
-turbo dev --filter=web
+```env
+AUTO_RUN_MIGRATIONS=false
 ```
 
-Without global `turbo`:
+## Development
 
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
+Run all apps:
+
+```bash
+pnpm dev
 ```
 
-### Remote Caching
+Run only the backend:
 
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
+```bash
+pnpm --filter @gstfy/backend dev
 ```
 
-Without global `turbo`, use your package manager:
+Run only the web app:
 
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
+```bash
+pnpm --filter web dev
 ```
 
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
+## Validation
 
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
+Run all configured checks:
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
+```bash
+pnpm lint
+pnpm check-types
+pnpm build
 ```
 
-Without global `turbo`:
+Run backend checks:
 
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
+```bash
+pnpm --filter @gstfy/backend lint
+pnpm --filter @gstfy/backend check-types
+pnpm --filter @gstfy/backend build
 ```
 
-## Useful Links
+Run web checks:
 
-Learn more about the power of Turborepo:
+```bash
+pnpm --filter web lint
+pnpm --filter web build
+```
 
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+## Backend Endpoints
+
+- `GET /health`
+- `GET /health/db`
+- `POST /auth/business/register`
+- `POST /auth/business/login`
+- `POST /auth/ca/register`
+- `POST /auth/ca/login`
+- `GET /auth/session`
+- `POST /auth/logout`
+- `POST /auth/password/forgot`
+- `POST /auth/password/reset`
+- `POST /auth/email/verify`
+- `GET /account`
+- `PATCH /account`
+- `GET /settings`
+- `PATCH /settings/business`
+- `PATCH /settings/invoice`
+- `PATCH /settings/gst-rates`
+- `PATCH /settings/printer`
+- `GET /users`
+- `POST /users`
+- `PATCH /users/:memberId`
+- `DELETE /users/:memberId`
+
+## Notes
+
+- The frontend uses `NEXT_PUBLIC_API_URL`; keep it pointed to the running `apps/backend` service.
+- Backend secrets must stay in backend env files only. Do not expose secrets through `NEXT_PUBLIC_*`.
+- Add shadcn components from the shared UI package, not directly inside `apps/web`.
