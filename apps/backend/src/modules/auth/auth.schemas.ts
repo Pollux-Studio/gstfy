@@ -24,6 +24,7 @@ export const businessRegisterSchema = z.object({
 export const workspaceRegisterSchema = z.object({
   identifier: z.string().trim().min(1),
   password: passwordSchema,
+  caReferralCode: z.string().trim().min(1).max(40),
   company: z.object({
     legalName: z.string().trim().min(2).max(180),
     tradeName: z.string().trim().min(2).max(180),

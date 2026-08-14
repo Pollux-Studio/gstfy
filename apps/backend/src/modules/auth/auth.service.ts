@@ -8,6 +8,8 @@ import {
   businessMembers,
   businessProfiles,
   businesses,
+  caBusinessLinks,
+  caClientInvites,
   caPracticeMembers,
   caPractices,
   emailVerificationTokens,
@@ -18,6 +20,7 @@ import {
   type UserRecord,
 } from "../../db/schema/index.js"
 import { createUrlToken, sha256 } from "../../utils/crypto.js"
+import { createProfileImage } from "../../utils/avatar.js"
 import { HttpError } from "../../utils/http-error.js"
 import { createTenantSlug } from "../../utils/tenant-slug.js"
 import { verifyFirebaseIdToken } from "../firebase/firebase-admin.js"
@@ -53,6 +56,8 @@ type PublicUser = {
   email: string | null
   phoneE164: string | null
   fullName: string | null
+  profileImageSeed: string | null
+  profileImageStyle: string
   emailVerified: boolean
   phoneVerified: boolean
 }
@@ -82,7 +87,7 @@ export class AuthService {
       throw new HttpError(404, "Account not found.")
     }
 
-    const business = await this.findPrimaryBusiness(user.id)
+    const business = await this.findPrimaryBusinessAccount(user.id)
 
     if (!business) {
       throw new HttpError(404, "Business account not found.")
@@ -92,10 +97,58 @@ export class AuthService {
       account: {
         id: user.id,
         displayName: business.tradeName || user.fullName || user.email || user.phoneE164,
-        gstin: null,
+        gstin: business.gstin,
         email: user.email,
         phone: user.phoneE164,
       },
+    }
+  }
+
+  async getCurrentUser(user: UserRecord) {
+    const memberships = await db
+      .select({
+        businessId: businesses.id,
+        businessName: businesses.tradeName,
+        role: businessMembers.role,
+        status: businessMembers.status,
+        gstin: businessProfiles.gstin,
+        registrationDate: businessProfiles.registrationDate,
+      })
+      .from(businessMembers)
+      .innerJoin(businesses, eq(businesses.id, businessMembers.businessId))
+      .leftJoin(businessProfiles, eq(businessProfiles.businessId, businesses.id))
+      .where(eq(businessMembers.userId, user.id))
+
+    return {
+      auth: {
+        userId: user.id,
+        email: user.email,
+        phone: user.phoneE164,
+        role: "authenticated",
+        aal: "aal1",
+      },
+      profile: {
+        id: user.id,
+        email: user.email,
+        phone_e164: user.phoneE164,
+        display_name: user.fullName,
+        profile_image_seed: user.profileImageSeed,
+        profile_image_style: user.profileImageStyle,
+        locale: user.locale,
+        onboarding_status:
+          memberships.some((membership) => membership.status === "active") ?
+            "completed"
+          : "pending",
+        last_login_at: user.lastLoginAt,
+      },
+      memberships: memberships.map((membership) => ({
+        business_id: membership.businessId,
+        business_name: membership.businessName,
+        role: membership.role,
+        status: membership.status,
+        gstin: membership.gstin,
+        registration_date: membership.registrationDate,
+      })),
     }
   }
 
@@ -113,6 +166,7 @@ export class AuthService {
             email,
             passwordHash,
             fullName: input.fullName.trim(),
+            ...createProfileImage(),
           })
           .returning()
 
@@ -176,6 +230,12 @@ export class AuthService {
     const phoneRegistration = isPhoneIdentifier(identifier)
     const email = phoneRegistration ? null : normalizeEmail(identifier)
     const phoneE164 = phoneRegistration ? toIndianE164(identifier) : null
+    const referralCode = normalizeReferralCode(input.caReferralCode)
+
+    if (!referralCode) {
+      throw new HttpError(400, "CA referral code is required.")
+    }
+
     const passwordHash = await argon2.hash(input.password, {
       type: argon2.argon2id,
     })
@@ -189,6 +249,7 @@ export class AuthService {
             phoneE164,
             passwordHash,
             fullName: input.company.primaryContactName.trim(),
+            ...createProfileImage(),
           })
           .returning()
 
@@ -229,24 +290,87 @@ export class AuthService {
           status: "active",
         })
 
-        await tx.insert(businessProfiles).values({
-          businessId: business.id,
-          gstin: input.registration.gstin.trim().toUpperCase(),
-          businessEmail: input.company.businessEmail?.trim() || null,
-          businessMobile: input.company.businessMobile?.trim() || null,
-          primaryContactName: input.company.primaryContactName.trim(),
-          primaryContactEmail: input.company.primaryContactEmail.trim().toLowerCase(),
-          primaryContactMobile: input.company.primaryContactMobile.trim(),
-          addressLine1: input.registration.principalAddressLine1.trim(),
-          addressLine2: input.registration.principalAddressLine2?.trim() || null,
-          locality: input.registration.locality.trim(),
-          district: input.registration.district.trim(),
-          pincode: input.registration.pincode.trim(),
-          stateCode: input.registration.stateCode.trim(),
+        const [businessProfile] = await tx
+          .insert(businessProfiles)
+          .values({
+            businessId: business.id,
+            gstin: input.registration.gstin.trim().toUpperCase(),
+            businessEmail: input.company.businessEmail?.trim() || null,
+            businessMobile: input.company.businessMobile?.trim() || null,
+            primaryContactName: input.company.primaryContactName.trim(),
+            primaryContactEmail: input.company.primaryContactEmail.trim().toLowerCase(),
+            primaryContactMobile: input.company.primaryContactMobile.trim(),
+            taxpayerType: input.registration.taxpayerType.trim(),
+            registrationDate: input.registration.registrationDate.trim(),
+            addressLine1: input.registration.principalAddressLine1.trim(),
+            addressLine2: input.registration.principalAddressLine2?.trim() || null,
+            locality: input.registration.locality.trim(),
+            district: input.registration.district.trim(),
+            pincode: input.registration.pincode.trim(),
+            stateCode: input.registration.stateCode.trim(),
+            possessionType: input.registration.possessionType.trim(),
+            locationSource: input.registration.locationSource ?? "manual",
+          })
+          .returning()
+
+        if (!businessProfile) {
+          throw new HttpError(500, "Unable to create business profile.")
+        }
+
+        const acceptedAt = new Date()
+        const invite = await tx.query.caClientInvites.findFirst({
+          where: and(
+            eq(caClientInvites.referralCode, referralCode),
+            eq(caClientInvites.status, "pending"),
+            gt(caClientInvites.expiresAt, acceptedAt)
+          ),
         })
+
+        if (!invite) {
+          throw new HttpError(400, "CA referral code is invalid or expired.")
+        }
+
+        if (
+          invite.clientGstin &&
+          invite.clientGstin.trim().toUpperCase() !==
+            input.registration.gstin.trim().toUpperCase()
+        ) {
+          throw new HttpError(400, "This referral code is assigned to a different GSTIN.")
+        }
+
+        await tx
+          .insert(caBusinessLinks)
+          .values({
+            practiceId: invite.practiceId,
+            businessId: business.id,
+            accessScope: "gst_read_write",
+            status: "active",
+            acceptedAt,
+          })
+          .onConflictDoUpdate({
+            target: [caBusinessLinks.practiceId, caBusinessLinks.businessId],
+            set: {
+              accessScope: "gst_read_write",
+              status: "active",
+              acceptedAt,
+              updatedAt: acceptedAt,
+            },
+          })
+
+        await tx
+          .update(caClientInvites)
+          .set({
+            status: "accepted",
+            acceptedBusinessId: business.id,
+            acceptedAt,
+            updatedAt: acceptedAt,
+          })
+          .where(eq(caClientInvites.id, invite.id))
 
         return {
           user,
+          business,
+          businessProfile,
         }
       })
 
@@ -259,10 +383,38 @@ export class AuthService {
           id: result.user.id,
           email: result.user.email,
           phone: result.user.phoneE164,
+          profileImageSeed: result.user.profileImageSeed,
+          profileImageStyle: result.user.profileImageStyle,
         },
         session: null,
         requiresVerification: true,
         onboardingStatus: "pending",
+        business: {
+          id: result.business.id,
+          legalName: result.business.legalName,
+          tradeName: result.business.tradeName,
+          pan: result.business.pan,
+          constitution: result.business.constitution,
+          businessEmail: result.businessProfile.businessEmail,
+          businessMobile: result.businessProfile.businessMobile,
+          primaryContactName: result.businessProfile.primaryContactName,
+          primaryContactMobile: result.businessProfile.primaryContactMobile,
+          primaryContactEmail: result.businessProfile.primaryContactEmail,
+        },
+        registration: {
+          id: result.businessProfile.businessId,
+          gstin: result.businessProfile.gstin,
+          taxpayerType: result.businessProfile.taxpayerType,
+          registrationDate: result.businessProfile.registrationDate,
+          principalAddressLine1: result.businessProfile.addressLine1,
+          principalAddressLine2: result.businessProfile.addressLine2,
+          locality: result.businessProfile.locality,
+          district: result.businessProfile.district,
+          pincode: result.businessProfile.pincode,
+          stateCode: result.businessProfile.stateCode,
+          possessionType: result.businessProfile.possessionType,
+          locationSource: result.businessProfile.locationSource,
+        },
       }
     } catch (error) {
       throw mapDatabaseError(error)
@@ -283,6 +435,7 @@ export class AuthService {
             email,
             passwordHash,
             fullName: input.fullName.trim(),
+            ...createProfileImage(),
           })
           .returning()
 
@@ -556,6 +709,23 @@ export class AuthService {
     })
   }
 
+  async regenerateProfileImage(user: UserRecord) {
+    const avatar = createProfileImage()
+    const [updatedUser] = await db
+      .update(users)
+      .set({
+        ...avatar,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, user.id))
+      .returning()
+
+    return updatedUser ?? {
+      ...user,
+      ...avatar,
+    }
+  }
+
   private async verifyPasswordLogin(input: LoginInput) {
     const email = normalizeEmail(input.email)
     const user = await db.query.users.findFirst({
@@ -667,6 +837,34 @@ export class AuthService {
       .then((items) => items[0] ?? null)
   }
 
+  private findPrimaryBusinessAccount(userId: string) {
+    return db
+      .select({
+        id: businesses.id,
+        tenantSlug: businesses.tenantSlug,
+        legalName: businesses.legalName,
+        tradeName: businesses.tradeName,
+        pan: businesses.pan,
+        constitution: businesses.constitution,
+        status: businesses.status,
+        createdBy: businesses.createdBy,
+        createdAt: businesses.createdAt,
+        updatedAt: businesses.updatedAt,
+        gstin: businessProfiles.gstin,
+      })
+      .from(businessMembers)
+      .innerJoin(businesses, eq(businesses.id, businessMembers.businessId))
+      .leftJoin(businessProfiles, eq(businessProfiles.businessId, businesses.id))
+      .where(
+        and(
+          eq(businessMembers.userId, userId),
+          eq(businessMembers.status, "active")
+        )
+      )
+      .limit(1)
+      .then((items) => items[0] ?? null)
+  }
+
   private findPrimaryCaPractice(userId: string) {
     return db
       .select({
@@ -731,6 +929,10 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
 }
 
+function normalizeReferralCode(value: string) {
+  return value.trim().toUpperCase()
+}
+
 function isPhoneIdentifier(identifier: string) {
   return /^[+\d\s()-]+$/.test(identifier.trim())
 }
@@ -765,6 +967,8 @@ function toPublicUser(user: UserRecord): PublicUser {
     email: user.email,
     phoneE164: user.phoneE164,
     fullName: user.fullName,
+    profileImageSeed: user.profileImageSeed,
+    profileImageStyle: user.profileImageStyle,
     emailVerified: Boolean(user.emailVerifiedAt),
     phoneVerified: Boolean(user.phoneVerifiedAt),
   }

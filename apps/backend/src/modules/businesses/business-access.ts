@@ -7,12 +7,14 @@ import {
   businesses,
   type BusinessMemberRecord,
   type BusinessRecord,
+  type UserRecord,
 } from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
 import { requireAuthenticatedUser } from "../auth/auth.guard.js"
 
 type BusinessAccess = {
   userId: string
+  user: UserRecord
   business: BusinessRecord
   membership: BusinessMemberRecord
 }
@@ -39,6 +41,7 @@ export async function requirePrimaryBusinessAccess(
 
   return {
     userId: user.id,
+    user,
     business: record.business,
     membership: record.membership,
   }

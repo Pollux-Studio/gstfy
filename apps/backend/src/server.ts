@@ -4,12 +4,26 @@ import { closeDatabase } from "./db/client.js"
 import { runPendingMigrations } from "./db/migrations.js"
 
 const env = getEnv()
+const app = await buildApp()
+
+app.log.info(
+  {
+    autoRunMigrations: env.AUTO_RUN_MIGRATIONS,
+    nodeEnv: env.NODE_ENV,
+  },
+  "backend startup configuration loaded"
+)
 
 if (env.AUTO_RUN_MIGRATIONS) {
-  await runPendingMigrations()
+  await runPendingMigrations(app.log)
+} else {
+  app.log.warn(
+    {
+      autoRunMigrations: env.AUTO_RUN_MIGRATIONS,
+    },
+    "automatic migrations disabled"
+  )
 }
-
-const app = await buildApp()
 
 const shutdown = async () => {
   await app.close()

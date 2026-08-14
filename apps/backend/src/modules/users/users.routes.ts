@@ -9,6 +9,7 @@ import {
   users,
 } from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
+import { createProfileImage } from "../../utils/avatar.js"
 import {
   assertCanManageBusiness,
   requirePrimaryBusinessAccess,
@@ -228,6 +229,7 @@ async function findOrCreateUser(email: string, fullName: string) {
       email,
       fullName,
       status: "active",
+      ...createProfileImage(),
     })
     .returning()
 

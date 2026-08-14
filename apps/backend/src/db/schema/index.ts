@@ -22,6 +22,8 @@ export const users = pgTable(
     phoneE164: text("phone_e164"),
     passwordHash: text("password_hash"),
     fullName: text("full_name"),
+    profileImageSeed: text("profile_image_seed"),
+    profileImageStyle: text("profile_image_style").notNull().default("glyphs"),
     locale: text("locale").notNull().default("en"),
     status: text("status").notNull().default("active"),
     emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
@@ -88,12 +90,16 @@ export const businessProfiles = pgTable("business_profiles", {
   primaryContactName: text("primary_contact_name"),
   primaryContactEmail: text("primary_contact_email"),
   primaryContactMobile: text("primary_contact_mobile"),
+  taxpayerType: text("taxpayer_type"),
+  registrationDate: text("registration_date"),
   addressLine1: text("address_line_1"),
   addressLine2: text("address_line_2"),
   locality: text("locality"),
   district: text("district"),
   pincode: text("pincode"),
   stateCode: text("state_code"),
+  possessionType: text("possession_type"),
+  locationSource: text("location_source").notNull().default("manual"),
   ...timestamps,
 })
 
@@ -104,10 +110,12 @@ export const businessPreferences = pgTable("business_preferences", {
   invoiceTemplate: text("invoice_template").notNull().default("standard"),
   invoicePrefix: text("invoice_prefix").notNull().default("INV"),
   invoiceNextNumber: integer("invoice_next_number").notNull().default(1),
-  cgstRateBps: integer("cgst_rate_bps").notNull().default(900),
-  sgstRateBps: integer("sgst_rate_bps").notNull().default(900),
+  enabledGstSlabs: text("enabled_gst_slabs").notNull().default("5,12,18,28"),
   printerPaperSize: text("printer_paper_size").notNull().default("a4"),
   printerCopies: integer("printer_copies").notNull().default(1),
+  printOrientation: text("print_orientation").notNull().default("portrait"),
+  autoOpenPrintDialog: boolean("auto_open_print_dialog").notNull().default(true),
+  compactPrintLayout: boolean("compact_print_layout").notNull().default(false),
   ...timestamps,
 })
 
@@ -171,6 +179,57 @@ export const caPracticeMembers = pgTable(
       table.practiceId,
       table.userId
     ),
+  })
+)
+
+export const caClientInvites = pgTable(
+  "ca_client_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    practiceId: uuid("practice_id")
+      .notNull()
+      .references(() => caPractices.id, { onDelete: "cascade" }),
+    clientName: text("client_name").notNull(),
+    clientEmail: text("client_email"),
+    clientGstin: text("client_gstin"),
+    referralCode: text("referral_code").notNull(),
+    status: text("status").notNull().default("pending"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedBusinessId: uuid("accepted_business_id").references(() => businesses.id, {
+      onDelete: "set null",
+    }),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => ({
+    practiceIndex: index("ca_client_invites_practice_id_idx").on(table.practiceId),
+    referralCodeUnique: uniqueIndex("ca_client_invites_referral_code_unique").on(
+      table.referralCode
+    ),
+  })
+)
+
+export const caBusinessLinks = pgTable(
+  "ca_business_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    practiceId: uuid("practice_id")
+      .notNull()
+      .references(() => caPractices.id, { onDelete: "cascade" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    accessScope: text("access_scope").notNull().default("gst_read_write"),
+    status: text("status").notNull().default("active"),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }).notNull().defaultNow(),
+    ...timestamps,
+  },
+  (table) => ({
+    practiceBusinessUnique: uniqueIndex(
+      "ca_business_links_practice_business_unique"
+    ).on(table.practiceId, table.businessId),
+    practiceIndex: index("ca_business_links_practice_id_idx").on(table.practiceId),
+    businessIndex: index("ca_business_links_business_id_idx").on(table.businessId),
   })
 )
 
@@ -239,3 +298,5 @@ export type UserRecord = typeof users.$inferSelect
 export type BusinessRecord = typeof businesses.$inferSelect
 export type CaPracticeRecord = typeof caPractices.$inferSelect
 export type BusinessMemberRecord = typeof businessMembers.$inferSelect
+export type CaBusinessLinkRecord = typeof caBusinessLinks.$inferSelect
+export type CaClientInviteRecord = typeof caClientInvites.$inferSelect

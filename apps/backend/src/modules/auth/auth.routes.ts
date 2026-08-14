@@ -1,8 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify"
-import { ZodError } from "zod"
 
 import { getEnv } from "../../config/env.js"
-import { isHttpError } from "../../utils/http-error.js"
 import {
   businessRegisterSchema,
   caRegisterSchema,
@@ -15,6 +13,7 @@ import {
   verifyEmailSchema,
   workspaceRegisterSchema,
 } from "./auth.schemas.js"
+import { requireAuthenticatedUser } from "./auth.guard.js"
 import { AuthService } from "./auth.service.js"
 
 const authService = new AuthService()
@@ -75,6 +74,11 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     return stripRefreshToken(session)
   })
 
+  app.get("/auth/me", async (request) => {
+    const user = await requireAuthenticatedUser(request)
+    return authService.getCurrentUser(user)
+  })
+
   app.get("/auth/session", async (request) => {
     const refreshToken = request.cookies[authService.getRefreshCookieName()]
     return authService.getSession(refreshToken)
@@ -113,26 +117,6 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     }
   })
 
-  app.setErrorHandler((error, _request, reply) => {
-    if (isHttpError(error)) {
-      void reply.status(error.statusCode).send({
-        message: error.message,
-      })
-      return
-    }
-
-    if (error instanceof ZodError) {
-      void reply.status(400).send({
-        message: "Invalid request payload.",
-        issues: error.issues,
-      })
-      return
-    }
-
-    void reply.status(500).send({
-      message: "Something went wrong. Please try again.",
-    })
-  })
 }
 
 function setRefreshCookie(reply: FastifyReply, refreshToken: string) {

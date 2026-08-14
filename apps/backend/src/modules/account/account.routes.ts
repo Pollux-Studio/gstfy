@@ -9,8 +9,10 @@ import { updateAccountSchema } from "./account.schemas.js"
 export async function registerAccountRoutes(app: FastifyInstance) {
   app.get("/account", async (request) => {
     const user = await requireAuthenticatedUser(request)
+    const account = toAccountResponse(user)
     return {
-      account: toAccountResponse(user),
+      account,
+      user: account,
     }
   })
 
@@ -26,6 +28,7 @@ export async function registerAccountRoutes(app: FastifyInstance) {
 
     return {
       account: toAccountResponse(updatedUser ?? user),
+      user: toAccountResponse(updatedUser ?? user),
     }
   })
 }
@@ -36,6 +39,9 @@ function toAccountResponse(user: typeof users.$inferSelect) {
     email: user.email,
     phoneE164: user.phoneE164,
     fullName: user.fullName,
+    displayName: user.fullName,
+    profileImageSeed: user.profileImageSeed,
+    profileImageStyle: user.profileImageStyle,
     locale: user.locale,
     emailVerified: Boolean(user.emailVerifiedAt),
     phoneVerified: Boolean(user.phoneVerifiedAt),
