@@ -33,14 +33,25 @@ export type CaClientInviteRecord = {
   createdAt: string
 }
 
+export type CaInviteEmailDelivery = {
+  attempted: boolean
+  sent: boolean
+  skipped: boolean
+  recipient: string | null
+  reason: string | null
+}
+
+export type CaCreatedInvite = {
+  referralCode: string
+  inviteUrl: string
+  emailDelivery: CaInviteEmailDelivery
+}
+
 export type CaDashboardResponse = {
   practice: CaPracticeRecord
   clients: CaClientRecord[]
   invites: CaClientInviteRecord[]
-  createdInvite?: {
-    referralCode: string
-    inviteUrl: string
-  }
+  createdInvite?: CaCreatedInvite
 }
 
 type RawCaClientRecord = Omit<CaClientRecord, "businessId"> & {
@@ -125,6 +136,35 @@ export function revokeCaClient(businessId: string, accessToken: string) {
     method: "POST",
     accessToken,
   }).then(normalizeCaDashboardResponse)
+}
+
+export function getCaInviteCreationToast(invite?: CaCreatedInvite) {
+  const delivery = invite?.emailDelivery
+
+  if (!delivery?.attempted) {
+    return {
+      type: "success" as const,
+      title: "Referral code generated.",
+    }
+  }
+
+  if (delivery.sent) {
+    return {
+      type: "success" as const,
+      title: `Invite email sent to ${delivery.recipient}.`,
+    }
+  }
+
+  return {
+    type: "warning" as const,
+    title:
+      delivery.skipped ?
+        "Referral code generated, but email was skipped."
+      : "Referral code generated, but email could not be sent.",
+    description:
+      delivery.reason ??
+      "Copy the referral code or invite link and share it manually.",
+  }
 }
 
 function normalizeCaDashboardResponse(response: RawCaDashboardResponse): CaDashboardResponse {

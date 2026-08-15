@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { REGEXP_ONLY_DIGITS } from "input-otp"
@@ -45,25 +46,24 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { toast } from "@/components/ui/toast"
 import { getProfileAvatarUrl } from "@/lib/avatar"
 import {
+  changeAccountPassword,
+  getAccountSettings,
+  regenerateAccountProfileImage,
+  updateAccountSettings,
+  verifyAccountPhone,
+} from "@/lib/account/api"
+import {
   confirmFirebasePhoneOtp,
   sendFirebasePhoneOtp,
 } from "@/lib/auth/firebase-phone"
 import { getStoredAuthSession, setStoredAuthSession } from "@/lib/auth/session"
 import { supportedLanguages, type LanguageCode } from "@/lib/i18n/languages"
-import {
-  changeUserPassword,
-  getSettings,
-  regenerateUserProfileImage,
-  updateUserSettings,
-  verifyUserPhone,
-} from "@/lib/settings/api"
 import { useAppDispatch } from "@/lib/store/hooks"
 import { setLanguage } from "@/lib/store/language-slice"
 
@@ -111,6 +111,7 @@ const localeLabels: Record<LanguageCode, string> = {
 export function AccountPage() {
   const storedSession = getStoredAuthSession()
   const accessToken = storedSession?.session.accessToken ?? ""
+  const isCaAccount = storedSession?.accountType === "ca"
   const dispatch = useAppDispatch()
   const queryClient = useQueryClient()
   const [phoneOtpSentTo, setPhoneOtpSentTo] = React.useState("")
@@ -119,8 +120,8 @@ export function AccountPage() {
   const [phoneVerificationFeedback, setPhoneVerificationFeedback] = React.useState("")
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["settings"],
-    queryFn: () => getSettings(accessToken),
+    queryKey: ["account-settings"],
+    queryFn: () => getAccountSettings(accessToken),
     enabled: accessToken.length > 0,
     staleTime: 1000 * 60 * 5,
   })
@@ -166,7 +167,7 @@ export function AccountPage() {
 
   const userMutation = useMutation({
     mutationFn: (values: UserSettingsFormValues) =>
-      updateUserSettings(
+      updateAccountSettings(
         {
           displayName: values.displayName.trim() || null,
           locale: values.locale,
@@ -174,7 +175,7 @@ export function AccountPage() {
         accessToken
       ),
     onSuccess: (nextSettings) => {
-      queryClient.setQueryData(["settings"], nextSettings)
+      queryClient.setQueryData(["account-settings"], nextSettings)
       dispatch(setLanguage(nextSettings.user.locale))
       void queryClient.invalidateQueries({ queryKey: ["auth", "current-user"] })
       toast.success("Account details updated.")
@@ -188,15 +189,16 @@ export function AccountPage() {
   const hasProfileImage = Boolean(data?.user?.profileImageSeed)
   const profileImageActionLabel = hasProfileImage ? "Change" : "Generate"
   const avatarMutation = useMutation({
-    mutationFn: () => regenerateUserProfileImage(accessToken),
+    mutationFn: () => regenerateAccountProfileImage(accessToken),
     onSuccess: (nextSettings) => {
-      queryClient.setQueryData(["settings"], nextSettings)
+      queryClient.setQueryData(["account-settings"], nextSettings)
       const currentSession = getStoredAuthSession()
 
       if (currentSession) {
         setStoredAuthSession({
           accountType: currentSession.accountType,
           session: currentSession.session,
+          tenant: currentSession.tenant ?? null,
           user: {
             ...currentSession.user,
             email: nextSettings.user.email,
@@ -256,10 +258,10 @@ export function AccountPage() {
         token: phoneOtpToken,
       })
 
-      return verifyUserPhone(firebaseToken.idToken, accessToken)
+      return verifyAccountPhone(firebaseToken.idToken, accessToken)
     },
     onSuccess: (nextSettings) => {
-      queryClient.setQueryData(["settings"], nextSettings)
+      queryClient.setQueryData(["account-settings"], nextSettings)
       void queryClient.invalidateQueries({ queryKey: ["auth", "current-user"] })
       setPhoneOtpSentTo("")
       setPhoneOtpToken("")
@@ -275,7 +277,7 @@ export function AccountPage() {
 
   const passwordMutation = useMutation({
     mutationFn: (values: PasswordSettingsFormValues) =>
-      changeUserPassword(values, accessToken),
+      changeAccountPassword(values, accessToken),
     onSuccess: () => {
       passwordForm.reset()
       toast.success("Password changed.")
@@ -404,143 +406,145 @@ export function AccountPage() {
                   disabled
                 />
               </Field>
-              <Field>
-                <FieldLabel htmlFor="account-user-phone">Phone</FieldLabel>
-                {data.user.phoneE164 ? (
-                  <IndianPhoneInput
-                    id="account-user-phone"
-                    value={
-                      data.user.phoneE164.startsWith("+91") ?
-                        data.user.phoneE164.slice(3)
-                      : data.user.phoneE164
-                    }
-                    disabled
-                  />
-                ) : (
-                  <>
-                    {!phoneOtpWasSentForCurrentNumber ? (
-                      <div className="animate-in fade-in-0 slide-in-from-left-2 duration-150">
-                        <IndianPhoneInput
-                          id="account-user-phone"
-                          value={normalizedPhoneLocal}
-                          onChange={(event) => {
-                            const nextPhone = event.target.value
-                            userForm.setValue("phoneLocal", nextPhone, {
-                              shouldDirty: true,
-                              shouldValidate: true,
-                            })
-                            if (phoneOtpSentTo && phoneOtpSentTo !== nextPhone) {
-                              setPhoneOtpSentTo("")
-                              setPhoneOtpToken("")
-                            }
-                            setPhoneVerificationError("")
-                            setPhoneVerificationFeedback("")
-                          }}
-                          endAddon={
-                            <InputGroupAddon align="inline-end">
-                              <InputGroupButton
-                                type="button"
-                                aria-disabled={sendPhoneOtpDisabled}
-                                className="aria-disabled:pointer-events-none aria-disabled:opacity-50"
-                                onClick={() => {
-                                  if (sendPhoneOtpDisabled) {
-                                    return
-                                  }
-
-                                  sendPhoneOtpMutation.mutate()
-                                }}
-                              >
-                                {sendPhoneOtpMutation.isPending ? <Spinner /> : null}
-                                Send OTP
-                              </InputGroupButton>
-                            </InputGroupAddon>
-                          }
-                        />
-                      </div>
-                    ) : (
-                      <div className="space-y-2 animate-in fade-in-0 slide-in-from-right-2 duration-150">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="truncate text-xs text-muted-foreground">
-                            OTP sent to{" "}
-                            <span className="font-medium text-foreground">
-                              +91 {phoneOtpSentTo}
-                            </span>
-                          </p>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 shrink-0 px-2 text-xs"
-                            onClick={handleBackToPhoneEdit}
-                          >
-                            <ArrowLeftIcon className="size-3.5" />
-                            Back to edit
-                          </Button>
-                        </div>
-                        <InputOTP
-                          id="account-phone-otp"
-                          value={phoneOtpToken}
-                          maxLength={6}
-                          pattern={REGEXP_ONLY_DIGITS}
-                          inputMode="numeric"
-                          autoComplete="one-time-code"
-                          containerClassName="justify-center"
-                          onChange={(value) => {
-                            setPhoneOtpToken(value.replace(/\D/g, "").slice(0, 6))
-                            if (phoneVerificationError) {
+              {!isCaAccount ? (
+                <Field>
+                  <FieldLabel htmlFor="account-user-phone">Phone</FieldLabel>
+                  {data.user.phoneE164 ? (
+                    <IndianPhoneInput
+                      id="account-user-phone"
+                      value={
+                        data.user.phoneE164.startsWith("+91") ?
+                          data.user.phoneE164.slice(3)
+                        : data.user.phoneE164
+                      }
+                      disabled
+                    />
+                  ) : (
+                    <>
+                      {!phoneOtpWasSentForCurrentNumber ? (
+                        <div className="animate-in fade-in-0 slide-in-from-left-2 duration-150">
+                          <IndianPhoneInput
+                            id="account-user-phone"
+                            value={normalizedPhoneLocal}
+                            onChange={(event) => {
+                              const nextPhone = event.target.value
+                              userForm.setValue("phoneLocal", nextPhone, {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                              })
+                              if (phoneOtpSentTo && phoneOtpSentTo !== nextPhone) {
+                                setPhoneOtpSentTo("")
+                                setPhoneOtpToken("")
+                              }
                               setPhoneVerificationError("")
+                              setPhoneVerificationFeedback("")
+                            }}
+                            endAddon={
+                              <InputGroupAddon align="inline-end">
+                                <InputGroupButton
+                                  type="button"
+                                  aria-disabled={sendPhoneOtpDisabled}
+                                  className="aria-disabled:pointer-events-none aria-disabled:opacity-50"
+                                  onClick={() => {
+                                    if (sendPhoneOtpDisabled) {
+                                      return
+                                    }
+
+                                    sendPhoneOtpMutation.mutate()
+                                  }}
+                                >
+                                  {sendPhoneOtpMutation.isPending ? <Spinner /> : null}
+                                  Send OTP
+                                </InputGroupButton>
+                              </InputGroupAddon>
                             }
-                          }}
-                        >
-                          <InputOTPGroup className="gap-1">
-                            {Array.from({ length: 6 }).map((_, index) => (
-                              <InputOTPSlot
-                                key={index}
-                                index={index}
-                                className="size-9 rounded-md border font-mono text-sm first:rounded-md last:rounded-md"
-                              />
-                            ))}
-                          </InputOTPGroup>
-                        </InputOTP>
-                        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="w-full"
-                            disabled={
-                              phoneOtpToken.length !== 6 ||
-                              verifyPhoneMutation.isPending
-                            }
-                            onClick={() => verifyPhoneMutation.mutate()}
-                          >
-                            {verifyPhoneMutation.isPending ? <Spinner /> : null}
-                            Verify
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={sendPhoneOtpMutation.isPending}
-                            onClick={() => sendPhoneOtpMutation.mutate()}
-                          >
-                            {sendPhoneOtpMutation.isPending ? <Spinner /> : null}
-                            Resend
-                          </Button>
+                          />
                         </div>
-                      </div>
-                    )}
-                    <FieldError errors={[userForm.formState.errors.phoneLocal]} />
-                    {phoneVerificationError ? (
-                      <FieldError>{phoneVerificationError}</FieldError>
-                    ) : null}
-                    {phoneVerificationFeedback ? (
-                      <FieldDescription className="text-emerald-600 dark:text-emerald-400">
-                        {phoneVerificationFeedback}
-                      </FieldDescription>
-                    ) : null}
-                  </>
-                )}
-              </Field>
+                      ) : (
+                        <div className="space-y-2 animate-in fade-in-0 slide-in-from-right-2 duration-150">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="truncate text-xs text-muted-foreground">
+                              OTP sent to{" "}
+                              <span className="font-medium text-foreground">
+                                +91 {phoneOtpSentTo}
+                              </span>
+                            </p>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 shrink-0 px-2 text-xs"
+                              onClick={handleBackToPhoneEdit}
+                            >
+                              <ArrowLeftIcon className="size-3.5" />
+                              Back to edit
+                            </Button>
+                          </div>
+                          <InputOTP
+                            id="account-phone-otp"
+                            value={phoneOtpToken}
+                            maxLength={6}
+                            pattern={REGEXP_ONLY_DIGITS}
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            containerClassName="justify-center"
+                            onChange={(value) => {
+                              setPhoneOtpToken(value.replace(/\D/g, "").slice(0, 6))
+                              if (phoneVerificationError) {
+                                setPhoneVerificationError("")
+                              }
+                            }}
+                          >
+                            <InputOTPGroup className="gap-1">
+                              {Array.from({ length: 6 }).map((_, index) => (
+                                <InputOTPSlot
+                                  key={index}
+                                  index={index}
+                                  className="size-9 rounded-md border font-mono text-sm first:rounded-md last:rounded-md"
+                                />
+                              ))}
+                            </InputOTPGroup>
+                          </InputOTP>
+                          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="w-full"
+                              disabled={
+                                phoneOtpToken.length !== 6 ||
+                                verifyPhoneMutation.isPending
+                              }
+                              onClick={() => verifyPhoneMutation.mutate()}
+                            >
+                              {verifyPhoneMutation.isPending ? <Spinner /> : null}
+                              Verify
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={sendPhoneOtpMutation.isPending}
+                              onClick={() => sendPhoneOtpMutation.mutate()}
+                            >
+                              {sendPhoneOtpMutation.isPending ? <Spinner /> : null}
+                              Resend
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                      <FieldError errors={[userForm.formState.errors.phoneLocal]} />
+                      {phoneVerificationError ? (
+                        <FieldError>{phoneVerificationError}</FieldError>
+                      ) : null}
+                      {phoneVerificationFeedback ? (
+                        <FieldDescription className="text-emerald-600 dark:text-emerald-400">
+                          {phoneVerificationFeedback}
+                        </FieldDescription>
+                      ) : null}
+                    </>
+                  )}
+                </Field>
+              ) : null}
             </div>
           </section>
 
@@ -556,15 +560,39 @@ export function AccountPage() {
                     value={field.value}
                     onValueChange={(value) => field.onChange(value as LanguageCode)}
                   >
-                    <SelectTrigger id="account-locale" className="w-full">
-                      <SelectValue placeholder="Choose language">
+                    <SelectTrigger
+                      id="account-locale"
+                      className="h-8 w-full min-w-[8.75rem] gap-2 pl-2.5 pr-3"
+                    >
+                      <Image
+                        src="/india-flag.png"
+                        alt="India"
+                        width={16}
+                        height={12}
+                        className="h-3 w-4 shrink-0 rounded-[2px] object-cover"
+                      />
+                      <span className="flex flex-1 items-center text-left leading-none">
                         {localeLabels[field.value]}
-                      </SelectValue>
+                      </span>
                     </SelectTrigger>
-                    <SelectContent align="start">
+                    <SelectContent
+                      align="start"
+                      side="bottom"
+                      sideOffset={8}
+                      className="min-w-[8.75rem]"
+                    >
                       {supportedLanguages.map((language) => (
                         <SelectItem key={language} value={language}>
-                          {localeLabels[language]}
+                          <Image
+                            src="/india-flag.png"
+                            alt="India"
+                            width={16}
+                            height={12}
+                            className="h-3 w-4 shrink-0 rounded-[2px] object-cover"
+                          />
+                          <span className="flex items-center leading-none">
+                            {localeLabels[language]}
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -721,17 +749,19 @@ export function AccountPage() {
                 Your email is the primary login and receives password reset links.
               </p>
             </div>
-            <div className="rounded-xl border border-border/70 bg-muted/25 p-3">
-              <div className="mb-1 flex items-center gap-2">
-                <span aria-hidden="true" className="text-base">
-                  📱
-                </span>
-                <p className="text-sm font-medium">Phone after OTP</p>
+            {!isCaAccount ? (
+              <div className="rounded-xl border border-border/70 bg-muted/25 p-3">
+                <div className="mb-1 flex items-center gap-2">
+                  <span aria-hidden="true" className="text-base">
+                    📱
+                  </span>
+                  <p className="text-sm font-medium">Phone after OTP</p>
+                </div>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Mobile login turns on only after the number is verified here.
+                </p>
               </div>
-              <p className="text-xs leading-5 text-muted-foreground">
-                Mobile login turns on only after the number is verified here.
-              </p>
-            </div>
+            ) : null}
             <div className="rounded-xl border border-border/70 bg-muted/25 p-3">
               <div className="mb-1 flex items-center gap-2">
                 <span aria-hidden="true" className="text-base">
@@ -743,12 +773,14 @@ export function AccountPage() {
                 Change it with your current password before saving a new one.
               </p>
             </div>
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
-              <div className="flex items-center gap-2 text-xs font-medium">
-                <span aria-hidden="true">✅</span>
-                Verified phone numbers can be used on the login screen.
+            {!isCaAccount ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+                <div className="flex items-center gap-2 text-xs font-medium">
+                  <span aria-hidden="true">✅</span>
+                  Verified phone numbers can be used on the login screen.
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
         </div>
       </aside>

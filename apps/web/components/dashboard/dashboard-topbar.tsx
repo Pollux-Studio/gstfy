@@ -3,7 +3,7 @@
 import Image from "next/image"
 import { useQuery } from "@tanstack/react-query"
 import { memo, useEffect, useState } from "react"
-import { SearchIcon } from "lucide-react"
+import { BellIcon, SearchIcon } from "lucide-react"
 
 import { DashboardCommandMenu } from "@/components/dashboard/dashboard-command-menu"
 import { LocaleSwitcher } from "@/components/locale-switcher"
@@ -123,6 +123,25 @@ export const DashboardTopbar = memo(function DashboardTopbar() {
               </TooltipContent>
             </Tooltip>
           ) : null}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="relative size-8"
+                  aria-label="Notifications"
+                />
+              }
+            >
+              <BellIcon className="size-4" />
+              <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="end">
+              Notifications
+            </TooltipContent>
+          </Tooltip>
           <ThemeToggle />
           <div className="hidden md:block">
             <LocaleSwitcher />

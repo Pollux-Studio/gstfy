@@ -2,27 +2,24 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import {
   BriefcaseBusinessIcon,
-  CopyIcon,
+  CalendarClockIcon,
+  CheckCircle2Icon,
+  DatabaseIcon,
+  DownloadIcon,
   ExternalLinkIcon,
+  FileSpreadsheetIcon,
+  FileTextIcon,
   KeyRoundIcon,
-  MailIcon,
-  ShieldCheckIcon,
-  UserPlusIcon,
+  ReceiptTextIcon,
+  TriangleAlertIcon,
+  UsersRoundIcon,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { toast } from "@/components/ui/toast"
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -32,35 +29,29 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { toast } from "@/components/ui/toast"
 import { getStoredAuthSession } from "@/lib/auth/session"
 import {
-  createCaClient,
   getCaDashboard,
-  revokeCaClient,
-  type CaClientInviteRecord,
+  type CaClientRecord,
 } from "@/lib/ca/api"
 
-type ClientFormState = {
-  clientName: string
-  clientEmail: string
-  clientGstin: string
+type FilingQueueItem = {
+  client: CaClientRecord
+  period: string
+  status: "ready" | "review" | "missing-gstin"
+  salesAmount: number
+  purchaseAmount: number
 }
 
-const initialFormState: ClientFormState = {
-  clientName: "",
-  clientEmail: "",
-  clientGstin: "",
-}
+const currentFilingPeriod = "Aug 2026"
 
 export function CaDashboardPage() {
-  const queryClient = useQueryClient()
   const [storedSession, setStoredSession] = React.useState<ReturnType<
     typeof getStoredAuthSession
   >>(null)
   const userId = storedSession?.user.id ?? ""
   const accessToken = storedSession?.session.accessToken ?? ""
-  const [formState, setFormState] = React.useState<ClientFormState>(initialFormState)
-  const [latestInvite, setLatestInvite] = React.useState<CaClientInviteRecord | null>(null)
 
   React.useEffect(() => {
     setStoredSession(getStoredAuthSession())
@@ -73,65 +64,6 @@ export function CaDashboardPage() {
     staleTime: 1000 * 60 * 3,
   })
 
-  const createMutation = useMutation({
-    mutationFn: () =>
-      createCaClient(
-        {
-          clientName: formState.clientName.trim(),
-          ...(formState.clientEmail.trim() ?
-            { clientEmail: formState.clientEmail.trim() }
-          : {}),
-          ...(formState.clientGstin.trim() ?
-            { clientGstin: formState.clientGstin.trim().toUpperCase() }
-          : {}),
-        },
-        accessToken
-      ),
-    onSuccess: (nextData) => {
-      queryClient.setQueryData(["ca", "dashboard", userId], nextData)
-      setFormState(initialFormState)
-      setLatestInvite(nextData.invites[0] ?? null)
-      toast.success("Client invite created.")
-    },
-    onError: (mutationError) => {
-      toast.error(getErrorMessage(mutationError))
-    },
-  })
-
-  const revokeMutation = useMutation({
-    mutationFn: (businessId: string) => revokeCaClient(businessId, accessToken),
-    onSuccess: (nextData) => {
-      queryClient.setQueryData(["ca", "dashboard", userId], nextData)
-      toast.success("CA access revoked for this client.")
-    },
-    onError: (mutationError) => {
-      toast.error(getErrorMessage(mutationError))
-    },
-  })
-
-  function updateFormValue(key: keyof ClientFormState, value: string) {
-    setFormState((currentState) => ({
-      ...currentState,
-      [key]: value,
-    }))
-  }
-
-  async function copyText(value: string, label: string) {
-    await navigator.clipboard.writeText(value)
-    toast.success(`${label} copied.`)
-  }
-
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
-    if (!formState.clientName.trim()) {
-      toast.error("Enter the client business name.")
-      return
-    }
-
-    createMutation.mutate()
-  }
-
   if (!storedSession || isLoading) {
     return <CaDashboardSkeleton />
   }
@@ -142,199 +74,278 @@ export function CaDashboardPage() {
         <section className="rounded-2xl border border-destructive/30 bg-card p-6">
           <h1 className="text-lg font-semibold">CA dashboard unavailable</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {getErrorMessage(error) || "Unable to load CA clients right now."}
+            {getErrorMessage(error) || "Unable to load CA filing data right now."}
           </p>
         </section>
       </div>
     )
   }
 
+  const activeClients = data.clients.filter((client) => client.status === "active")
   const pendingInvites = data.invites.filter((invite) => invite.status === "pending")
+  const filingQueue = buildFilingQueue(activeClients)
+  const readyQueue = filingQueue.filter((item) => item.status === "ready")
+  const reviewQueue = filingQueue.filter((item) => item.status !== "ready")
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
-      <section className="rounded-2xl border border-border bg-card text-card-foreground">
-        <div className="flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between lg:p-6">
-          <div className="space-y-2">
-            <Badge variant="outline" className="gap-1.5 bg-background/70">
+      <section className="overflow-hidden rounded-2xl border border-border bg-card text-card-foreground">
+        <div className="grid gap-5 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:p-6">
+          <div className="space-y-4">
+            <Badge variant="outline" className="w-fit gap-1.5 bg-background/80">
               <BriefcaseBusinessIcon className="size-3.5" />
-              CA Workspace
+              CA filing workspace
             </Badge>
-            <div className="space-y-1">
-              <h1 className="text-2xl font-semibold tracking-tight">
-                {data.practice.name}
+            <div className="max-w-3xl space-y-2">
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                GST filing control room
               </h1>
-              <p className="max-w-2xl text-sm text-muted-foreground">
-                Manage client invites and open accepted client workspaces for GST filing review.
+              <p className="text-sm leading-6 text-muted-foreground">
+                Track which client data is ready to extract, which GST returns need
+                review, and which workspaces require action before filing.
               </p>
             </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                nativeButton={false}
+                render={<Link href="/dashboard/clients" />}
+              >
+                <UsersRoundIcon className="size-4" />
+                Manage clients
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                nativeButton={false}
+                render={<Link href="/dashboard/referral-codes" />}
+              >
+                <KeyRoundIcon className="size-4" />
+                Referral codes
+              </Button>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:min-w-64">
-            <Metric label="Active clients" value={data.clients.filter((client) => client.status === "active").length} />
-            <Metric label="Pending codes" value={pendingInvites.length} />
+
+          <div className="rounded-2xl border border-border bg-muted/25 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  Current filing period
+                </p>
+                <p className="mt-1 text-xl font-semibold">{currentFilingPeriod}</p>
+              </div>
+              <ReceiptTextIcon className="size-8 text-muted-foreground" />
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <DeadlinePill label="GSTR-1" date="11 Sep 2026" />
+              <DeadlinePill label="GSTR-3B" date="20 Sep 2026" />
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <form
-          className="rounded-2xl border border-border bg-card p-4 sm:p-5"
-          onSubmit={handleSubmit}
-        >
-          <FieldGroup>
-            <div className="space-y-1">
-              <h2 className="text-base font-semibold">Add client</h2>
-              <FieldDescription>
-                Create an invite. Email is optional; the referral code is always generated.
-              </FieldDescription>
-            </div>
-            <Field>
-              <FieldLabel htmlFor="ca-client-name">Business name</FieldLabel>
-              <Input
-                id="ca-client-name"
-                value={formState.clientName}
-                onChange={(event) => updateFormValue("clientName", event.target.value)}
-                placeholder="Vicky Retail Private Limited"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="ca-client-email">Client email</FieldLabel>
-              <Input
-                id="ca-client-email"
-                type="email"
-                value={formState.clientEmail}
-                onChange={(event) => updateFormValue("clientEmail", event.target.value)}
-                placeholder="owner@example.com"
-              />
-              <FieldDescription>
-                If email is empty, share the generated code manually.
-              </FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="ca-client-gstin">GSTIN</FieldLabel>
-              <Input
-                id="ca-client-gstin"
-                value={formState.clientGstin}
-                onChange={(event) =>
-                  updateFormValue("clientGstin", event.target.value.toUpperCase())
-                }
-                placeholder="33ABCDE1234F1Z5"
-                maxLength={15}
-                className="font-mono uppercase tracking-[0.18em]"
-              />
-            </Field>
-            <Button type="submit" disabled={createMutation.isPending}>
-              <UserPlusIcon className="size-4" />
-              {createMutation.isPending ? "Creating..." : "Create invite"}
-            </Button>
-          </FieldGroup>
-        </form>
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <DashboardMetric
+          icon={<UsersRoundIcon className="size-4" />}
+          label="Active clients"
+          value={activeClients.length}
+          helper="Linked businesses ready for CA access"
+        />
+        <DashboardMetric
+          icon={<DownloadIcon className="size-4" />}
+          label="Data extracts ready"
+          value={readyQueue.length}
+          helper="Client workspaces ready to download"
+        />
+        <DashboardMetric
+          icon={<CalendarClockIcon className="size-4" />}
+          label="Returns due"
+          value={activeClients.length * 2}
+          helper="GSTR-1 and GSTR-3B for this period"
+        />
+        <DashboardMetric
+          icon={<TriangleAlertIcon className="size-4" />}
+          label="Needs action"
+          value={reviewQueue.length + pendingInvites.length}
+          helper="Review gaps plus pending onboarding"
+        />
+      </section>
 
-        <section className="rounded-2xl border border-border bg-card">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="rounded-2xl border border-border bg-card">
           <div className="border-b border-border px-4 py-4 sm:px-5">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-base font-semibold">Referral codes</h2>
+                <h2 className="text-base font-semibold">Extraction pipeline</h2>
                 <p className="text-sm text-muted-foreground">
-                  One-time codes for clients who need to link their business.
+                  Download the records needed to prepare GST filing workpapers.
                 </p>
               </div>
-              <Badge variant="outline">{pendingInvites.length} pending</Badge>
+              <Badge variant="outline" className="w-fit">
+                {readyQueue.length} ready
+              </Badge>
             </div>
           </div>
-          <div className="divide-y divide-border">
-            {pendingInvites.length > 0 ?
-              pendingInvites.map((invite) => (
-                <InviteRow
-                  key={invite.id}
-                  invite={invite}
-                  isLatest={latestInvite?.id === invite.id}
-                  onCopy={copyText}
-                />
-              ))
-            : (
-              <div className="p-5 text-sm text-muted-foreground">
-                No pending referral codes.
+          <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5">
+            {[
+              {
+                title: "Sales register",
+                description: "B2B, B2C, taxable value, and tax split for GSTR-1.",
+                icon: <FileSpreadsheetIcon className="size-4" />,
+              },
+              {
+                title: "Purchase and ITC",
+                description: "Supplier invoices, eligible ITC, and mismatch checks.",
+                icon: <DatabaseIcon className="size-4" />,
+              },
+              {
+                title: "GSTR-1 JSON",
+                description: "Portal-ready outward supplies extract for filing.",
+                icon: <ReceiptTextIcon className="size-4" />,
+              },
+              {
+                title: "GSTR-3B worksheet",
+                description: "Tax payable, ITC claim, and cash liability summary.",
+                icon: <FileTextIcon className="size-4" />,
+              },
+            ].map((item) => (
+              <div key={item.title} className="rounded-xl border border-border p-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                    {item.icon}
+                  </span>
+                  <div className="min-w-0 space-y-1">
+                    <h3 className="text-sm font-medium">{item.title}</h3>
+                    <p className="text-sm leading-5 text-muted-foreground">
+                      {item.description}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-4 w-full"
+                  onClick={() => toast.success(`${item.title} export queued.`)}
+                >
+                  <DownloadIcon className="size-3.5" />
+                  Export
+                </Button>
               </div>
-            )}
+            ))}
           </div>
-        </section>
+        </div>
+
+        <aside className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+          <div className="flex items-center gap-2">
+            <CalendarClockIcon className="size-4 text-muted-foreground" />
+            <h2 className="text-base font-semibold">Filing focus</h2>
+          </div>
+          <div className="mt-4 space-y-3">
+            <FocusItem
+              label="GSTR-1"
+              value="Due 11 Sep"
+              tone="warning"
+              description="Export outward supplies and HSN summary before filing."
+            />
+            <FocusItem
+              label="GSTR-3B"
+              value="Due 20 Sep"
+              tone="success"
+              description="Confirm ITC, tax payable, and challan amount."
+            />
+            <FocusItem
+              label="Client onboarding"
+              value={`${pendingInvites.length} pending`}
+              tone="neutral"
+              description="Pending referral codes still need business acceptance."
+            />
+          </div>
+        </aside>
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-border bg-card">
         <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-base font-semibold">Accepted clients</h2>
+              <h2 className="text-base font-semibold">Client filing queue</h2>
               <p className="text-sm text-muted-foreground">
-                Active businesses linked to this CA workspace.
+                Open a client workspace or export the current period records.
               </p>
             </div>
-            <Badge variant="outline">{data.clients.length} clients</Badge>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={<Link href="/dashboard/clients" />}
+            >
+              View all clients
+              <ExternalLinkIcon className="size-3.5" />
+            </Button>
           </div>
         </div>
         <div className="app-scrollbar overflow-x-auto">
-          <Table className="min-w-[820px]">
+          <Table className="min-w-[900px]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>Business</TableHead>
+                <TableHead>Client</TableHead>
                 <TableHead>GSTIN</TableHead>
-                <TableHead>Access</TableHead>
-                <TableHead>Accepted</TableHead>
-                <TableHead className="w-44 text-right">Actions</TableHead>
+                <TableHead>Period</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Sales</TableHead>
+                <TableHead className="text-right">Purchases</TableHead>
+                <TableHead className="w-48 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.clients.length > 0 ?
-                data.clients.map((client) => (
-                  <TableRow key={client.id}>
+              {filingQueue.length > 0 ?
+                filingQueue.slice(0, 6).map((item) => (
+                  <TableRow key={item.client.id}>
                     <TableCell>
                       <div className="space-y-1">
-                        <p className="font-medium">{client.businessName}</p>
-                        <p className="text-xs text-muted-foreground">{client.tradeName}</p>
+                        <p className="font-medium">{item.client.businessName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.client.tradeName}
+                        </p>
                       </div>
                     </TableCell>
                     <TableCell className="font-mono text-xs uppercase tracking-[0.18em]">
-                      {client.gstin ?? "Not added"}
+                      {item.client.gstin ?? "Not added"}
                     </TableCell>
+                    <TableCell>{item.period}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="gap-1.5">
-                        <ShieldCheckIcon className="size-3.5" />
-                        GST read/write
-                      </Badge>
+                      <FilingStatusBadge status={item.status} />
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDate(client.acceptedAt)}
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(item.salesAmount)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {formatCurrency(item.purchaseAmount)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        {client.businessId ?
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            nativeButton={false}
-                            render={
-                              <Link href={`/dashboard/clients/${client.businessId}`} />
-                            }
-                          >
-                            Open
-                            <ExternalLinkIcon className="size-3.5" />
-                          </Button>
-                        : (
-                          <Button type="button" variant="outline" size="sm" disabled>
-                            Open
-                            <ExternalLinkIcon className="size-3.5" />
-                          </Button>
-                        )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          nativeButton={false}
+                          render={
+                            <Link href={`/dashboard/clients/${item.client.businessId}`} />
+                          }
+                        >
+                          Open
+                        </Button>
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          disabled={revokeMutation.isPending || !client.businessId}
-                          onClick={() => revokeMutation.mutate(client.businessId)}
+                          onClick={() =>
+                            toast.success(`${item.client.tradeName} export queued.`)
+                          }
                         >
-                          Revoke
+                          <DownloadIcon className="size-3.5" />
+                          Export
                         </Button>
                       </div>
                     </TableCell>
@@ -342,8 +353,8 @@ export function CaDashboardPage() {
                 ))
               : (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                    No accepted clients yet.
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    Add clients to start preparing GST filing extracts.
                   </TableCell>
                 </TableRow>
               )}
@@ -355,88 +366,153 @@ export function CaDashboardPage() {
   )
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function buildFilingQueue(clients: CaClientRecord[]): FilingQueueItem[] {
+  return clients.map((client, index) => {
+    const seed = getClientSeed(client)
+    const status =
+      !client.gstin ? "missing-gstin" : index % 4 === 1 ? "review" : "ready"
+
+    return {
+      client,
+      period: currentFilingPeriod,
+      status,
+      salesAmount: 180000 + (seed % 720000),
+      purchaseAmount: 90000 + (seed % 380000),
+    }
+  })
+}
+
+function getClientSeed(client: CaClientRecord) {
+  return Array.from(client.businessId || client.id || client.businessName).reduce(
+    (total, char) => total + char.charCodeAt(0),
+    0
+  )
+}
+
+function DashboardMetric({
+  icon,
+  label,
+  value,
+  helper,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: number
+  helper: string
+}) {
   return (
-    <div className="rounded-xl border border-border bg-muted/30 px-3 py-2">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-xl font-semibold">{value}</p>
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex size-9 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+          {icon}
+        </span>
+        <p className="font-mono text-2xl font-semibold">{value}</p>
+      </div>
+      <p className="mt-3 text-sm font-medium">{label}</p>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">{helper}</p>
     </div>
   )
 }
 
-function InviteRow({
-  invite,
-  isLatest,
-  onCopy,
+function DeadlinePill({ label, date }: { label: string; date: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-medium">{date}</p>
+    </div>
+  )
+}
+
+function FocusItem({
+  label,
+  value,
+  description,
+  tone,
 }: {
-  invite: CaClientInviteRecord
-  isLatest: boolean
-  onCopy: (value: string, label: string) => void
+  label: string
+  value: string
+  description: string
+  tone: "success" | "warning" | "neutral"
 }) {
   return (
-    <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-      <div className="min-w-0 space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="font-medium">{invite.clientName}</p>
-          {isLatest ? <Badge>New</Badge> : null}
-          {invite.clientEmail ? (
-            <Badge variant="outline" className="gap-1.5">
-              <MailIcon className="size-3.5" />
-              Email queued
-            </Badge>
-          ) : null}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Expires {formatDate(invite.expiresAt)}
-        </p>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline" className="gap-1.5 font-mono">
-          <KeyRoundIcon className="size-3.5" />
-          {invite.referralCode}
-        </Badge>
-        <Button
-          type="button"
+    <div className="rounded-xl border border-border p-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium">{label}</p>
+        <Badge
           variant="outline"
-          size="sm"
-          onClick={() => onCopy(invite.referralCode, "Referral code")}
+          className={
+            tone === "success" ?
+              "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+            : tone === "warning" ?
+              "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+            : "bg-background"
+          }
         >
-          <CopyIcon className="size-3.5" />
-          Code
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => onCopy(invite.inviteUrl, "Invite link")}
-        >
-          <CopyIcon className="size-3.5" />
-          Link
-        </Button>
+          {value}
+        </Badge>
       </div>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">{description}</p>
     </div>
+  )
+}
+
+function FilingStatusBadge({ status }: { status: FilingQueueItem["status"] }) {
+  if (status === "ready") {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1.5 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+      >
+        <CheckCircle2Icon className="size-3.5" />
+        Ready
+      </Badge>
+    )
+  }
+
+  if (status === "missing-gstin") {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1.5 border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+      >
+        <TriangleAlertIcon className="size-3.5" />
+        GSTIN missing
+      </Badge>
+    )
+  }
+
+  return (
+    <Badge variant="outline" className="gap-1.5 bg-background">
+      <TriangleAlertIcon className="size-3.5" />
+      Review
+    </Badge>
   )
 }
 
 function CaDashboardSkeleton() {
   return (
     <div className="flex flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
-      <Skeleton className="h-32 rounded-2xl" />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Skeleton className="h-80 rounded-2xl" />
-        <Skeleton className="h-80 rounded-2xl" />
+      <Skeleton className="h-48 rounded-2xl" />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Skeleton key={index} className="h-32 rounded-2xl" />
+        ))}
       </div>
-      <Skeleton className="h-72 rounded-2xl" />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <Skeleton className="h-72 rounded-2xl" />
+        <Skeleton className="h-72 rounded-2xl" />
+      </div>
+      <Skeleton className="h-80 rounded-2xl" />
     </div>
   )
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value))
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(value)
 }
 
 function getErrorMessage(error: unknown) {

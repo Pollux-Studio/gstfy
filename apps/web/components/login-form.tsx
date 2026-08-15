@@ -850,8 +850,8 @@ export function LoginForm({
         <Trans
           i18nKey="auth.login.termsNotice"
           components={{
-            terms: <a href="#" />,
-            privacy: <a href="#" />,
+            terms: <a href="/terms" />,
+            privacy: <a href="/privacy" />,
           }}
         />
       </FieldDescription>

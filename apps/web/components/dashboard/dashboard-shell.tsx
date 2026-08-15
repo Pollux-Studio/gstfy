@@ -33,10 +33,15 @@ export function DashboardShell({
   const hasSession =
     storedSession?.isAuthenticated === true && Boolean(storedSession.session.accessToken)
   const accountType = storedSession?.accountType ?? "business"
-  const isLegacyCaRoute = pathname === "/ca" || pathname.startsWith("/ca/clients")
+  const isLegacyCaRoute =
+    pathname === "/ca" ||
+    pathname.startsWith("/ca/clients") ||
+    pathname.startsWith("/ca/referral-codes")
   const isCaDashboardRoute =
-    pathname === "/dashboard" || pathname.startsWith("/dashboard/clients")
-  const isCaRoute = isLegacyCaRoute || (isCaHost && isCaDashboardRoute)
+    pathname === "/dashboard" ||
+    pathname.startsWith("/dashboard/clients") ||
+    pathname.startsWith("/dashboard/referral-codes")
+  const isCaRoute = isLegacyCaRoute || (isCaHost && (isCaDashboardRoute || pathname === "/account"))
 
   useEffect(() => {
     function syncStoredSession() {

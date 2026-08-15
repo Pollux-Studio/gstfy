@@ -5,8 +5,15 @@ import { AuthSystemControls } from "@/components/auth-system-controls"
 import { SignupForm } from "@/components/signup-form"
 import { redirectAuthenticatedUser } from "@/lib/auth/server"
 
-export default async function SignupPage() {
+type SignupPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}
+
+export default async function SignupPage({ searchParams }: SignupPageProps) {
   await redirectAuthenticatedUser()
+  const params = searchParams ? await searchParams : {}
+  const initialCaReferralCode =
+    getSearchParamValue(params.referralCode) ?? getSearchParamValue(params.code) ?? ""
 
   return (
     <div className="grid h-svh w-full overflow-hidden lg:grid-cols-2">
@@ -22,7 +29,7 @@ export default async function SignupPage() {
         </div>
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <div className="flex h-full min-h-0 w-full pt-6">
-            <SignupForm />
+            <SignupForm initialCaReferralCode={initialCaReferralCode} />
           </div>
         </div>
       </div>
@@ -36,4 +43,8 @@ export default async function SignupPage() {
       </div>
     </div>
   )
+}
+
+function getSearchParamValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value
 }

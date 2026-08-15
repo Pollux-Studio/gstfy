@@ -11,6 +11,7 @@ import {
   FileChartColumnIcon,
   GalleryVerticalEndIcon,
   HandCoinsIcon,
+  KeyRoundIcon,
   LayoutDashboardIcon,
   LifeBuoyIcon,
   MessageSquareMoreIcon,
@@ -99,14 +100,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const overviewItem: SidebarNavItem = React.useMemo(() => {
     if (isCaAccount) {
       return {
-        title: "Clients",
+        title: "Filing Dashboard",
         url: "/dashboard",
-        icon: <BriefcaseBusinessIcon />,
-        isActive:
-          pathname === "/dashboard" ||
-          pathname.startsWith("/dashboard/clients") ||
-          pathname === "/ca" ||
-          pathname.startsWith("/ca/"),
+        icon: <LayoutDashboardIcon />,
+        isActive: pathname === "/dashboard" || pathname === "/ca",
       }
     }
 
@@ -120,7 +117,38 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const visibleCategories = React.useMemo(() => {
     if (isCaAccount) {
-      return []
+      return [
+        {
+          title: "GST Filing",
+          items: [
+            {
+              title: "Clients",
+              url: "/dashboard/clients",
+              isActive:
+                pathname === "/dashboard/clients" ||
+                pathname.startsWith("/dashboard/clients/") ||
+                pathname === "/ca/clients" ||
+                pathname.startsWith("/ca/clients/"),
+              icon: <UsersIcon />,
+            },
+            {
+              title: "Referral Codes",
+              url: "/dashboard/referral-codes",
+              isActive:
+                pathname === "/dashboard/referral-codes" ||
+                pathname === "/ca/referral-codes",
+              icon: <KeyRoundIcon />,
+            },
+            {
+              title: "Data Exports",
+              url: "#",
+              isActive: false,
+              disabled: true,
+              icon: <FileChartColumnIcon />,
+            },
+          ],
+        },
+      ]
     }
 
     const categories = getVisibleFeatureCategories(currentPlan).map((category) => ({
@@ -216,7 +244,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavUser
           user={sidebarUser}
           logoutPath={isCaAccount ? "/auth/ca/login" : "/auth/login"}
-          showAccountLinks={!isCaAccount}
         />
       </SidebarFooter>
     </Sidebar>

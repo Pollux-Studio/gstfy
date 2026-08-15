@@ -134,26 +134,51 @@ pnpm --filter web build
 
 - `GET /health`
 - `GET /health/db`
-- `POST /auth/business/register`
-- `POST /auth/business/login`
-- `POST /auth/ca/register`
-- `POST /auth/ca/login`
-- `GET /auth/session`
-- `POST /auth/logout`
-- `POST /auth/password/forgot`
-- `POST /auth/password/reset`
-- `POST /auth/email/verify`
-- `GET /account`
-- `PATCH /account`
-- `GET /settings`
-- `PATCH /settings/business`
-- `PATCH /settings/invoice`
-- `PATCH /settings/gst-rates`
-- `PATCH /settings/printer`
-- `GET /users`
-- `POST /users`
-- `PATCH /users/:memberId`
-- `DELETE /users/:memberId`
+- `GET /health/migrations`
+
+All application API endpoints are versioned under `/api/v1`.
+
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/lookup`
+- `POST /api/v1/auth/ca-referral/verify`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/ca/register`
+- `POST /api/v1/auth/ca/login`
+- `POST /api/v1/auth/phone/verify`
+- `GET /api/v1/auth/me`
+- `GET /api/v1/auth/session`
+- `POST /api/v1/auth/logout`
+- `POST /api/v1/auth/password/forgot`
+- `POST /api/v1/auth/password/reset`
+- `POST /api/v1/auth/email/verify`
+- `GET /api/v1/account`
+- `PATCH /api/v1/account`
+- `GET /api/v1/account/settings`
+- `PATCH /api/v1/account/settings/user`
+- `POST /api/v1/account/settings/user/phone/verify`
+- `POST /api/v1/account/settings/user/password`
+- `POST /api/v1/account/settings/user/avatar`
+- `GET /api/v1/settings`
+- `PATCH /api/v1/settings/business`
+- `POST /api/v1/settings/business/ca-referral`
+- `PATCH /api/v1/settings/business/tenant`
+- `PATCH /api/v1/settings/user`
+- `POST /api/v1/settings/user/phone/verify`
+- `POST /api/v1/settings/user/password`
+- `POST /api/v1/settings/user/avatar`
+- `PATCH /api/v1/settings/invoice`
+- `PATCH /api/v1/settings/gst-presets`
+- `PATCH /api/v1/settings/printer`
+- `GET /api/v1/users`
+- `POST /api/v1/users`
+- `PATCH /api/v1/users/:memberId`
+- `DELETE /api/v1/users/:memberId`
+- `GET /api/v1/ca/clients`
+- `POST /api/v1/ca/clients`
+- `POST /api/v1/ca/invites/accept`
+- `GET /api/v1/ca/clients/:businessId/summary`
+- `POST /api/v1/ca/clients/:businessId/revoke`
+- `GET /api/v1/avatars/profile/:seed.svg`
 
 ## Notes
 

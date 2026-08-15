@@ -6,6 +6,31 @@ import { z } from "zod"
 
 loadLocalEnv()
 
+const envBoolean = (defaultValue: boolean) =>
+  z.preprocess((value) => {
+    if (value === undefined || value === "") {
+      return undefined
+    }
+
+    if (typeof value === "boolean") {
+      return value
+    }
+
+    if (typeof value === "string") {
+      const normalizedValue = value.trim().toLowerCase()
+
+      if (["true", "1", "yes", "on"].includes(normalizedValue)) {
+        return true
+      }
+
+      if (["false", "0", "no", "off"].includes(normalizedValue)) {
+        return false
+      }
+    }
+
+    return value
+  }, z.boolean().default(defaultValue))
+
 const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -20,7 +45,7 @@ const envSchema = z.object({
   WEB_ORIGIN: z.string().url().default("http://localhost:3000"),
   APP_BASE_DOMAIN: z.string().default("localhost:3000"),
   COOKIE_DOMAIN: z.string().optional(),
-  COOKIE_SECURE: z.coerce.boolean().default(false),
+  COOKIE_SECURE: envBoolean(false),
   COOKIE_SAME_SITE: z.enum(["lax", "strict", "none"]).default("lax"),
   JWT_ACCESS_SECRET: z
     .string()
@@ -30,11 +55,12 @@ const envSchema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
-  SMTP_SECURE: z.coerce.boolean().default(false),
+  SMTP_SECURE: envBoolean(false),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  SMTP_AUTH_METHOD: z.string().optional(),
   MAIL_FROM: z.string().default("GSTFY <no-reply@gstfy.in>"),
-  AUTO_RUN_MIGRATIONS: z.coerce.boolean().default(true),
+  AUTO_RUN_MIGRATIONS: envBoolean(true),
   FIREBASE_PROJECT_ID: z.string().optional(),
   FIREBASE_CLIENT_EMAIL: z.string().optional(),
   FIREBASE_PRIVATE_KEY: z.string().optional(),

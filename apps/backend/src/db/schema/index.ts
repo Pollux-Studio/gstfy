@@ -69,6 +69,8 @@ export const businessMembers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     role: text("role").notNull(),
+    designation: text("designation"),
+    permissionPreset: text("permission_preset").notNull().default("custom"),
     status: text("status").notNull().default("active"),
     ...timestamps,
   },
@@ -102,6 +104,240 @@ export const businessProfiles = pgTable("business_profiles", {
   locationSource: text("location_source").notNull().default("manual"),
   ...timestamps,
 })
+
+export const businessLocations = pgTable(
+  "business_locations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    locationCode: text("location_code").notNull(),
+    addressLine1: text("address_line_1"),
+    addressLine2: text("address_line_2"),
+    locality: text("locality"),
+    district: text("district"),
+    city: text("city"),
+    pincode: text("pincode"),
+    stateCode: text("state_code"),
+    state: text("state"),
+    country: text("country").notNull().default("India"),
+    status: text("status").notNull().default("active"),
+    isPrincipalPlace: boolean("is_principal_place").notNull().default(false),
+    isAdditionalPlace: boolean("is_additional_place").notNull().default(false),
+    isSalesLocation: boolean("is_sales_location").notNull().default(true),
+    isPurchaseLocation: boolean("is_purchase_location").notNull().default(true),
+    isDispatchLocation: boolean("is_dispatch_location").notNull().default(true),
+    isWarehouseLocation: boolean("is_warehouse_location").notNull().default(false),
+    isOffice: boolean("is_office").notNull().default(false),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("business_locations_business_id_idx").on(table.businessId),
+    businessCodeUnique: uniqueIndex("business_locations_business_code_unique").on(
+      table.businessId,
+      table.locationCode
+    ),
+  })
+)
+
+export const gstRegistrations = pgTable(
+  "gst_registrations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    gstin: text("gstin").notNull(),
+    legalName: text("legal_name").notNull(),
+    tradeName: text("trade_name").notNull(),
+    taxpayerType: text("taxpayer_type"),
+    registrationType: text("registration_type").notNull().default("gst"),
+    stateCode: text("state_code").notNull(),
+    state: text("state"),
+    registrationDate: text("registration_date"),
+    effectiveFrom: text("effective_from"),
+    effectiveTo: text("effective_to"),
+    status: text("status").notNull().default("active"),
+    principalLocationId: uuid("principal_location_id").references(
+      () => businessLocations.id,
+      { onDelete: "set null" }
+    ),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("gst_registrations_business_id_idx").on(table.businessId),
+    gstinIndex: index("gst_registrations_gstin_idx").on(table.gstin),
+    businessGstinUnique: uniqueIndex("gst_registrations_business_gstin_unique").on(
+      table.businessId,
+      table.gstin
+    ),
+  })
+)
+
+export const businessBranches = pgTable(
+  "business_branches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => businessLocations.id),
+    gstRegistrationId: uuid("gst_registration_id").references(
+      () => gstRegistrations.id,
+      { onDelete: "set null" }
+    ),
+    branchCode: text("branch_code").notNull(),
+    name: text("name").notNull(),
+    branchType: text("branch_type").notNull().default("retail_store"),
+    managerName: text("manager_name"),
+    phone: text("phone"),
+    email: text("email"),
+    openingDate: text("opening_date"),
+    status: text("status").notNull().default("active"),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("business_branches_business_id_idx").on(table.businessId),
+    locationIndex: index("business_branches_location_id_idx").on(table.locationId),
+    businessCodeUnique: uniqueIndex("business_branches_business_code_unique").on(
+      table.businessId,
+      table.branchCode
+    ),
+  })
+)
+
+export const warehouses = pgTable(
+  "warehouses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => businessLocations.id),
+    warehouseCode: text("warehouse_code").notNull(),
+    name: text("name").notNull(),
+    warehouseType: text("warehouse_type"),
+    capacity: text("capacity"),
+    managerName: text("manager_name"),
+    status: text("status").notNull().default("active"),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("warehouses_business_id_idx").on(table.businessId),
+    locationIndex: index("warehouses_location_id_idx").on(table.locationId),
+    businessCodeUnique: uniqueIndex("warehouses_business_code_unique").on(
+      table.businessId,
+      table.warehouseCode
+    ),
+  })
+)
+
+export const branchWarehouses = pgTable(
+  "branch_warehouses",
+  {
+    branchId: uuid("branch_id")
+      .notNull()
+      .references(() => businessBranches.id, { onDelete: "cascade" }),
+    warehouseId: uuid("warehouse_id")
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "cascade" }),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    branchWarehouseUnique: uniqueIndex("branch_warehouses_unique").on(
+      table.branchId,
+      table.warehouseId
+    ),
+  })
+)
+
+export const businessMemberBranches = pgTable(
+  "business_member_branches",
+  {
+    businessMemberId: uuid("business_member_id")
+      .notNull()
+      .references(() => businessMembers.id, { onDelete: "cascade" }),
+    branchId: uuid("branch_id")
+      .notNull()
+      .references(() => businessBranches.id, { onDelete: "cascade" }),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    memberBranchUnique: uniqueIndex("business_member_branches_unique").on(
+      table.businessMemberId,
+      table.branchId
+    ),
+  })
+)
+
+export const financialYears = pgTable(
+  "financial_years",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    startDate: text("start_date").notNull(),
+    endDate: text("end_date").notNull(),
+    status: text("status").notNull().default("active"),
+    isCurrent: boolean("is_current").notNull().default(false),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("financial_years_business_id_idx").on(table.businessId),
+    businessNameUnique: uniqueIndex("financial_years_business_name_unique").on(
+      table.businessId,
+      table.name
+    ),
+  })
+)
+
+export const invoiceSeries = pgTable(
+  "invoice_series",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    gstRegistrationId: uuid("gst_registration_id")
+      .notNull()
+      .references(() => gstRegistrations.id),
+    branchId: uuid("branch_id").references(() => businessBranches.id, {
+      onDelete: "set null",
+    }),
+    financialYearId: uuid("financial_year_id")
+      .notNull()
+      .references(() => financialYears.id),
+    documentType: text("document_type").notNull().default("invoice"),
+    seriesCode: text("series_code").notNull(),
+    prefix: text("prefix").notNull(),
+    suffix: text("suffix"),
+    nextNumber: integer("next_number").notNull().default(1),
+    status: text("status").notNull().default("active"),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("invoice_series_business_id_idx").on(table.businessId),
+    gstRegistrationIndex: index("invoice_series_gst_registration_id_idx").on(
+      table.gstRegistrationId
+    ),
+    businessSeriesUnique: uniqueIndex("invoice_series_business_series_unique").on(
+      table.businessId,
+      table.seriesCode,
+      table.financialYearId,
+      table.documentType
+    ),
+  })
+)
 
 export const businessPreferences = pgTable("business_preferences", {
   businessId: uuid("business_id")
@@ -296,7 +532,11 @@ export const passwordResetTokens = pgTable(
 
 export type UserRecord = typeof users.$inferSelect
 export type BusinessRecord = typeof businesses.$inferSelect
+export type BusinessBranchRecord = typeof businessBranches.$inferSelect
+export type BusinessLocationRecord = typeof businessLocations.$inferSelect
 export type CaPracticeRecord = typeof caPractices.$inferSelect
 export type BusinessMemberRecord = typeof businessMembers.$inferSelect
 export type CaBusinessLinkRecord = typeof caBusinessLinks.$inferSelect
 export type CaClientInviteRecord = typeof caClientInvites.$inferSelect
+export type GstRegistrationRecord = typeof gstRegistrations.$inferSelect
+export type WarehouseRecord = typeof warehouses.$inferSelect

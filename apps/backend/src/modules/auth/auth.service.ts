@@ -5,6 +5,8 @@ import { SignJWT } from "jose"
 import { getEnv } from "../../config/env.js"
 import { db } from "../../db/client.js"
 import {
+  businessBranches,
+  businessLocations,
   businessMembers,
   businessProfiles,
   businesses,
@@ -13,6 +15,9 @@ import {
   caPracticeMembers,
   caPractices,
   emailVerificationTokens,
+  financialYears,
+  gstRegistrations,
+  invoiceSeries,
   passwordResetTokens,
   sessions,
   users,
@@ -25,7 +30,7 @@ import { HttpError } from "../../utils/http-error.js"
 import { createTenantSlug } from "../../utils/tenant-slug.js"
 import { getCaAppUrl, getTenantUrl } from "../../utils/tenant-url.js"
 import { verifyFirebaseIdToken } from "../firebase/firebase-admin.js"
-import { MailService } from "../mail/mail.service.js"
+import { buildActionEmailHtml, MailService } from "../mail/mail.service.js"
 import type {
   BusinessRegisterInput,
   CaRegisterInput,
@@ -221,6 +226,8 @@ export class AuthService {
           businessId: business.id,
           userId: user.id,
           role: "owner",
+          designation: "Owner",
+          permissionPreset: "owner",
           status: "active",
         })
 
@@ -305,6 +312,8 @@ export class AuthService {
           businessId: business.id,
           userId: user.id,
           role: "owner",
+          designation: "Owner",
+          permissionPreset: "owner",
           status: "active",
         })
 
@@ -334,6 +343,98 @@ export class AuthService {
         if (!businessProfile) {
           throw new HttpError(500, "Unable to create business profile.")
         }
+
+        const [principalLocation] = await tx
+          .insert(businessLocations)
+          .values({
+            businessId: business.id,
+            name: `${business.tradeName} Principal Place`,
+            locationCode: "PRINCIPAL",
+            addressLine1: businessProfile.addressLine1,
+            addressLine2: businessProfile.addressLine2,
+            locality: businessProfile.locality,
+            district: businessProfile.district,
+            city: businessProfile.district,
+            pincode: businessProfile.pincode,
+            stateCode: businessProfile.stateCode,
+            status: "active",
+            isPrincipalPlace: true,
+            isSalesLocation: true,
+            isPurchaseLocation: true,
+            isDispatchLocation: true,
+            isOffice: true,
+          })
+          .returning()
+
+        if (!principalLocation) {
+          throw new HttpError(500, "Unable to create principal business location.")
+        }
+
+        const [gstRegistration] = await tx
+          .insert(gstRegistrations)
+          .values({
+            businessId: business.id,
+            gstin: businessProfile.gstin ?? input.registration.gstin.trim().toUpperCase(),
+            legalName: business.legalName,
+            tradeName: business.tradeName,
+            taxpayerType: businessProfile.taxpayerType,
+            stateCode: businessProfile.stateCode ?? input.registration.stateCode.trim(),
+            registrationDate: businessProfile.registrationDate,
+            effectiveFrom: businessProfile.registrationDate,
+            status: "active",
+            principalLocationId: principalLocation.id,
+          })
+          .returning()
+
+        if (!gstRegistration) {
+          throw new HttpError(500, "Unable to create GST registration.")
+        }
+
+        const [mainBranch] = await tx
+          .insert(businessBranches)
+          .values({
+            businessId: business.id,
+            locationId: principalLocation.id,
+            gstRegistrationId: gstRegistration.id,
+            branchCode: "MAIN",
+            name: business.tradeName,
+            branchType: "retail_store",
+            status: "active",
+          })
+          .returning()
+
+        if (!mainBranch) {
+          throw new HttpError(500, "Unable to create main branch.")
+        }
+
+        const currentFinancialYear = getCurrentFinancialYear()
+        const [financialYear] = await tx
+          .insert(financialYears)
+          .values({
+            businessId: business.id,
+            name: currentFinancialYear.name,
+            startDate: currentFinancialYear.startDate,
+            endDate: currentFinancialYear.endDate,
+            status: "active",
+            isCurrent: true,
+          })
+          .returning()
+
+        if (!financialYear) {
+          throw new HttpError(500, "Unable to create financial year.")
+        }
+
+        await tx.insert(invoiceSeries).values({
+          businessId: business.id,
+          gstRegistrationId: gstRegistration.id,
+          branchId: mainBranch.id,
+          financialYearId: financialYear.id,
+          documentType: "invoice",
+          seriesCode: "DEFAULT",
+          prefix: "INV",
+          nextNumber: 1,
+          status: "active",
+        })
 
         const acceptedAt = new Date()
         const invite = await tx.query.caClientInvites.findFirst({
@@ -389,6 +490,8 @@ export class AuthService {
           user,
           business,
           businessProfile,
+          gstRegistration,
+          mainBranch,
         }
       })
 
@@ -424,7 +527,7 @@ export class AuthService {
           primaryContactEmail: result.businessProfile.primaryContactEmail,
         },
         registration: {
-          id: result.businessProfile.businessId,
+          id: result.gstRegistration.id,
           gstin: result.businessProfile.gstin,
           taxpayerType: result.businessProfile.taxpayerType,
           registrationDate: result.businessProfile.registrationDate,
@@ -710,6 +813,13 @@ export class AuthService {
       to: input.email,
       subject: "Reset your GSTFY password",
       text: `Use this link to reset your GSTFY password: ${resetUrl}`,
+      html: buildActionEmailHtml({
+        eyebrow: "Password reset",
+        title: "Reset your GSTFY password",
+        body: "Use this secure link to create a new password for your GSTFY account. The link expires in 1 hour.",
+        actionLabel: "Reset password",
+        actionUrl: resetUrl,
+      }),
     })
   }
 
@@ -880,6 +990,14 @@ export class AuthService {
       to: user.email,
       subject: "Verify your GSTFY email",
       text: `Use this link to verify your GSTFY email: ${verifyUrl}`,
+      html: buildActionEmailHtml({
+        eyebrow: "Email verification",
+        title: "Verify your GSTFY email",
+        body: "Confirm this email address to secure your GSTFY account and receive important registration, filing, and account notifications.",
+        actionLabel: "Verify email",
+        actionUrl: verifyUrl,
+        footer: "This verification link expires in 24 hours.",
+      }),
     })
   }
 
@@ -923,11 +1041,11 @@ export class AuthService {
         createdBy: businesses.createdBy,
         createdAt: businesses.createdAt,
         updatedAt: businesses.updatedAt,
-        gstin: businessProfiles.gstin,
+        gstin: gstRegistrations.gstin,
       })
       .from(businessMembers)
       .innerJoin(businesses, eq(businesses.id, businessMembers.businessId))
-      .leftJoin(businessProfiles, eq(businessProfiles.businessId, businesses.id))
+      .leftJoin(gstRegistrations, eq(gstRegistrations.businessId, businesses.id))
       .where(
         and(
           eq(businessMembers.userId, userId),
@@ -1063,6 +1181,18 @@ function normalizeE164Phone(phoneNumber: string | undefined) {
   }
 
   return phoneNumber
+}
+
+function getCurrentFinancialYear(date = new Date()) {
+  const calendarYear = date.getFullYear()
+  const startYear = date.getMonth() + 1 >= 4 ? calendarYear : calendarYear - 1
+  const endYear = startYear + 1
+
+  return {
+    name: `${startYear}-${String(endYear).slice(-2)}`,
+    startDate: `${startYear}-04-01`,
+    endDate: `${endYear}-03-31`,
+  }
 }
 
 function toPublicUser(user: UserRecord): PublicUser {

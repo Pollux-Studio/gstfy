@@ -5,11 +5,13 @@ import type { FastifyInstance, FastifyRequest } from "fastify"
 import { db } from "../../db/client.js"
 import {
   businesses,
+  businessLocations,
   businessPreferences,
   businessProfiles,
   caBusinessLinks,
   caClientInvites,
   caPractices,
+  gstRegistrations,
   sessions,
   users,
 } from "../../db/schema/index.js"
@@ -59,6 +61,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     const currentProfile = await db.query.businessProfiles.findFirst({
       where: eq(businessProfiles.businessId, access.business.id),
     })
+    const currentRegistration = await db.query.gstRegistrations.findFirst({
+      where: eq(gstRegistrations.businessId, access.business.id),
+    })
     const profilePatch = removeUndefined({
       businessEmail: body.businessEmail,
       businessMobile: body.businessMobile,
@@ -81,6 +86,50 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         .update(businessProfiles)
         .set(emptyStringsToNull(profilePatch))
         .where(eq(businessProfiles.businessId, access.business.id))
+    }
+
+    const locationPatch = removeUndefined({
+      addressLine1: body.principalAddressLine1 ?? body.addressLine1,
+      addressLine2: body.principalAddressLine2 ?? body.addressLine2,
+      locality: body.locality,
+      district: body.district,
+      city: body.district,
+      pincode: body.pincode,
+      stateCode: body.stateCode,
+    })
+
+    if (Object.keys(locationPatch).length > 0) {
+      await db
+        .update(businessLocations)
+        .set({
+          ...emptyStringsToNull(locationPatch),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(businessLocations.businessId, access.business.id),
+            eq(businessLocations.locationCode, "PRINCIPAL")
+          )
+        )
+    }
+
+    const registrationPatch = removeUndefined({
+      tradeName,
+      registrationDate:
+        !currentRegistration?.registrationDate ? body.registrationDate : undefined,
+      effectiveFrom:
+        !currentRegistration?.effectiveFrom ? body.registrationDate : undefined,
+      stateCode: body.stateCode,
+    })
+
+    if (Object.keys(registrationPatch).length > 0) {
+      await db
+        .update(gstRegistrations)
+        .set({
+          ...emptyStringsToNull(registrationPatch),
+          updatedAt: new Date(),
+        })
+        .where(eq(gstRegistrations.businessId, access.business.id))
     }
 
     return getSettingsResponse(access)

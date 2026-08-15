@@ -1,4 +1,5 @@
 import type { AuthSession, AuthTenant, AuthUser } from "@/lib/auth/api"
+import { API_BASE_PATH, API_BASE_URL } from "@/lib/api/config"
 import { getAuthSubdomainUrl } from "@/lib/auth/workspace-url"
 
 const AUTH_SESSION_STORAGE_KEY = "gstfy.auth.session"
@@ -6,10 +7,6 @@ export const AUTH_SESSION_CHANGE_EVENT = "gstfy.auth.session_changed"
 export const AUTH_LOGGED_IN_COOKIE_NAME = "gstfy.auth.logged_in"
 export const AUTH_ACCOUNT_TYPE_COOKIE_NAME = "gstfy.auth.account_type"
 const AUTH_REFRESH_BEFORE_EXPIRY_SECONDS = 60
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://api.localhost:4000").replace(
-  /\/$/,
-  ""
-)
 
 export type AuthAccountType = "business" | "ca"
 
@@ -127,7 +124,9 @@ export function expireAuthSessionAndRedirectToLogin() {
     hostname.startsWith("ca.") ||
     window.location.pathname === "/ca" ||
     window.location.pathname.startsWith("/ca/clients") ||
-    window.location.pathname.startsWith("/dashboard/clients")
+    window.location.pathname.startsWith("/ca/referral-codes") ||
+    window.location.pathname.startsWith("/dashboard/clients") ||
+    window.location.pathname.startsWith("/dashboard/referral-codes")
   const loginPath = isCaPath ? getAuthSubdomainUrl("/auth/ca/login") : "/auth/login"
   const isAlreadyOnLogin =
     isCaPath ? window.location.href.startsWith(loginPath) : window.location.pathname === loginPath
@@ -167,7 +166,7 @@ async function refreshAuthSession() {
   const currentSession = getStoredAuthSession()
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/session`, {
+    const response = await fetch(`${API_BASE_URL}${API_BASE_PATH}/auth/session`, {
       method: "GET",
       credentials: "include",
       cache: "no-store",
@@ -226,7 +225,8 @@ function inferAccountTypeFromLocation(): AuthAccountType {
     hostname.startsWith("ca.") ||
     pathname === "/ca" ||
     pathname.startsWith("/ca/") ||
-    pathname.startsWith("/dashboard/clients")
+    pathname.startsWith("/dashboard/clients") ||
+    pathname.startsWith("/dashboard/referral-codes")
   )
     ? "ca"
     : "business"

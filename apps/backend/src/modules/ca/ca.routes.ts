@@ -21,7 +21,7 @@ import {
   assertCanManageBusiness,
   requirePrimaryBusinessAccess,
 } from "../businesses/business-access.js"
-import { MailService } from "../mail/mail.service.js"
+import { buildActionEmailHtml, MailService } from "../mail/mail.service.js"
 
 const createClientSchema = z.object({
   clientName: z.string().trim().min(2).max(180),
@@ -39,6 +39,14 @@ const clientParamsSchema = z.object({
 
 const inviteValidityMs = 1000 * 60 * 60 * 24 * 30
 const mailService = new MailService()
+
+type InviteEmailDelivery = {
+  attempted: boolean
+  sent: boolean
+  skipped: boolean
+  recipient: string | null
+  reason: string | null
+}
 
 export async function registerCaRoutes(app: FastifyInstance) {
   app.get("/ca/clients", async (request) => {
@@ -62,21 +70,62 @@ export async function registerCaRoutes(app: FastifyInstance) {
     })
 
     const inviteUrl = buildInviteUrl(referralCode)
+    let emailDelivery: InviteEmailDelivery = {
+      attempted: false,
+      sent: false,
+      skipped: false,
+      recipient: body.clientEmail?.trim().toLowerCase() || null,
+      reason: null,
+    }
 
     if (body.clientEmail) {
-      await mailService
-        .sendMail({
-          to: body.clientEmail,
+      const recipient = body.clientEmail.trim().toLowerCase()
+
+      try {
+        const delivery = await mailService.sendMail({
+          to: recipient,
           subject: "Your GSTFY CA referral code",
           text: [
             `${practice.practiceName} invited you to connect your GSTFY business workspace.`,
             `Referral code: ${referralCode}`,
-            `Accept here: ${inviteUrl}`,
+            `Register here: ${inviteUrl}`,
           ].join("\n\n"),
+          html: buildActionEmailHtml({
+            eyebrow: "CA client invite",
+            title: "Register and connect your GSTFY workspace",
+            body: `${practice.practiceName} invited you to register your GSTFY business workspace for GST filing access. Your referral code is ${referralCode} and will be prefilled from this link.`,
+            actionLabel: "Register and connect",
+            actionUrl: inviteUrl,
+            footer: "Only use this invite if you recognize this CA or accountant.",
+          }),
         })
-        .catch((error: unknown) => {
-          request.log.warn({ err: error }, "CA invite email could not be sent")
-        })
+
+        emailDelivery = {
+          attempted: true,
+          sent: !delivery.skipped,
+          skipped: delivery.skipped,
+          recipient,
+          reason: delivery.reason,
+        }
+
+        if (delivery.skipped) {
+          request.log.warn({ recipient }, "CA invite email skipped")
+        } else {
+          request.log.info({ recipient }, "CA invite email sent")
+        }
+      } catch (error) {
+        emailDelivery = {
+          attempted: true,
+          sent: false,
+          skipped: false,
+          recipient,
+          reason: getMailDeliveryErrorReason(error),
+        }
+        request.log.warn(
+          { err: error, recipient, reason: emailDelivery.reason },
+          "CA invite email could not be sent"
+        )
+      }
     }
 
     return {
@@ -84,6 +133,7 @@ export async function registerCaRoutes(app: FastifyInstance) {
       createdInvite: {
         referralCode,
         inviteUrl,
+        emailDelivery,
       },
     }
   })
@@ -340,7 +390,10 @@ function normalizeReferralCode(value: string) {
 }
 
 function buildInviteUrl(referralCode: string) {
-  return `${getEnv().WEB_ORIGIN}/ca/accept?code=${encodeURIComponent(referralCode)}`
+  const inviteUrl = new URL("/auth/register", getEnv().WEB_ORIGIN)
+  inviteUrl.searchParams.set("referralCode", referralCode)
+
+  return inviteUrl.toString()
 }
 
 function getInviteStatus(status: string, expiresAt: Date) {
@@ -357,4 +410,27 @@ function getInviteStatus(status: string, expiresAt: Date) {
   }
 
   return "pending" as const
+}
+
+function getMailDeliveryErrorReason(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return "Email delivery failed."
+  }
+
+  const smtpError = error as {
+    code?: unknown
+    command?: unknown
+    responseCode?: unknown
+    response?: unknown
+    message?: unknown
+  }
+  const details = [
+    typeof smtpError.code === "string" ? smtpError.code : null,
+    typeof smtpError.command === "string" ? smtpError.command : null,
+    typeof smtpError.responseCode === "number" ? String(smtpError.responseCode) : null,
+    typeof smtpError.response === "string" ? smtpError.response : null,
+    typeof smtpError.message === "string" ? smtpError.message.split(/\r?\n/)[0] : null,
+  ].filter(Boolean)
+
+  return details.join(" - ") || "Email delivery failed."
 }

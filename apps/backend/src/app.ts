@@ -9,6 +9,7 @@ import { registerAccountRoutes } from "./modules/account/account.routes.js"
 import { registerAvatarRoutes } from "./modules/avatar/avatar.routes.js"
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js"
 import { registerCaRoutes } from "./modules/ca/ca.routes.js"
+import { registerOrganizationRoutes } from "./modules/organization/organization.routes.js"
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js"
 import { registerUsersRoutes } from "./modules/users/users.routes.js"
 import { registerErrorHandler } from "./utils/error-handler.js"
@@ -94,9 +95,8 @@ export async function buildApp() {
 
   app.get("/health/migrations", async () => getMigrationStatus())
 
-  await registerBackendRoutes(app)
   await app.register(registerBackendRoutes, {
-    prefix: "/api",
+    prefix: "/api/v1",
   })
 
   return app
@@ -148,5 +148,6 @@ async function registerBackendRoutes(app: Parameters<typeof registerAuthRoutes>[
   await registerCaRoutes(app)
   await registerAccountRoutes(app)
   await registerSettingsRoutes(app)
+  await registerOrganizationRoutes(app)
   await registerUsersRoutes(app)
 }

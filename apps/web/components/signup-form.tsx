@@ -18,7 +18,7 @@ import {
   LockKeyholeIcon,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { Trans, useTranslation } from "react-i18next"
 import { z } from "zod"
 
 import {
@@ -109,6 +109,10 @@ type CaReferralVerification = {
   message: string
 } | null
 
+type SignupFormProps = React.ComponentProps<"div"> & {
+  initialCaReferralCode?: string
+}
+
 const indiaPhonePattern = /^\d{10}$/
 const gstinPattern = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/
 const pincodePattern = /^\d{6}$/
@@ -116,13 +120,18 @@ const PAN_STATUS_CODES = new Set(["A", "B", "C", "F", "G", "H", "J", "L", "P", "
 
 export function SignupForm({
   className,
+  initialCaReferralCode = "",
   ...props
-}: React.ComponentProps<"div">) {
+}: SignupFormProps) {
   const { t } = useTranslation()
   const router = useRouter()
   const states = useMemo(
     () => getAllGstStates().filter((item) => item.code !== "97" && item.code !== "99"),
     []
+  )
+  const normalizedInitialCaReferralCode = useMemo(
+    () => normalizeCaReferralCodeInput(initialCaReferralCode),
+    [initialCaReferralCode]
   )
 
   const [step, setStep] = useState<RegisterStep>("company")
@@ -143,7 +152,9 @@ export function SignupForm({
   } | null>(null)
   const [caReferralVerification, setCaReferralVerification] =
     useState<CaReferralVerification>(null)
+  const [isCaReferralCodeLocked, setIsCaReferralCodeLocked] = useState(false)
   const hasRequestedRegistrationLocationRef = useRef(false)
+  const initialCaReferralVerificationRef = useRef<string | null>(null)
 
   const [company, setCompany] = useState<CompanyFormValues>({
     legalName: "",
@@ -176,7 +187,7 @@ export function SignupForm({
     identifier: "",
     password: "",
     confirmPassword: "",
-    caReferralCode: "",
+    caReferralCode: normalizedInitialCaReferralCode,
   })
   const workspaceSlugPreview = useMemo(
     () => createWorkspaceSlugPreview(company.tradeName || company.legalName),
@@ -213,6 +224,74 @@ export function SignupForm({
   useEffect(() => {
     setWorkspaceUrlPreview(getWorkspaceUrlPreview(workspaceSlugPreview))
   }, [workspaceSlugPreview])
+
+  useEffect(() => {
+    const referralCode = normalizeCaReferralCodeInput(account.caReferralCode)
+    const gstin = registration.gstin.trim().toUpperCase()
+    const verificationKey = `${referralCode}:${gstin}`
+
+    if (
+      !normalizedInitialCaReferralCode ||
+      step !== "account" ||
+      !referralCode ||
+      referralCode !== normalizedInitialCaReferralCode ||
+      !gstin ||
+      isCaReferralCodeLocked ||
+      verifyCaReferralMutation.isPending ||
+      initialCaReferralVerificationRef.current === verificationKey
+    ) {
+      return
+    }
+
+    initialCaReferralVerificationRef.current = verificationKey
+    setAccount((currentValue) =>
+      currentValue.caReferralCode === referralCode
+        ? currentValue
+        : {
+            ...currentValue,
+            caReferralCode: referralCode,
+          }
+    )
+    setAccountErrors((currentValue) => clearErrorKey(currentValue, "caReferralCode"))
+    setCaReferralVerification(null)
+
+    void verifyCaReferralMutation
+      .mutateAsync({
+        referralCode,
+        gstin,
+      })
+      .then((response) => {
+        setIsCaReferralCodeLocked(true)
+        setCaReferralVerification({
+          code: referralCode,
+          type: "success",
+          message: response.practiceName
+            ? t("auth.register.steps.account.caReferralVerifiedWith", {
+                practiceName: response.practiceName,
+              })
+            : t("auth.register.steps.account.caReferralVerified"),
+        })
+      })
+      .catch((error) => {
+        setIsCaReferralCodeLocked(false)
+        setCaReferralVerification({
+          code: referralCode,
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : t("auth.register.steps.account.caReferralInvalid"),
+        })
+      })
+  }, [
+    account.caReferralCode,
+    isCaReferralCodeLocked,
+    normalizedInitialCaReferralCode,
+    registration.gstin,
+    step,
+    t,
+    verifyCaReferralMutation,
+  ])
 
   const companySchema = useMemo(
     () =>
@@ -489,6 +568,7 @@ export function SignupForm({
     setRegistrationErrors((currentValue) => clearErrorKey(currentValue, key))
     if (key === "gstin") {
       setCaReferralVerification(null)
+      setIsCaReferralCodeLocked(false)
     }
   }
 
@@ -500,6 +580,7 @@ export function SignupForm({
     setAccountErrors((currentValue) => clearErrorKey(currentValue, key))
     if (key === "caReferralCode") {
       setCaReferralVerification(null)
+      setIsCaReferralCodeLocked(false)
     }
     if (submitFeedback) {
       setSubmitFeedback(null)
@@ -606,7 +687,7 @@ export function SignupForm({
   }
 
   async function handleVerifyCaReferral() {
-    const referralCode = account.caReferralCode.trim().toUpperCase()
+    const referralCode = normalizeCaReferralCodeInput(account.caReferralCode)
 
     if (!referralCode) {
       setAccountErrors((currentValue) => ({
@@ -629,6 +710,7 @@ export function SignupForm({
         gstin: registration.gstin.trim().toUpperCase() || undefined,
       })
 
+      setIsCaReferralCodeLocked(true)
       setCaReferralVerification({
         code: referralCode,
         type: "success",
@@ -639,6 +721,7 @@ export function SignupForm({
           : t("auth.register.steps.account.caReferralVerified"),
       })
     } catch (error) {
+      setIsCaReferralCodeLocked(false)
       setCaReferralVerification({
         code: referralCode,
         type: "error",
@@ -1516,11 +1599,15 @@ export function SignupForm({
                               "auth.register.steps.account.caReferralCodePlaceholder"
                             )}
                             autoComplete="off"
+                            disabled={
+                              isCaReferralCodeLocked ||
+                              verifyCaReferralMutation.isPending
+                            }
                             className="min-w-0 font-mono uppercase tracking-[0.12em]"
                             onChange={(event) =>
                               updateAccountValue(
                                 "caReferralCode",
-                                event.target.value.toUpperCase().slice(0, 40)
+                                normalizeCaReferralCodeInput(event.target.value)
                               )
                             }
                           />
@@ -1530,12 +1617,15 @@ export function SignupForm({
                           variant="outline"
                           className="shrink-0 sm:w-24"
                           disabled={
+                            isCaReferralCodeLocked ||
                             verifyCaReferralMutation.isPending ||
                             account.caReferralCode.trim().length === 0
                           }
                           onClick={handleVerifyCaReferral}
                         >
-                          {verifyCaReferralMutation.isPending ? (
+                          {isCaReferralCodeLocked ? (
+                            <CheckIcon className="size-4" />
+                          ) : verifyCaReferralMutation.isPending ? (
                             <Spinner />
                           ) : (
                             t("auth.register.steps.account.verifyCaReferral")
@@ -1724,6 +1814,15 @@ export function SignupForm({
                       t("auth.register.steps.account.cta")
                     )}
                   </Button>
+                  <FieldDescription className="px-4 text-center text-xs">
+                    <Trans
+                      i18nKey="auth.register.termsNotice"
+                      components={{
+                        terms: <a href="/terms" />,
+                        privacy: <a href="/privacy" />,
+                      }}
+                    />
+                  </FieldDescription>
                   <Button
                     type="button"
                     variant="ghost"
@@ -2079,6 +2178,10 @@ function normalizePhone(value: string) {
 
 function normalizePhoneInput(value: string) {
   return normalizePhone(value)
+}
+
+function normalizeCaReferralCodeInput(value: string) {
+  return value.trim().toUpperCase().slice(0, 40)
 }
 
 function buildUniqueTestIdentity(existingPan?: string) {

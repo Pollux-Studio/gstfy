@@ -4,6 +4,7 @@ import {
   refreshStoredAuthSession,
   shouldRefreshAuthSession,
 } from "@/lib/auth/session"
+import { API_BASE_PATH, API_BASE_URL } from "@/lib/api/config"
 
 export class ApiError extends Error {
   constructor(
@@ -20,11 +21,6 @@ type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown
   accessToken?: string
 }
-
-export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://api.localhost:4000").replace(
-  /\/$/,
-  ""
-)
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}) {
   const { response, payload } = await sendApiRequest(
@@ -79,7 +75,7 @@ async function sendApiRequest(
     requestHeaders.set(key, value)
   }
 
-  const response = await fetch(`${API_BASE_URL}/api${path}`, {
+  const response = await fetch(`${API_BASE_URL}${API_BASE_PATH}${path}`, {
     ...restOptions,
     credentials: "include",
     headers: requestHeaders,

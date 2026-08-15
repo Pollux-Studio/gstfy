@@ -303,6 +303,11 @@ export function CaRegisterForm({
             >
               Already have a CA account?
             </Button>
+            <FieldDescription className="px-4 text-center text-xs">
+              By clicking Create CA account, you agree to our{" "}
+              <a href="/terms">Terms of Service</a> and{" "}
+              <a href="/privacy">Privacy Policy</a>.
+            </FieldDescription>
           </Field>
         </FieldGroup>
       </form>
@@ -320,7 +325,8 @@ function navigateAfterCaAuth(redirectTo: string, router: ReturnType<typeof useRo
 
   if (
     normalizedRedirect === "/dashboard" ||
-    normalizedRedirect.startsWith("/dashboard/clients")
+    normalizedRedirect.startsWith("/dashboard/clients") ||
+    normalizedRedirect.startsWith("/dashboard/referral-codes")
   ) {
     assignAuthTarget(getCaAppSubdomainUrl(normalizedRedirect))
     return
@@ -336,6 +342,10 @@ function normalizeCaRedirectPath(path: string) {
 
   if (path.startsWith("/ca/clients")) {
     return path.replace(/^\/ca\/clients/, "/dashboard/clients")
+  }
+
+  if (path.startsWith("/ca/referral-codes")) {
+    return path.replace(/^\/ca\/referral-codes/, "/dashboard/referral-codes")
   }
 
   return path
