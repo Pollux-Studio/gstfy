@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useMutation } from "@tanstack/react-query"
@@ -11,7 +12,7 @@ import {
   GalleryVerticalEndIcon,
   LockKeyholeIcon,
 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { type HTMLAttributes, useEffect, useMemo, useState } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
@@ -24,6 +25,7 @@ import {
   verifyOtp,
 } from "@/lib/auth/api"
 import { setStoredAuthSession } from "@/lib/auth/session"
+import { getAuthSubdomainUrl } from "@/lib/auth/workspace-url"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -39,8 +41,13 @@ import {
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
+  InputGroupText,
 } from "@/components/ui/input-group"
-import { IndianPhoneInput } from "@/components/ui/indian-phone-input"
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from "@/components/ui/input-otp"
 import { cn } from "@/lib/utils"
 
 type IdentifierValues = { identifier: string }
@@ -48,14 +55,17 @@ type PasswordValues = { password: string }
 type OtpValues = { token: string }
 type Account = LookupIdentifierResponse["account"]
 type LoginStep = "identifier" | "password" | "otp"
+type LoginFormProps = HTMLAttributes<HTMLDivElement> & {
+  registrationBanner?: string
+}
+
+const OTP_RESEND_INTERVAL_SECONDS = 60
 
 export function LoginForm({
   className,
   registrationBanner = "",
   ...props
-}: React.ComponentProps<"div"> & {
-  registrationBanner?: string
-}) {
+}: LoginFormProps) {
   const { t } = useTranslation()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -67,6 +77,9 @@ export function LoginForm({
   const [showPassword, setShowPassword] = useState(false)
   const [authError, setAuthError] = useState("")
   const [otpFeedback, setOtpFeedback] = useState("")
+  const [otpResendAvailableAt, setOtpResendAvailableAt] = useState(0)
+  const [otpResendNow, setOtpResendNow] = useState(0)
+  const [caLoginHref, setCaLoginHref] = useState("/auth/ca/login")
 
   const identifierSchema = useMemo(
     () =>
@@ -192,9 +205,41 @@ export function LoginForm({
     rawOtp.trim().length === 6 &&
     otpForm.formState.isValid &&
     !verifyOtpMutation.isPending
+  const resendRemainingSeconds =
+    step === "otp" && otpResendAvailableAt > 0
+      ? Math.max(0, Math.ceil((otpResendAvailableAt - otpResendNow) / 1000))
+      : 0
+  const canResendOtp =
+    resendRemainingSeconds === 0 && !sendOtpMutation.isPending
+  const identifierError = identifierForm.formState.errors.identifier
+  const shouldShowIdentifierError =
+    Boolean(identifierError) &&
+    (!phoneMode ||
+      normalizePhone(rawIdentifier).length === 10 ||
+      identifierForm.formState.isSubmitted)
   const transition = shouldReduceMotion
     ? { duration: 0 }
     : { duration: 0.24, ease: "easeOut" as const }
+
+  useEffect(() => {
+    setCaLoginHref(getAuthSubdomainUrl("/auth/ca/login"))
+  }, [])
+
+  useEffect(() => {
+    if (step !== "otp" || otpResendAvailableAt === 0) {
+      return
+    }
+
+    if (otpResendAvailableAt <= Date.now()) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setOtpResendNow(Date.now())
+    }, 1000)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [otpResendAvailableAt, otpResendNow, step])
 
   async function handleIdentifierSubmit(values: IdentifierValues) {
     setLookupState("idle")
@@ -215,6 +260,7 @@ export function LoginForm({
           identifier: normalizePhone(values.identifier),
           purpose: "login",
         })
+        startOtpResendCooldown()
         setOtpFeedback(t("auth.login.otpSent"))
         setStep("otp")
         return
@@ -251,9 +297,10 @@ export function LoginForm({
         accountType: "business",
         user: response.user,
         session: response.session,
+        tenant: response.tenant,
       })
 
-      router.push(nextPath)
+      navigateAfterBusinessLogin(response.redirectTo, nextPath, router)
     } catch (error) {
       setAuthError(
         error instanceof Error ? error.message : t("auth.login.errors.generic")
@@ -274,9 +321,10 @@ export function LoginForm({
         accountType: "business",
         user: response.user,
         session: response.session,
+        tenant: response.tenant,
       })
 
-      router.push(nextPath)
+      navigateAfterBusinessLogin(response.redirectTo, nextPath, router)
     } catch (error) {
       setAuthError(
         error instanceof Error ? error.message : t("auth.login.errors.otpGeneric")
@@ -292,6 +340,7 @@ export function LoginForm({
         identifier: normalizePhone(rawIdentifier),
         purpose: "login",
       })
+      startOtpResendCooldown()
       setOtpFeedback(t("auth.login.otpSent"))
     } catch (error) {
       setAuthError(
@@ -357,6 +406,15 @@ export function LoginForm({
     lookupMutation.reset()
     sendOtpMutation.reset()
     verifyOtpMutation.reset()
+    setOtpResendAvailableAt(0)
+    setOtpResendNow(0)
+  }
+
+  function startOtpResendCooldown() {
+    const now = Date.now()
+
+    setOtpResendNow(now)
+    setOtpResendAvailableAt(now + OTP_RESEND_INTERVAL_SECONDS * 1000)
   }
 
   const passwordRegistration = passwordForm.register("password")
@@ -401,30 +459,52 @@ export function LoginForm({
                 <FieldLabel htmlFor="identifier">
                   {t("auth.login.identifierLabel")}
                 </FieldLabel>
-                {phoneMode ? (
-                  <IndianPhoneInput
+                <InputGroup>
+                  <InputGroupAddon
+                    aria-hidden={!phoneMode}
+                    className={cn(
+                      "overflow-hidden transition-all",
+                      phoneMode
+                        ? "w-auto pl-2 opacity-100"
+                        : "w-0 gap-0 overflow-hidden p-0 opacity-0"
+                    )}
+                  >
+                    <InputGroupText
+                      className={cn(
+                        "whitespace-nowrap transition-opacity",
+                        !phoneMode && "opacity-0"
+                      )}
+                    >
+                      <Image
+                        src="/india-flag.png"
+                        alt="India"
+                        width={16}
+                        height={12}
+                        className="h-3 w-4 rounded-[2px] object-cover"
+                      />
+                      <span>+91</span>
+                    </InputGroupText>
+                  </InputGroupAddon>
+                  <InputGroupInput
                     id="identifier"
+                    type="text"
                     value={rawIdentifier}
-                    placeholder={t("auth.login.phonePlaceholder")}
-                    autoComplete="username"
-                    aria-invalid={!!identifierForm.formState.errors.identifier}
+                    inputMode={phoneMode ? "numeric" : "email"}
+                    maxLength={phoneMode ? 10 : undefined}
+                    placeholder={
+                      phoneMode
+                        ? t("auth.login.phonePlaceholder")
+                        : t("auth.login.emailPlaceholder")
+                    }
+                    autoComplete={phoneMode ? "tel-national" : "username"}
+                    aria-invalid={shouldShowIdentifierError}
+                    className={cn(phoneMode && "font-mono")}
                     onChange={(event) => handleIdentifierChange(event.target.value)}
                   />
-                ) : (
-                  <InputGroup>
-                    <InputGroupInput
-                      id="identifier"
-                      type="text"
-                      value={rawIdentifier}
-                      inputMode="email"
-                      placeholder={t("auth.login.emailPlaceholder")}
-                      autoComplete="username"
-                      aria-invalid={!!identifierForm.formState.errors.identifier}
-                      onChange={(event) => handleIdentifierChange(event.target.value)}
-                    />
-                  </InputGroup>
-                )}
-                <FieldError errors={[identifierForm.formState.errors.identifier]} />
+                </InputGroup>
+                {shouldShowIdentifierError ? (
+                  <FieldError errors={[identifierError]} />
+                ) : null}
                 {lookupState === "not-found" ? (
                   <FieldError>{t("auth.login.errors.accountNotFound")}</FieldError>
                 ) : null}
@@ -453,7 +533,7 @@ export function LoginForm({
                   nativeButton={false}
                   variant="ghost"
                   className="w-full"
-                  render={<Link href="/auth/ca/login" />}
+                  render={<Link href={caLoginHref} />}
                 >
                   Login or register as a CA
                 </Button>
@@ -566,19 +646,22 @@ export function LoginForm({
                 <FieldLabel htmlFor="login-otp">
                   {t("auth.login.otpLabel")}
                 </FieldLabel>
-                <InputGroup>
-                  <InputGroupInput
-                    id="login-otp"
-                    type="text"
-                    value={rawOtp}
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    placeholder={t("auth.login.otpPlaceholder")}
-                    aria-invalid={!!otpForm.formState.errors.token}
-                    className="font-mono tracking-[0.3em]"
-                    onChange={(event) => handleOtpChange(event.target.value)}
-                  />
-                </InputGroup>
+                <InputOTP
+                  id="login-otp"
+                  value={rawOtp}
+                  maxLength={6}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  aria-invalid={!!otpForm.formState.errors.token}
+                  containerClassName="justify-center"
+                  onChange={handleOtpChange}
+                >
+                  <InputOTPGroup>
+                    {Array.from({ length: 6 }).map((_, index) => (
+                      <InputOTPSlot key={index} index={index} />
+                    ))}
+                  </InputOTPGroup>
+                </InputOTP>
                 <FieldDescription>
                   {t("auth.login.phoneOtpDescription")}
                 </FieldDescription>
@@ -605,12 +688,16 @@ export function LoginForm({
                   type="button"
                   variant="outline"
                   className="w-full"
-                  disabled={sendOtpMutation.isPending}
+                  disabled={!canResendOtp}
                   onClick={handleResendOtp}
                 >
                   {sendOtpMutation.isPending
                     ? t("auth.login.resendingOtp")
-                    : t("auth.login.resendOtp")}
+                    : resendRemainingSeconds > 0
+                      ? t("auth.login.resendOtpIn", {
+                          seconds: resendRemainingSeconds,
+                        })
+                      : t("auth.login.resendOtp")}
                 </Button>
                 <Button
                   type="button"
@@ -720,4 +807,19 @@ function sanitizeNextPath(value: string | null) {
   }
 
   return value
+}
+
+function navigateAfterBusinessLogin(
+  redirectTo: string,
+  nextPath: string,
+  router: ReturnType<typeof useRouter>
+) {
+  const targetPath = nextPath === "/dashboard" ? redirectTo : nextPath
+
+  if (/^https?:\/\//.test(targetPath)) {
+    window.location.assign(targetPath)
+    return
+  }
+
+  router.push(targetPath)
 }

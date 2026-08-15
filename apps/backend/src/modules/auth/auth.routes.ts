@@ -1,9 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify"
 
 import { getEnv } from "../../config/env.js"
+import { getTenantSlugFromRequest } from "../../utils/tenant-context.js"
 import {
   businessRegisterSchema,
   caRegisterSchema,
+  caReferralVerifySchema,
   forgotPasswordSchema,
   identifierLoginSchema,
   loginSchema,
@@ -33,7 +35,12 @@ export async function registerAuthRoutes(app: FastifyInstance) {
 
   app.post("/auth/lookup", async (request) => {
     const body = lookupIdentifierSchema.parse(request.body)
-    return authService.lookupIdentifier(body)
+    return authService.lookupIdentifier(body, getRequestContext(request))
+  })
+
+  app.post("/auth/ca-referral/verify", async (request) => {
+    const body = caReferralVerifySchema.parse(request.body)
+    return authService.verifyCaReferral(body)
   })
 
   app.post("/auth/login", async (request, reply) => {
@@ -149,5 +156,6 @@ function getRequestContext(request: FastifyRequest) {
   return {
     userAgent: request.headers["user-agent"],
     ipAddress: request.ip,
+    tenantSlug: getTenantSlugFromRequest(request),
   }
 }

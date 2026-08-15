@@ -1,4 +1,4 @@
-import type { AuthSession, AuthUser } from "@/lib/auth/api"
+import type { AuthSession, AuthTenant, AuthUser } from "@/lib/auth/api"
 
 const AUTH_SESSION_STORAGE_KEY = "gstfy.auth.session"
 export const AUTH_SESSION_CHANGE_EVENT = "gstfy.auth.session_changed"
@@ -17,12 +17,14 @@ export type StoredAuthSession = {
   accountType: AuthAccountType
   user: AuthUser
   session: AuthSession
+  tenant?: AuthTenant | null
 }
 
 type StoredAuthSessionInput = {
   user: AuthUser
   session: AuthSession
   accountType?: AuthAccountType
+  tenant?: AuthTenant | null
 }
 
 type RefreshSessionResponse = {
@@ -35,6 +37,7 @@ type RefreshSessionResponse = {
   }
   accessToken: string
   accessTokenExpiresIn: number
+  tenant?: AuthTenant | null
 }
 
 let activeRefreshPromise: Promise<StoredAuthSession | null> | null = null
@@ -62,6 +65,7 @@ export function getStoredAuthSession(): StoredAuthSession | null {
       accountType: getSafeAccountType(parsedValue.accountType),
       user: parsedValue.user,
       session: parsedValue.session,
+      tenant: parsedValue.tenant ?? null,
     }
   } catch {
     window.sessionStorage.removeItem(AUTH_SESSION_STORAGE_KEY)
@@ -92,6 +96,7 @@ export function setStoredAuthSession(value: StoredAuthSessionInput) {
       accountType: value.accountType ?? "business",
       user: value.user,
       session: value.session,
+      tenant: value.tenant ?? null,
     } satisfies StoredAuthSession)
   )
   setAuthCookie(value.accountType ?? "business")
@@ -190,6 +195,7 @@ async function refreshAuthSession() {
         accessToken: payload.accessToken,
         expiresAt: Math.floor(Date.now() / 1000) + payload.accessTokenExpiresIn,
       },
+      tenant: payload.tenant ?? currentSession.tenant ?? null,
     }
 
     setStoredAuthSession(nextSession)
@@ -199,6 +205,7 @@ async function refreshAuthSession() {
       accountType: nextSession.accountType ?? "business",
       user: nextSession.user,
       session: nextSession.session,
+      tenant: nextSession.tenant ?? null,
     } satisfies StoredAuthSession
   } catch {
     return null

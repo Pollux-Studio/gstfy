@@ -23,11 +23,13 @@ import { createUrlToken, sha256 } from "../../utils/crypto.js"
 import { createProfileImage } from "../../utils/avatar.js"
 import { HttpError } from "../../utils/http-error.js"
 import { createTenantSlug } from "../../utils/tenant-slug.js"
+import { getAuthUrl, getTenantUrl } from "../../utils/tenant-url.js"
 import { verifyFirebaseIdToken } from "../firebase/firebase-admin.js"
 import { MailService } from "../mail/mail.service.js"
 import type {
   BusinessRegisterInput,
   CaRegisterInput,
+  CaReferralVerifyInput,
   ForgotPasswordInput,
   IdentifierLoginInput,
   LoginInput,
@@ -41,6 +43,7 @@ import type {
 type RequestContext = {
   userAgent?: string
   ipAddress?: string
+  tenantSlug?: string | null
 }
 
 type AuthSessionPayload = {
@@ -49,6 +52,7 @@ type AuthSessionPayload = {
   accessTokenExpiresIn: number
   refreshToken: string
   redirectTo: string
+  tenant: PublicTenant | null
 }
 
 type PublicUser = {
@@ -62,6 +66,14 @@ type PublicUser = {
   phoneVerified: boolean
 }
 
+type PublicTenant = {
+  id: string
+  slug: string
+  legalName: string
+  tradeName: string
+  url: string
+}
+
 const refreshCookieName = "gstfy_refresh"
 const accessTokenEncoder = new TextEncoder()
 
@@ -73,7 +85,7 @@ export class AuthService {
     return refreshCookieName
   }
 
-  async lookupIdentifier(input: LookupIdentifierInput) {
+  async lookupIdentifier(input: LookupIdentifierInput, context: RequestContext = {}) {
     const identifier = input.identifier.trim()
     const user = isPhoneIdentifier(identifier)
       ? await db.query.users.findFirst({
@@ -87,7 +99,7 @@ export class AuthService {
       throw new HttpError(404, "Account not found.")
     }
 
-    const business = await this.findPrimaryBusinessAccount(user.id)
+    const business = await this.findPrimaryBusinessAccount(user.id, context.tenantSlug)
 
     if (!business) {
       throw new HttpError(404, "Business account not found.")
@@ -98,6 +110,8 @@ export class AuthService {
         id: user.id,
         displayName: business.tradeName || user.fullName || user.email || user.phoneE164,
         gstin: business.gstin,
+        tenantSlug: business.tenantSlug,
+        tenantUrl: this.getBusinessUrl(business),
         email: user.email,
         phone: user.phoneE164,
       },
@@ -109,6 +123,7 @@ export class AuthService {
       .select({
         businessId: businesses.id,
         businessName: businesses.tradeName,
+        tenantSlug: businesses.tenantSlug,
         role: businessMembers.role,
         status: businessMembers.status,
         gstin: businessProfiles.gstin,
@@ -144,6 +159,8 @@ export class AuthService {
       memberships: memberships.map((membership) => ({
         business_id: membership.businessId,
         business_name: membership.businessName,
+        tenant_slug: membership.tenantSlug,
+        tenant_url: this.getBusinessUrl({ tenantSlug: membership.tenantSlug }),
         role: membership.role,
         status: membership.status,
         gstin: membership.gstin,
@@ -218,6 +235,7 @@ export class AuthService {
       return this.createAuthSession({
         user: result.user,
         redirectTo: this.getBusinessRedirect(result.business),
+        business: result.business,
         context,
       })
     } catch (error) {
@@ -387,10 +405,14 @@ export class AuthService {
           profileImageStyle: result.user.profileImageStyle,
         },
         session: null,
+        tenant: this.toPublicTenant(result.business),
+        redirectTo: this.getBusinessLoginRedirect(result.business),
         requiresVerification: true,
         onboardingStatus: "pending",
         business: {
           id: result.business.id,
+          tenantSlug: result.business.tenantSlug,
+          tenantUrl: this.getBusinessUrl(result.business),
           legalName: result.business.legalName,
           tradeName: result.business.tradeName,
           pan: result.business.pan,
@@ -418,6 +440,48 @@ export class AuthService {
       }
     } catch (error) {
       throw mapDatabaseError(error)
+    }
+  }
+
+  async verifyCaReferral(input: CaReferralVerifyInput) {
+    const referralCode = normalizeReferralCode(input.referralCode)
+    const checkedAt = new Date()
+    const [invite] = await db
+      .select({
+        referralCode: caClientInvites.referralCode,
+        clientGstin: caClientInvites.clientGstin,
+        practiceName: caPractices.practiceName,
+      })
+      .from(caClientInvites)
+      .innerJoin(caPractices, eq(caPractices.id, caClientInvites.practiceId))
+      .where(
+        and(
+          eq(caClientInvites.referralCode, referralCode),
+          eq(caClientInvites.status, "pending"),
+          gt(caClientInvites.expiresAt, checkedAt)
+        )
+      )
+      .limit(1)
+
+    if (!invite) {
+      throw new HttpError(400, "CA referral code is invalid or expired.")
+    }
+
+    const gstin = input.gstin?.trim().toUpperCase() ?? ""
+
+    if (
+      invite.clientGstin &&
+      gstin &&
+      invite.clientGstin.trim().toUpperCase() !== gstin
+    ) {
+      throw new HttpError(400, "This referral code is assigned to a different GSTIN.")
+    }
+
+    return {
+      valid: true,
+      referralCode: invite.referralCode,
+      practiceName: invite.practiceName,
+      clientGstin: invite.clientGstin,
     }
   }
 
@@ -473,7 +537,8 @@ export class AuthService {
 
       return this.createAuthSession({
         user: result.user,
-        redirectTo: "/ca",
+        redirectTo: this.getCaRedirect(),
+        business: null,
         context,
       })
     } catch (error) {
@@ -483,7 +548,7 @@ export class AuthService {
 
   async loginBusiness(input: LoginInput, context: RequestContext) {
     const user = await this.verifyPasswordLogin(input)
-    const business = await this.findPrimaryBusiness(user.id)
+    const business = await this.findPrimaryBusiness(user.id, context.tenantSlug)
 
     if (!business) {
       throw new HttpError(404, "Business account not found.")
@@ -494,6 +559,7 @@ export class AuthService {
     return this.createAuthSession({
       user,
       redirectTo: this.getBusinessRedirect(business),
+      business,
       context,
     })
   }
@@ -527,7 +593,8 @@ export class AuthService {
 
     return this.createAuthSession({
       user,
-      redirectTo: "/ca",
+      redirectTo: this.getCaRedirect(),
+      business: null,
       context,
     })
   }
@@ -544,7 +611,7 @@ export class AuthService {
       throw new HttpError(404, "Phone account not found.")
     }
 
-    const business = await this.findPrimaryBusiness(user.id)
+    const business = await this.findPrimaryBusiness(user.id, context.tenantSlug)
 
     if (!business) {
       throw new HttpError(404, "Business account not found.")
@@ -565,6 +632,7 @@ export class AuthService {
         lastLoginAt: new Date(),
       },
       redirectTo: this.getBusinessRedirect(business),
+      business,
       context,
     })
   }
@@ -596,11 +664,13 @@ export class AuthService {
     }
 
     const accessToken = await this.createAccessToken(user)
+    const business = await this.findPrimaryBusiness(user.id)
 
     return {
       user: toPublicUser(user),
       accessToken,
       accessTokenExpiresIn: this.env.JWT_ACCESS_TTL_SECONDS,
+      tenant: business ? this.toPublicTenant(business) : null,
     }
   }
 
@@ -748,6 +818,7 @@ export class AuthService {
   private async createAuthSession(input: {
     user: UserRecord
     redirectTo: string
+    business: Pick<BusinessRecord, "id" | "tenantSlug" | "legalName" | "tradeName"> | null
     context: RequestContext
   }): Promise<AuthSessionPayload> {
     const refreshToken = createUrlToken(48)
@@ -776,6 +847,7 @@ export class AuthService {
       accessTokenExpiresIn: this.env.JWT_ACCESS_TTL_SECONDS,
       refreshToken,
       redirectTo: input.redirectTo,
+      tenant: input.business ? this.toPublicTenant(input.business) : null,
     }
   }
 
@@ -811,7 +883,7 @@ export class AuthService {
     })
   }
 
-  private findPrimaryBusiness(userId: string) {
+  private findPrimaryBusiness(userId: string, tenantSlug?: string | null) {
     return db
       .select({
         id: businesses.id,
@@ -830,14 +902,15 @@ export class AuthService {
       .where(
         and(
           eq(businessMembers.userId, userId),
-          eq(businessMembers.status, "active")
+          eq(businessMembers.status, "active"),
+          ...(tenantSlug ? [eq(businesses.tenantSlug, tenantSlug)] : [])
         )
       )
       .limit(1)
       .then((items) => items[0] ?? null)
   }
 
-  private findPrimaryBusinessAccount(userId: string) {
+  private findPrimaryBusinessAccount(userId: string, tenantSlug?: string | null) {
     return db
       .select({
         id: businesses.id,
@@ -858,7 +931,8 @@ export class AuthService {
       .where(
         and(
           eq(businessMembers.userId, userId),
-          eq(businessMembers.status, "active")
+          eq(businessMembers.status, "active"),
+          ...(tenantSlug ? [eq(businesses.tenantSlug, tenantSlug)] : [])
         )
       )
       .limit(1)
@@ -899,13 +973,43 @@ export class AuthService {
   }
 
   private getBusinessRedirect(business: Pick<BusinessRecord, "tenantSlug">) {
-    const baseDomain = this.env.APP_BASE_DOMAIN.replace(/^https?:\/\//, "")
+    const businessUrl = this.getBusinessUrl(business)
 
-    if (baseDomain.startsWith("localhost")) {
+    if (!businessUrl) {
       return "/dashboard"
     }
 
-    return `https://${business.tenantSlug}.${baseDomain}/dashboard`
+    return `${businessUrl}/dashboard`
+  }
+
+  private getBusinessLoginRedirect(business: Pick<BusinessRecord, "tenantSlug">) {
+    const businessUrl = this.getBusinessUrl(business)
+
+    if (!businessUrl) {
+      return "/auth/login"
+    }
+
+    return `${businessUrl}/auth/login`
+  }
+
+  private getCaRedirect() {
+    return getAuthUrl("/ca", this.env)
+  }
+
+  private getBusinessUrl(business: Pick<BusinessRecord, "tenantSlug">) {
+    return getTenantUrl(business.tenantSlug, this.env)
+  }
+
+  private toPublicTenant(
+    business: Pick<BusinessRecord, "id" | "tenantSlug" | "legalName" | "tradeName">
+  ): PublicTenant {
+    return {
+      id: business.id,
+      slug: business.tenantSlug,
+      legalName: business.legalName,
+      tradeName: business.tradeName,
+      url: this.getBusinessUrl(business),
+    }
   }
 
   private async createUniqueTenantSlug(

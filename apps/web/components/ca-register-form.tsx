@@ -13,12 +13,13 @@ import {
   MailIcon,
   UserRoundIcon,
 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
 
 import { caRegister } from "@/lib/auth/api"
 import { setStoredAuthSession } from "@/lib/auth/session"
+import { getAuthSubdomainUrl } from "@/lib/auth/workspace-url"
 import { Button } from "@/components/ui/button"
 import {
   Field,
@@ -51,6 +52,7 @@ export function CaRegisterForm({
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [submitError, setSubmitError] = useState("")
+  const [caLoginHref, setCaLoginHref] = useState("/auth/ca/login")
 
   const schema = useMemo(
     () =>
@@ -99,6 +101,10 @@ export function CaRegisterForm({
     mutationFn: caRegister,
   })
 
+  useEffect(() => {
+    setCaLoginHref(getAuthSubdomainUrl("/auth/ca/login"))
+  }, [])
+
   async function handleSubmit(formValues: CaRegisterValues) {
     setSubmitError("")
 
@@ -110,7 +116,7 @@ export function CaRegisterForm({
         password: formValues.password,
         emailRedirectTo:
           typeof window !== "undefined" ?
-            `${window.location.origin}/auth/ca/login`
+            getAuthSubdomainUrl("/auth/ca/login")
           : undefined,
       })
 
@@ -120,7 +126,7 @@ export function CaRegisterForm({
         session: response.session,
       })
 
-      router.push("/ca")
+      navigateAfterCaAuth(response.redirectTo, router)
     } catch (error) {
       setSubmitError(
         error instanceof Error ? error.message : "Unable to create CA account."
@@ -288,7 +294,7 @@ export function CaRegisterForm({
               variant="ghost"
               className="w-full"
               nativeButton={false}
-              render={<Link href="/auth/ca/login" />}
+              render={<Link href={caLoginHref} />}
             >
               Already have a CA account?
             </Button>
@@ -297,4 +303,13 @@ export function CaRegisterForm({
       </form>
     </div>
   )
+}
+
+function navigateAfterCaAuth(redirectTo: string, router: ReturnType<typeof useRouter>) {
+  if (/^https?:\/\//.test(redirectTo)) {
+    window.location.assign(redirectTo)
+    return
+  }
+
+  router.push(redirectTo)
 }

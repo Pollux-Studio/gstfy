@@ -13,10 +13,11 @@ import {
   CheckIcon,
   EyeIcon,
   EyeOffIcon,
+  Globe2Icon,
   KeyRoundIcon,
   LockKeyholeIcon,
 } from "lucide-react"
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { z } from "zod"
 
@@ -24,9 +25,15 @@ import {
   type CompleteOnboardingPayload,
   register as registerAccount,
   sendOtp,
+  verifyCaReferral,
   verifyOtp,
 } from "@/lib/auth/api"
 import { setStoredAuthSession } from "@/lib/auth/session"
+import {
+  appendPathToUrl,
+  createWorkspaceSlugPreview,
+  getWorkspaceUrlPreview,
+} from "@/lib/auth/workspace-url"
 import { getAllGstStates } from "@/lib/gst-state"
 
 import { Button } from "@/components/ui/button"
@@ -53,6 +60,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
 type RegisterStep = "company" | "registration" | "account"
@@ -95,6 +103,11 @@ type AccountStage = "credentials" | "otp"
 
 type FieldErrors<T extends string> = Partial<Record<T, string>>
 type RegistrationLocationStatus = "idle" | "requesting" | "success" | "error"
+type CaReferralVerification = {
+  code: string
+  type: "success" | "error"
+  message: string
+} | null
 
 const indiaPhonePattern = /^\d{10}$/
 const gstinPattern = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/
@@ -128,6 +141,8 @@ export function SignupForm({
     type: "error" | "info"
     message: string
   } | null>(null)
+  const [caReferralVerification, setCaReferralVerification] =
+    useState<CaReferralVerification>(null)
   const hasRequestedRegistrationLocationRef = useRef(false)
 
   const [company, setCompany] = useState<CompanyFormValues>({
@@ -163,6 +178,11 @@ export function SignupForm({
     confirmPassword: "",
     caReferralCode: "",
   })
+  const workspaceSlugPreview = useMemo(
+    () => createWorkspaceSlugPreview(company.tradeName || company.legalName),
+    [company.legalName, company.tradeName]
+  )
+  const [workspaceUrlPreview, setWorkspaceUrlPreview] = useState("")
 
   const [companyErrors, setCompanyErrors] = useState<FieldErrors<keyof CompanyFormValues>>(
     {}
@@ -185,6 +205,14 @@ export function SignupForm({
   const verifyOtpMutation = useMutation({
     mutationFn: verifyOtp,
   })
+
+  const verifyCaReferralMutation = useMutation({
+    mutationFn: verifyCaReferral,
+  })
+
+  useEffect(() => {
+    setWorkspaceUrlPreview(getWorkspaceUrlPreview(workspaceSlugPreview))
+  }, [workspaceSlugPreview])
 
   const companySchema = useMemo(
     () =>
@@ -459,6 +487,9 @@ export function SignupForm({
   ) {
     updateSimpleField(setRegistration, key, value)
     setRegistrationErrors((currentValue) => clearErrorKey(currentValue, key))
+    if (key === "gstin") {
+      setCaReferralVerification(null)
+    }
   }
 
   function updateAccountValue<K extends keyof AccountFormValues>(
@@ -467,6 +498,9 @@ export function SignupForm({
   ) {
     updateSimpleField(setAccount, key, value)
     setAccountErrors((currentValue) => clearErrorKey(currentValue, key))
+    if (key === "caReferralCode") {
+      setCaReferralVerification(null)
+    }
     if (submitFeedback) {
       setSubmitFeedback(null)
     }
@@ -571,6 +605,51 @@ export function SignupForm({
     return false
   }
 
+  async function handleVerifyCaReferral() {
+    const referralCode = account.caReferralCode.trim().toUpperCase()
+
+    if (!referralCode) {
+      setAccountErrors((currentValue) => ({
+        ...currentValue,
+        caReferralCode: t("auth.register.errors.caReferralCodeRequired"),
+      }))
+      return
+    }
+
+    setAccount((currentValue) => ({
+      ...currentValue,
+      caReferralCode: referralCode,
+    }))
+    setAccountErrors((currentValue) => clearErrorKey(currentValue, "caReferralCode"))
+    setCaReferralVerification(null)
+
+    try {
+      const response = await verifyCaReferralMutation.mutateAsync({
+        referralCode,
+        gstin: registration.gstin.trim().toUpperCase() || undefined,
+      })
+
+      setCaReferralVerification({
+        code: referralCode,
+        type: "success",
+        message: response.practiceName
+          ? t("auth.register.steps.account.caReferralVerifiedWith", {
+              practiceName: response.practiceName,
+            })
+          : t("auth.register.steps.account.caReferralVerified"),
+      })
+    } catch (error) {
+      setCaReferralVerification({
+        code: referralCode,
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : t("auth.register.steps.account.caReferralInvalid"),
+      })
+    }
+  }
+
   function handleCompanySubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!validateCompanyStep()) {
@@ -662,8 +741,12 @@ export function SignupForm({
           return
         }
 
-        router.push(
-          `/auth/login?registered=1&verification=${phoneMode ? "phone" : "email"}`
+        navigateAfterBusinessAuth(
+          getTenantLoginRedirect(
+            registerResponse.tenant?.url ?? registerResponse.business?.tenantUrl,
+            phoneMode ? "phone" : "email"
+          ),
+          router
         )
         return
       }
@@ -672,9 +755,10 @@ export function SignupForm({
         accountType: "business",
         user: registerResponse.user,
         session: registerResponse.session,
+        tenant: registerResponse.tenant ?? null,
       })
 
-      router.push("/dashboard")
+      navigateAfterBusinessAuth(registerResponse.redirectTo ?? "/dashboard", router)
     } catch (error) {
       setSubmitFeedback({
         type: "error",
@@ -708,9 +792,10 @@ export function SignupForm({
         accountType: "business",
         user: response.user,
         session: response.session,
+        tenant: response.tenant,
       })
 
-      router.push("/dashboard")
+      navigateAfterBusinessAuth(response.redirectTo, router)
     } catch (error) {
       setPhoneVerificationError(
         error instanceof Error ? error.message : t("auth.register.errors.generic")
@@ -743,10 +828,14 @@ export function SignupForm({
     sendOtpMutation.reset()
   }
 
-  const stepContentWidth = "max-w-md"
+  const stepContentWidth =
+    step === "account" && accountStage === "credentials" ? "max-w-sm" : "max-w-md"
   const shouldCenterStepContent =
     !compactStepHasErrors &&
     (step === "company" || (step === "account" && accountStage === "credentials"))
+  const isAccountSubmitPending =
+    registerMutation.isPending ||
+    (accountStage === "credentials" && sendOtpMutation.isPending)
 
   return (
     <div
@@ -762,20 +851,20 @@ export function SignupForm({
 
       <div
         className={cn(
-          "mx-auto w-full",
+          "mx-auto w-full min-w-0 overflow-x-hidden",
           stepContentWidth,
           "flex h-full min-h-0 flex-1 flex-col"
         )}
       >
         {step === "company" ? (
           <form
-            className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto]"
+            className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] overflow-hidden"
             onSubmit={handleCompanySubmit}
             noValidate
           >
             <div
               className={cn(
-                "no-scrollbar min-h-0 flex-1 overflow-y-auto",
+                "no-scrollbar min-h-0 flex-1 overflow-y-scroll overscroll-contain [scrollbar-gutter:stable]",
                 shouldCenterStepContent ? "flex items-center" : "py-4"
               )}
             >
@@ -972,13 +1061,13 @@ export function SignupForm({
 
         {step === "registration" ? (
           <form
-            className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto]"
+            className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] overflow-hidden"
             onSubmit={handleRegistrationSubmit}
             noValidate
           >
             <div
               className={cn(
-                "no-scrollbar min-h-0 flex-1 overflow-y-auto",
+                "no-scrollbar min-h-0 flex-1 overflow-y-scroll overscroll-contain [scrollbar-gutter:stable]",
                 "py-4"
               )}
             >
@@ -1305,7 +1394,7 @@ export function SignupForm({
 
         {step === "account" ? (
           <form
-            className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto]"
+            className="grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)_auto] overflow-hidden"
             onSubmit={
               accountStage === "credentials"
                 ? handleAccountSubmit
@@ -1315,11 +1404,11 @@ export function SignupForm({
           >
             <div
               className={cn(
-                "no-scrollbar min-h-0 flex-1 overflow-y-auto",
+                "no-scrollbar min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-scroll overscroll-contain [scrollbar-gutter:stable]",
                 shouldCenterStepContent ? "flex items-center" : "py-4"
               )}
             >
-              <FieldGroup className="w-full gap-4 pb-4">
+              <FieldGroup className="min-w-0 w-full gap-4 pb-4">
                 <div className="flex flex-col items-center gap-1 text-center">
                   <h1 className="text-xl font-bold sm:text-2xl">
                     {accountStage === "credentials"
@@ -1335,40 +1424,78 @@ export function SignupForm({
 
                 {accountStage === "credentials" ? (
                   <>
+                    <div className="rounded-xl border border-border bg-muted/20 p-3">
+                      <div className="flex items-start gap-3">
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground ring-1 ring-border">
+                          <Globe2Icon className="size-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium">
+                            {t("auth.register.steps.account.workspaceUrlLabel")}
+                          </p>
+                          <p className="mt-1 truncate font-mono text-xs text-foreground">
+                            {workspaceUrlPreview}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {t("auth.register.steps.account.workspaceUrlHelper")}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
                     <Field>
                       <RequiredFieldLabel htmlFor="register-identifier">
                         {t("auth.register.steps.account.identifierLabel")}
                       </RequiredFieldLabel>
-                      {phoneMode ? (
-                        <IndianPhoneInput
+                      <InputGroup>
+                        <InputGroupAddon
+                          aria-hidden={!phoneMode}
+                          className={cn(
+                            "overflow-hidden transition-all",
+                            phoneMode
+                              ? "w-auto pl-2 opacity-100"
+                              : "w-0 gap-0 overflow-hidden p-0 opacity-0"
+                          )}
+                        >
+                          <InputGroupText
+                            className={cn(
+                              "whitespace-nowrap transition-opacity",
+                              !phoneMode && "opacity-0"
+                            )}
+                          >
+                            <Image
+                              src="/india-flag.png"
+                              alt="India"
+                              width={16}
+                              height={12}
+                              className="h-3 w-4 rounded-[2px] object-cover"
+                            />
+                            <span>+91</span>
+                          </InputGroupText>
+                        </InputGroupAddon>
+                        <InputGroupInput
                           id="register-identifier"
+                          type="text"
                           value={account.identifier}
-                          placeholder={t("auth.register.steps.account.phonePlaceholder")}
-                          autoComplete="tel-national"
+                          inputMode={phoneMode ? "numeric" : "email"}
+                          maxLength={phoneMode ? 10 : undefined}
+                          placeholder={
+                            phoneMode
+                              ? t("auth.register.steps.account.phonePlaceholder")
+                              : t("auth.register.steps.account.emailPlaceholder")
+                          }
+                          autoComplete={phoneMode ? "tel-national" : "email"}
+                          className={cn(phoneMode && "font-mono")}
                           onChange={(event) =>
-                            updateAccountValue("identifier", event.target.value)
+                            updateAccountValue(
+                              "identifier",
+                              isPhoneMode(event.target.value)
+                                ? normalizePhoneInput(event.target.value)
+                                : event.target.value
+                            )
                           }
                         />
-                      ) : (
-                        <InputGroup>
-                          <InputGroupInput
-                            id="register-identifier"
-                            type="text"
-                            value={account.identifier}
-                            inputMode="email"
-                            placeholder={t("auth.register.steps.account.emailPlaceholder")}
-                            autoComplete="email"
-                            onChange={(event) =>
-                              updateAccountValue(
-                                "identifier",
-                                isPhoneMode(event.target.value)
-                                  ? normalizePhoneInput(event.target.value)
-                                  : event.target.value
-                              )
-                            }
-                          />
-                        </InputGroup>
-                      )}
+                      </InputGroup>
                       <FieldError>{accountErrors.identifier}</FieldError>
                     </Field>
 
@@ -1376,29 +1503,59 @@ export function SignupForm({
                       <RequiredFieldLabel htmlFor="register-ca-referral-code">
                         {t("auth.register.steps.account.caReferralCodeLabel")}
                       </RequiredFieldLabel>
-                      <InputGroup>
-                        <InputGroupAddon>
-                          <KeyRoundIcon className="size-4" />
-                        </InputGroupAddon>
-                        <InputGroupInput
-                          id="register-ca-referral-code"
-                          type="text"
-                          value={account.caReferralCode}
-                          placeholder={t(
-                            "auth.register.steps.account.caReferralCodePlaceholder"
-                          )}
-                          autoComplete="off"
-                          className="font-mono uppercase tracking-[0.18em]"
-                          onChange={(event) =>
-                            updateAccountValue(
-                              "caReferralCode",
-                              event.target.value.toUpperCase().slice(0, 40)
-                            )
+                      <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+                        <InputGroup className="min-w-0 flex-1">
+                          <InputGroupAddon>
+                            <KeyRoundIcon className="size-4" />
+                          </InputGroupAddon>
+                          <InputGroupInput
+                            id="register-ca-referral-code"
+                            type="text"
+                            value={account.caReferralCode}
+                            placeholder={t(
+                              "auth.register.steps.account.caReferralCodePlaceholder"
+                            )}
+                            autoComplete="off"
+                            className="min-w-0 font-mono uppercase tracking-[0.12em]"
+                            onChange={(event) =>
+                              updateAccountValue(
+                                "caReferralCode",
+                                event.target.value.toUpperCase().slice(0, 40)
+                              )
+                            }
+                          />
+                        </InputGroup>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="shrink-0 sm:w-24"
+                          disabled={
+                            verifyCaReferralMutation.isPending ||
+                            account.caReferralCode.trim().length === 0
                           }
-                        />
-                      </InputGroup>
-                      <FieldDescription>
-                        {t("auth.register.steps.account.caReferralCodeHelper")}
+                          onClick={handleVerifyCaReferral}
+                        >
+                          {verifyCaReferralMutation.isPending ? (
+                            <>
+                              <Spinner />
+                              <span className="sr-only">
+                                {t("auth.register.steps.account.verifyingCaReferral")}
+                              </span>
+                            </>
+                          ) : (
+                            t("auth.register.steps.account.verifyCaReferral")
+                          )}
+                        </Button>
+                      </div>
+                      <FieldDescription
+                        className={cn(
+                          caReferralVerification?.type === "success" &&
+                            "text-emerald-600 dark:text-emerald-400",
+                          caReferralVerification?.type === "error" && "text-destructive"
+                        )}
+                      >
+                        {caReferralVerification?.message ??
+                          t("auth.register.steps.account.caReferralCodeHelper")}
                       </FieldDescription>
                       <FieldError>{accountErrors.caReferralCode}</FieldError>
                     </Field>
@@ -1563,12 +1720,19 @@ export function SignupForm({
                 <>
                   <Button
                     type="submit"
-                    disabled={registerMutation.isPending}
+                    disabled={isAccountSubmitPending}
                     className="w-full"
                   >
-                    {registerMutation.isPending
-                      ? t("auth.register.steps.account.submitting")
-                      : t("auth.register.steps.account.cta")}
+                    {isAccountSubmitPending ? (
+                      <>
+                        <Spinner />
+                        <span className="sr-only">
+                          {t("auth.register.steps.account.submitting")}
+                        </span>
+                      </>
+                    ) : (
+                      t("auth.register.steps.account.cta")
+                    )}
                   </Button>
                   <Button
                     type="button"
@@ -1586,9 +1750,16 @@ export function SignupForm({
                     disabled={verifyOtpMutation.isPending}
                     className="w-full"
                   >
-                    {verifyOtpMutation.isPending
-                      ? t("auth.register.steps.account.verifyingOtp")
-                      : t("auth.register.steps.account.verifyOtp")}
+                    {verifyOtpMutation.isPending ? (
+                      <>
+                        <Spinner />
+                        <span className="sr-only">
+                          {t("auth.register.steps.account.verifyingOtp")}
+                        </span>
+                      </>
+                    ) : (
+                      t("auth.register.steps.account.verifyOtp")
+                    )}
                   </Button>
                   <Button
                     type="button"
@@ -1597,9 +1768,16 @@ export function SignupForm({
                     disabled={sendOtpMutation.isPending}
                     onClick={handleResendPhoneOtp}
                   >
-                    {sendOtpMutation.isPending
-                      ? t("auth.register.steps.account.resendingOtp")
-                      : t("auth.register.steps.account.resendOtp")}
+                    {sendOtpMutation.isPending ? (
+                      <>
+                        <Spinner />
+                        <span className="sr-only">
+                          {t("auth.register.steps.account.resendingOtp")}
+                        </span>
+                      </>
+                    ) : (
+                      t("auth.register.steps.account.resendOtp")
+                    )}
                   </Button>
                   <Button type="button" variant="ghost" onClick={handleBackToCredentials}>
                     <ArrowLeftIcon className="size-4" />
@@ -1950,4 +2128,25 @@ function buildUniqueTestIdentity(existingPan?: string) {
     businessMobile: String(mobileBase),
     primaryContactMobile: String(mobileBase + 7),
   }
+}
+
+function getTenantLoginRedirect(
+  tenantUrl: string | null | undefined,
+  verification: "email" | "phone"
+) {
+  const loginPath = `/auth/login?registered=1&verification=${verification}`
+
+  return tenantUrl ? appendPathToUrl(tenantUrl, loginPath) : loginPath
+}
+
+function navigateAfterBusinessAuth(
+  redirectTo: string,
+  router: ReturnType<typeof useRouter>
+) {
+  if (/^https?:\/\//.test(redirectTo)) {
+    window.location.assign(redirectTo)
+    return
+  }
+
+  router.push(redirectTo)
 }

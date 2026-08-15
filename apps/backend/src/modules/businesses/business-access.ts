@@ -10,6 +10,7 @@ import {
   type UserRecord,
 } from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
+import { getTenantSlugFromRequest } from "../../utils/tenant-context.js"
 import { requireAuthenticatedUser } from "../auth/auth.guard.js"
 
 type BusinessAccess = {
@@ -23,6 +24,7 @@ export async function requirePrimaryBusinessAccess(
   request: FastifyRequest
 ): Promise<BusinessAccess> {
   const user = await requireAuthenticatedUser(request)
+  const tenantSlug = getTenantSlugFromRequest(request)
   const [record] = await db
     .select({
       business: businesses,
@@ -31,7 +33,11 @@ export async function requirePrimaryBusinessAccess(
     .from(businessMembers)
     .innerJoin(businesses, eq(businesses.id, businessMembers.businessId))
     .where(
-      and(eq(businessMembers.userId, user.id), eq(businessMembers.status, "active"))
+      and(
+        eq(businessMembers.userId, user.id),
+        eq(businessMembers.status, "active"),
+        ...(tenantSlug ? [eq(businesses.tenantSlug, tenantSlug)] : [])
+      )
     )
     .limit(1)
 

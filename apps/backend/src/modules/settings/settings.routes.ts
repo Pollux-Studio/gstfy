@@ -1,5 +1,5 @@
 import argon2 from "argon2"
-import { and, desc, eq, gt } from "drizzle-orm"
+import { and, desc, eq, gt, ne } from "drizzle-orm"
 import type { FastifyInstance, FastifyRequest } from "fastify"
 
 import { db } from "../../db/client.js"
@@ -15,6 +15,8 @@ import {
 } from "../../db/schema/index.js"
 import { createProfileImage } from "../../utils/avatar.js"
 import { HttpError } from "../../utils/http-error.js"
+import { createTenantSlug } from "../../utils/tenant-slug.js"
+import { getTenantUrl } from "../../utils/tenant-url.js"
 import { verifyFirebaseIdToken } from "../firebase/firebase-admin.js"
 import {
   assertCanManageBusiness,
@@ -22,6 +24,7 @@ import {
 } from "../businesses/business-access.js"
 import {
   changeUserPasswordSchema,
+  updateBusinessTenantSchema,
   updateBusinessSettingsSchema,
   updateGstRateSettingsSchema,
   updateInvoiceSettingsSchema,
@@ -91,6 +94,45 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     await linkBusinessToCaReferral(access.business.id, body.referralCode)
 
     return getSettingsResponse(access)
+  })
+
+  app.patch("/settings/business/tenant", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    assertCanManageBusiness(access.membership)
+
+    if (access.business.tenantSlug?.trim()) {
+      throw new HttpError(409, "Workspace URL is already set for this business.")
+    }
+
+    const body = updateBusinessTenantSchema.parse(request.body)
+    const tenantSlug = createTenantSlug(body.tenantSlug)
+
+    const existingBusiness = await db.query.businesses.findFirst({
+      where: and(
+        eq(businesses.tenantSlug, tenantSlug),
+        ne(businesses.id, access.business.id)
+      ),
+    })
+
+    if (existingBusiness) {
+      throw new HttpError(409, "This workspace URL is already used.")
+    }
+
+    await db
+      .update(businesses)
+      .set({
+        tenantSlug,
+        updatedAt: new Date(),
+      })
+      .where(eq(businesses.id, access.business.id))
+
+    return getSettingsResponse({
+      ...access,
+      business: {
+        ...access.business,
+        tenantSlug,
+      },
+    })
   })
 
   app.patch("/settings/user", async (request) => {
@@ -314,6 +356,8 @@ async function getSettingsResponse(
   return {
     business: {
       id: access.business.id,
+      tenantSlug: access.business.tenantSlug,
+      tenantUrl: getTenantUrl(access.business.tenantSlug),
       legalName: access.business.legalName,
       tradeName: access.business.tradeName,
       pan: access.business.pan,

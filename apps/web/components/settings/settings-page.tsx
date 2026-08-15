@@ -10,9 +10,11 @@ import {
   Building2Icon,
   CalendarIcon,
   FileTextIcon,
+  Globe2Icon,
   KeyRoundIcon,
   PrinterIcon,
   ReceiptTextIcon,
+  RefreshCwIcon,
   SaveIcon,
   Settings2Icon,
 } from "lucide-react"
@@ -42,10 +44,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { getStoredAuthSession } from "@/lib/auth/session"
+import { getStoredAuthSession, setStoredAuthSession } from "@/lib/auth/session"
 import { getAllGstStates } from "@/lib/gst-state"
 import {
   getSettings,
+  updateBusinessTenant,
   updateBusinessDetails,
   updateGstRateSettings,
   updateInvoiceSettings,
@@ -58,6 +61,17 @@ import { cn } from "@/lib/utils"
 const phonePattern = /^\d{10}$/
 const pincodePattern = /^\d{6}$/
 const invoicePrefixPattern = /^[A-Z0-9-]{2,10}$/
+const tenantSlugPattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/
+const reservedTenantSlugs = new Set([
+  "api",
+  "app",
+  "auth",
+  "admin",
+  "www",
+  "mail",
+  "support",
+  "gstfy",
+])
 
 const businessDetailsSchema = z.object({
   businessEmail: z.union([z.literal(""), z.string().trim().email("Enter a valid email address.")]),
@@ -197,6 +211,8 @@ export function SettingsPage() {
   const queryClient = useQueryClient()
   const [isBusinessEditing, setIsBusinessEditing] = React.useState(false)
   const [caReferralCode, setCaReferralCode] = React.useState("")
+  const [tenantSlugInput, setTenantSlugInput] = React.useState("")
+  const [tenantSlugError, setTenantSlugError] = React.useState<string | null>(null)
   const [isRegistrationDatePickerOpen, setIsRegistrationDatePickerOpen] =
     React.useState(false)
 
@@ -243,6 +259,8 @@ export function SettingsPage() {
       return
     }
 
+    setTenantSlugInput(data.business.tenantSlug ?? "")
+    setTenantSlugError(null)
     businessForm.reset({
       businessEmail: data.business.businessEmail ?? "",
       businessMobile: data.business.businessMobile ?? "",
@@ -326,6 +344,47 @@ export function SettingsPage() {
       setSettingsCache(queryClient, nextSettings)
       setIsBusinessEditing(false)
       toast.success("Business details updated.")
+    },
+    onError: (mutationError) => {
+      toast.error(getErrorMessage(mutationError))
+    },
+  })
+
+  const tenantMutation = useMutation({
+    mutationFn: () => {
+      const tenantSlug = normalizeTenantSlugInput(tenantSlugInput)
+      const validationError = getTenantSlugValidationError(tenantSlug)
+
+      if (validationError) {
+        setTenantSlugError(validationError)
+        throw new Error(validationError)
+      }
+
+      return updateBusinessTenant({ tenantSlug }, accessToken)
+    },
+    onSuccess: (nextSettings) => {
+      setSettingsCache(queryClient, nextSettings)
+      setTenantSlugInput(nextSettings.business.tenantSlug)
+      setTenantSlugError(null)
+
+      const currentSession = getStoredAuthSession()
+
+      if (currentSession) {
+        setStoredAuthSession({
+          accountType: currentSession.accountType,
+          user: currentSession.user,
+          session: currentSession.session,
+          tenant: {
+            id: nextSettings.business.id,
+            slug: nextSettings.business.tenantSlug,
+            legalName: nextSettings.business.legalName,
+            tradeName: nextSettings.business.tradeName,
+            url: nextSettings.business.tenantUrl,
+          },
+        })
+      }
+
+      toast.success("Workspace URL updated.")
     },
     onError: (mutationError) => {
       toast.error(getErrorMessage(mutationError))
@@ -426,6 +485,12 @@ export function SettingsPage() {
   const canAddCaReferral = canEditBusiness && data.caReferral.canAdd
   const caReferralInputValue =
     isCaReferralLinked ? data.caReferral.referralCode ?? "" : caReferralCode
+  const currentTenantSlug = normalizeTenantSlugInput(data.business.tenantSlug)
+  const normalizedTenantSlugInput = normalizeTenantSlugInput(tenantSlugInput)
+  const hasWorkspaceUrl = currentTenantSlug.length > 0
+  const tenantDisplayUrl =
+    data.business.tenantUrl ||
+    (currentTenantSlug ? `${currentTenantSlug}.gstfy.in` : "Not set")
 
   return (
     <Tabs defaultValue="business" className="contents">
@@ -520,6 +585,96 @@ export function SettingsPage() {
                       }
                     />
                   </div>
+
+                  <section className="rounded-xl border border-border bg-background px-3 py-3">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Globe2Icon className="size-4 text-muted-foreground" />
+                          <h3 className="text-sm font-medium">Workspace URL</h3>
+                        </div>
+                        {hasWorkspaceUrl ? (
+                          <>
+                            <div className="flex min-w-0 items-center rounded-lg border border-border bg-muted/30 px-3 py-2">
+                              <p
+                                className="min-w-0 truncate font-mono text-sm tracking-[0.08em]"
+                                title={tenantDisplayUrl}
+                              >
+                                {tenantDisplayUrl}
+                              </p>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Workspace URL is locked after creation.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex min-w-0 items-center rounded-lg border border-input bg-background focus-within:border-ring focus-within:ring-2 focus-within:ring-inset focus-within:ring-ring/50">
+                              <Input
+                                id="settings-tenant-slug"
+                                value={tenantSlugInput}
+                                onChange={(event) => {
+                                  setTenantSlugInput(
+                                    normalizeTenantSlugInput(event.target.value)
+                                  )
+                                  setTenantSlugError(null)
+                                }}
+                                maxLength={48}
+                                disabled={!canEditBusiness || tenantMutation.isPending}
+                                className="h-8 flex-1 rounded-r-none border-0 bg-transparent font-mono text-sm tracking-[0.08em] shadow-none focus-visible:ring-0"
+                                placeholder={createTenantSlugSuggestion(data.business.tradeName)}
+                              />
+                              <span className="shrink-0 border-l border-border px-2 text-xs text-muted-foreground">
+                                .gstfy.in
+                              </span>
+                            </div>
+                            <p
+                              className={cn(
+                                "text-xs",
+                                tenantSlugError ? "text-destructive" : "text-muted-foreground"
+                              )}
+                            >
+                              {tenantSlugError || "Generate a URL for this legacy workspace."}
+                            </p>
+                          </>
+                        )}
+                      </div>
+                      {!hasWorkspaceUrl ? (
+                        <div className="flex gap-2 md:justify-end">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={!canEditBusiness || tenantMutation.isPending}
+                            onClick={() => {
+                              setTenantSlugInput(
+                                createTenantSlugSuggestion(data.business.tradeName)
+                              )
+                              setTenantSlugError(null)
+                            }}
+                          >
+                            <RefreshCwIcon className="size-4" />
+                            Generate
+                          </Button>
+                          <Button
+                            type="button"
+                            disabled={
+                              !canEditBusiness ||
+                              tenantMutation.isPending ||
+                              normalizedTenantSlugInput.length === 0
+                            }
+                            onClick={() => tenantMutation.mutate()}
+                          >
+                            {tenantMutation.isPending ? (
+                              <Spinner />
+                            ) : (
+                              <SaveIcon className="size-4" />
+                            )}
+                            Save URL
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </section>
 
                   <FieldGroup>
                     <div className="flex items-center justify-between gap-3">
@@ -1437,6 +1592,39 @@ function formatDate(value: string) {
     month: "short",
     year: "numeric",
   }).format(new Date(value))
+}
+
+function normalizeTenantSlugInput(value: string | null | undefined) {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48)
+}
+
+function createTenantSlugSuggestion(value: string) {
+  const slug = normalizeTenantSlugInput(value.replace(/&/g, " and "))
+  const normalized = slug.length >= 3 ? slug : "business"
+
+  return reservedTenantSlugs.has(normalized) ? `${normalized}-business` : normalized
+}
+
+function getTenantSlugValidationError(value: string) {
+  if (value.length < 3) {
+    return "Use at least 3 characters."
+  }
+
+  if (value.length > 48) {
+    return "Use 48 characters or fewer."
+  }
+
+  if (!tenantSlugPattern.test(value)) {
+    return "Use letters, numbers, and hyphens only."
+  }
+
+  return null
 }
 
 function getTemplateLabel(value: SettingsResponse["invoiceSettings"]["invoiceTemplate"]) {

@@ -11,12 +11,13 @@ import {
   LockKeyholeIcon,
   MailIcon,
 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
 
 import { caLogin } from "@/lib/auth/api"
 import { setStoredAuthSession } from "@/lib/auth/session"
+import { getAuthSubdomainUrl } from "@/lib/auth/workspace-url"
 import { Button } from "@/components/ui/button"
 import {
   Field,
@@ -48,6 +49,7 @@ export function CaLoginForm({
   const registered = searchParams.get("registered") === "1"
   const [showPassword, setShowPassword] = useState(false)
   const [authError, setAuthError] = useState("")
+  const [caRegisterHref, setCaRegisterHref] = useState("/auth/ca/register")
 
   const schema = useMemo(
     () =>
@@ -82,6 +84,10 @@ export function CaLoginForm({
     mutationFn: caLogin,
   })
 
+  useEffect(() => {
+    setCaRegisterHref(getAuthSubdomainUrl("/auth/ca/register"))
+  }, [])
+
   async function handleSubmit(values: CaLoginValues) {
     setAuthError("")
 
@@ -97,7 +103,7 @@ export function CaLoginForm({
         session: response.session,
       })
 
-      router.push(nextPath)
+      navigateAfterCaAuth(nextPath ?? response.redirectTo, router)
     } catch (error) {
       setAuthError(
         error instanceof Error ? error.message : "Unable to sign in right now."
@@ -222,7 +228,7 @@ export function CaLoginForm({
               variant="outline"
               className="w-full"
               nativeButton={false}
-              render={<Link href="/auth/ca/register" />}
+              render={<Link href={caRegisterHref} />}
             >
               Create CA account
             </Button>
@@ -244,8 +250,17 @@ export function CaLoginForm({
 
 function sanitizeNextPath(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return "/ca"
+    return null
   }
 
   return value
+}
+
+function navigateAfterCaAuth(redirectTo: string, router: ReturnType<typeof useRouter>) {
+  if (/^https?:\/\//.test(redirectTo)) {
+    window.location.assign(redirectTo)
+    return
+  }
+
+  router.push(redirectTo)
 }

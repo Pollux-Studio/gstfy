@@ -65,10 +65,18 @@ async function sendApiRequest(
 ) {
   const { body, accessToken, headers, ...restOptions } = options
   void accessToken
-  const requestHeaders = {
-    ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-    ...(resolvedAccessToken ? { Authorization: `Bearer ${resolvedAccessToken}` } : {}),
-    ...headers,
+  const requestHeaders = new Headers(headers)
+
+  if (body !== undefined) {
+    requestHeaders.set("Content-Type", "application/json")
+  }
+
+  if (resolvedAccessToken) {
+    requestHeaders.set("Authorization", `Bearer ${resolvedAccessToken}`)
+  }
+
+  for (const [key, value] of Object.entries(getTenantHeaders())) {
+    requestHeaders.set(key, value)
   }
 
   const response = await fetch(`${API_BASE_URL}/api${path}`, {
@@ -84,6 +92,49 @@ async function sendApiRequest(
     response,
     payload,
   }
+}
+
+function getTenantHeaders(): Record<string, string> {
+  const tenantSlug = getTenantSlugFromLocation() ?? getStoredAuthSession()?.tenant?.slug
+
+  return tenantSlug ? { "X-GSTFY-Tenant": tenantSlug } : {}
+}
+
+function getTenantSlugFromLocation() {
+  if (typeof window === "undefined") {
+    return null
+  }
+
+  const hostname = window.location.hostname.toLowerCase()
+
+  if (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1"
+  ) {
+    return null
+  }
+
+  const [subdomain, ...domainParts] = hostname.split(".")
+
+  if (!subdomain) {
+    return null
+  }
+
+  const parentDomain = domainParts.join(".")
+
+  if (parentDomain !== "localhost" && domainParts.length < 2) {
+    return null
+  }
+
+  if (["api", "app", "auth", "www"].includes(subdomain)) {
+    return null
+  }
+
+  if (!/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?$/.test(subdomain)) {
+    return null
+  }
+
+  return subdomain
 }
 
 async function getRequestAccessToken(accessToken: string | undefined) {

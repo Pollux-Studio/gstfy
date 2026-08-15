@@ -89,6 +89,18 @@ export const verifyCaReferralSchema = z.object({
   referralCode: z.string().trim().min(1).max(40),
 })
 
+export const updateBusinessTenantSchema = z.object({
+  tenantSlug: z
+    .string()
+    .trim()
+    .min(3)
+    .max(48)
+    .regex(
+      /^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$/,
+      "Use letters, numbers, and hyphens only."
+    ),
+})
+
 const passwordSchema = z
   .string()
   .min(8, "Password must be at least 8 characters.")
@@ -115,4 +127,5 @@ export type UpdatePrinterSettingsInput = z.infer<typeof updatePrinterSettingsSch
 export type UpdateUserSettingsInput = z.infer<typeof updateUserSettingsSchema>
 export type VerifyUserPhoneInput = z.infer<typeof verifyUserPhoneSchema>
 export type VerifyCaReferralInput = z.infer<typeof verifyCaReferralSchema>
+export type UpdateBusinessTenantInput = z.infer<typeof updateBusinessTenantSchema>
 export type ChangeUserPasswordInput = z.infer<typeof changeUserPasswordSchema>

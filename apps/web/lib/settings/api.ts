@@ -3,6 +3,8 @@ import { apiRequest } from "@/lib/api/client"
 export type SettingsResponse = {
   business: {
     id: string
+    tenantSlug: string
+    tenantUrl: string
     legalName: string
     tradeName: string
     pan: string
@@ -99,6 +101,10 @@ export type VerifyBusinessCaReferralPayload = {
   referralCode: string
 }
 
+export type UpdateBusinessTenantPayload = {
+  tenantSlug: string
+}
+
 export type ChangeUserPasswordPayload = {
   currentPassword: string
   newPassword: string
@@ -156,6 +162,17 @@ export function verifyBusinessCaReferral(
 ) {
   return apiRequest<SettingsResponse>("/settings/business/ca-referral", {
     method: "POST",
+    body: payload,
+    accessToken,
+  })
+}
+
+export function updateBusinessTenant(
+  payload: UpdateBusinessTenantPayload,
+  accessToken: string
+) {
+  return apiRequest<SettingsResponse>("/settings/business/tenant", {
+    method: "PATCH",
     body: payload,
     accessToken,
   })

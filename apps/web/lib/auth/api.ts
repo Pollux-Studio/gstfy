@@ -18,11 +18,21 @@ export type AuthSession = {
   expiresAt: number | null
 }
 
+export type AuthTenant = {
+  id: string
+  slug: string
+  legalName: string
+  tradeName: string
+  url: string
+}
+
 export type LookupIdentifierResponse = {
   account: {
     id: string
     displayName: string
     gstin: string | null
+    tenantSlug?: string | null
+    tenantUrl?: string | null
     email: string | null
     phone: string | null
   }
@@ -31,6 +41,8 @@ export type LookupIdentifierResponse = {
 export type LoginResponse = {
   user: AuthUser
   session: AuthSession
+  tenant: AuthTenant | null
+  redirectTo: string
 }
 
 export type CurrentUserResponse = {
@@ -55,6 +67,8 @@ export type CurrentUserResponse = {
   memberships: Array<{
     business_id: string
     business_name: string
+    tenant_slug: string
+    tenant_url: string
     role: string
     status: string
     gstin: string | null
@@ -71,10 +85,14 @@ export type OtpChallengeResponse = {
 export type RegisterResponse = {
   user: AuthUser
   session: AuthSession | null
+  tenant?: AuthTenant | null
+  redirectTo?: string
   requiresVerification: boolean
   onboardingStatus: string
   business?: {
     id: string
+    tenantSlug: string
+    tenantUrl: string
     legalName: string
     tradeName: string
     pan: string
@@ -145,6 +163,18 @@ export type CaRegisterPayload = {
 export type CaLoginPayload = {
   email: string
   password: string
+}
+
+export type VerifyCaReferralPayload = {
+  referralCode: string
+  gstin?: string
+}
+
+export type VerifyCaReferralResponse = {
+  valid: true
+  referralCode: string
+  practiceName: string
+  clientGstin: string | null
 }
 
 export type CompleteOnboardingPayload = Pick<RegisterPayload, "company" | "registration">
@@ -244,6 +274,13 @@ export function register(payload: RegisterPayload) {
   })
 }
 
+export function verifyCaReferral(payload: VerifyCaReferralPayload) {
+  return apiRequest<VerifyCaReferralResponse>("/auth/ca-referral/verify", {
+    method: "POST",
+    body: payload,
+  })
+}
+
 export async function caRegister(payload: CaRegisterPayload) {
   const response = await apiRequest<BackendAuthResponse>("/auth/ca/register", {
     method: "POST",
@@ -279,6 +316,7 @@ type BackendAuthResponse = {
   accessToken: string
   accessTokenExpiresIn: number
   redirectTo?: string
+  tenant?: AuthTenant | null
 }
 
 function toLoginResponse(response: BackendAuthResponse): LoginResponse {
@@ -294,5 +332,7 @@ function toLoginResponse(response: BackendAuthResponse): LoginResponse {
       accessToken: response.accessToken,
       expiresAt: Math.floor(Date.now() / 1000) + response.accessTokenExpiresIn,
     },
+    tenant: response.tenant ?? null,
+    redirectTo: response.redirectTo ?? "/dashboard",
   }
 }

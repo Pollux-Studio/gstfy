@@ -67,10 +67,12 @@ export async function buildApp() {
   })
 
   await app.register(cors, {
-    origin: env.WEB_ORIGIN,
+    origin: (origin, callback) => {
+      callback(null, isAllowedWebOrigin(origin, env))
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Authorization", "Content-Type"],
+    allowedHeaders: ["Authorization", "Content-Type", "X-GSTFY-Tenant"],
   })
   await app.register(cookie)
   registerErrorHandler(app)
@@ -98,6 +100,46 @@ export async function buildApp() {
   })
 
   return app
+}
+
+function isAllowedWebOrigin(origin: string | undefined, env: ReturnType<typeof getEnv>) {
+  if (!origin) {
+    return true
+  }
+
+  if (origin === env.WEB_ORIGIN) {
+    return true
+  }
+
+  const baseHost = normalizeHost(env.APP_BASE_DOMAIN)
+  const originHost = normalizeHost(origin)
+
+  if (!baseHost || !originHost) {
+    return false
+  }
+
+  if (baseHost === "localhost") {
+    return originHost === "localhost" || originHost.endsWith(".localhost")
+  }
+
+  return originHost === baseHost || originHost.endsWith(`.${baseHost}`)
+}
+
+function normalizeHost(value: string) {
+  let hostValue = value
+
+  if (value.includes("://")) {
+    try {
+      hostValue = new URL(value).host
+    } catch {
+      return ""
+    }
+  }
+
+  return hostValue
+    .toLowerCase()
+    .replace(/:\d+$/, "")
+    .replace(/\.$/, "")
 }
 
 async function registerBackendRoutes(app: Parameters<typeof registerAuthRoutes>[0]) {

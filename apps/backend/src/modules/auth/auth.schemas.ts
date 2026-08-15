@@ -75,6 +75,11 @@ export const lookupIdentifierSchema = z.object({
   identifier: z.string().trim().min(1),
 })
 
+export const caReferralVerifySchema = z.object({
+  referralCode: z.string().trim().min(1).max(40),
+  gstin: z.string().trim().min(15).max(15).optional(),
+})
+
 export const forgotPasswordSchema = z.object({
   email: z.string().trim().email(),
 })
@@ -99,6 +104,7 @@ export type CaRegisterInput = z.infer<typeof caRegisterSchema>
 export type LoginInput = z.infer<typeof loginSchema>
 export type IdentifierLoginInput = z.infer<typeof identifierLoginSchema>
 export type LookupIdentifierInput = z.infer<typeof lookupIdentifierSchema>
+export type CaReferralVerifyInput = z.infer<typeof caReferralVerifySchema>
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>
