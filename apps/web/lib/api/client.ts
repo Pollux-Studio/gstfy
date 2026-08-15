@@ -21,7 +21,7 @@ type RequestOptions = Omit<RequestInit, "body"> & {
   accessToken?: string
 }
 
-export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000").replace(
+export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://api.localhost:4000").replace(
   /\/$/,
   ""
 )
@@ -126,7 +126,7 @@ function getTenantSlugFromLocation() {
     return null
   }
 
-  if (["api", "app", "auth", "www"].includes(subdomain)) {
+  if (["api", "app", "auth", "ca", "www"].includes(subdomain)) {
     return null
   }
 

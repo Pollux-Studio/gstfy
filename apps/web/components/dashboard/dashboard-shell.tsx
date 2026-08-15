@@ -1,17 +1,23 @@
 "use client"
 
 import { usePathname, useRouter } from "next/navigation"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { DashboardTopbar } from "@/components/dashboard/dashboard-topbar"
 import {
+  AUTH_SESSION_CHANGE_EVENT,
   clearStoredAuthSession,
   expireAuthSessionAndRedirectToLogin,
   getAuthRefreshDelayMs,
   getStoredAuthSession,
   refreshStoredAuthSession,
+  type StoredAuthSession,
 } from "@/lib/auth/session"
+import {
+  getAuthSubdomainUrl,
+  getCaAppSubdomainUrl,
+} from "@/lib/auth/workspace-url"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 
 export function DashboardShell({
@@ -21,32 +27,106 @@ export function DashboardShell({
 }>) {
   const router = useRouter()
   const pathname = usePathname()
-  const storedSession = getStoredAuthSession()
+  const [storedSession, setStoredSession] = useState<StoredAuthSession | null>(null)
+  const [hasCheckedBrowserSession, setHasCheckedBrowserSession] = useState(false)
+  const [isCaHost, setIsCaHost] = useState(false)
   const hasSession =
     storedSession?.isAuthenticated === true && Boolean(storedSession.session.accessToken)
   const accountType = storedSession?.accountType ?? "business"
-  const isCaRoute = pathname === "/ca" || pathname.startsWith("/ca/clients")
+  const isLegacyCaRoute = pathname === "/ca" || pathname.startsWith("/ca/clients")
+  const isCaDashboardRoute =
+    pathname === "/dashboard" || pathname.startsWith("/dashboard/clients")
+  const isCaRoute = isLegacyCaRoute || (isCaHost && isCaDashboardRoute)
 
   useEffect(() => {
-    if (!hasSession) {
-      clearStoredAuthSession()
-      const loginPath =
-        pathname === "/ca" || pathname.startsWith("/ca/clients")
-          ? "/auth/ca/login"
-          : "/auth/login"
-      router.replace(`${loginPath}?next=${encodeURIComponent(pathname)}`)
+    function syncStoredSession() {
+      setStoredSession(getStoredAuthSession())
+      setIsCaHost(window.location.hostname.toLowerCase().startsWith("ca."))
+      setHasCheckedBrowserSession(true)
+    }
+
+    syncStoredSession()
+    window.addEventListener(AUTH_SESSION_CHANGE_EVENT, syncStoredSession)
+    window.addEventListener("storage", syncStoredSession)
+
+    return () => {
+      window.removeEventListener(AUTH_SESSION_CHANGE_EVENT, syncStoredSession)
+      window.removeEventListener("storage", syncStoredSession)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!hasCheckedBrowserSession) {
       return
     }
 
+    if (!hasSession) {
+      let disposed = false
+
+      async function bootstrapSession() {
+        const refreshedSession = await refreshStoredAuthSession()
+
+        if (disposed) {
+          return
+        }
+
+        if (refreshedSession) {
+          setStoredSession(refreshedSession)
+          router.refresh()
+          return
+        }
+
+        clearStoredAuthSession()
+        const shouldUseCaLogin = isCaHost || isLegacyCaRoute
+        const loginPath =
+          shouldUseCaLogin
+            ? getAuthSubdomainUrl("/auth/ca/login")
+            : "/auth/login"
+        const loginUrl = `${loginPath}?next=${encodeURIComponent(pathname)}`
+
+        if (/^https?:\/\//.test(loginUrl)) {
+          window.location.replace(loginUrl)
+          return
+        }
+
+        router.replace(loginUrl)
+      }
+
+      void bootstrapSession()
+
+      return () => {
+        disposed = true
+      }
+    }
+
     if (isCaRoute && accountType !== "ca") {
-      router.replace("/dashboard")
+      clearStoredAuthSession()
+      window.location.replace(
+        `${getAuthSubdomainUrl("/auth/login")}?next=${encodeURIComponent(pathname)}`
+      )
       return
     }
 
     if (!isCaRoute && accountType === "ca") {
-      router.replace("/ca")
+      const caDashboardUrl = isCaHost ? "/dashboard" : getCaAppSubdomainUrl("/dashboard")
+
+      if (/^https?:\/\//.test(caDashboardUrl)) {
+        window.location.replace(caDashboardUrl)
+        return
+      }
+
+      router.replace(caDashboardUrl)
     }
-  }, [accountType, hasSession, isCaRoute, pathname, router])
+  }, [
+    accountType,
+    hasCheckedBrowserSession,
+    hasSession,
+    isCaHost,
+    isCaRoute,
+    isLegacyCaRoute,
+    pathname,
+    router,
+  ])
 
   useEffect(() => {
     if (!hasSession) {
@@ -73,6 +153,7 @@ export function DashboardShell({
         return
       }
 
+      setStoredSession(refreshedSession)
       scheduleRefresh()
     }
 
@@ -104,6 +185,7 @@ export function DashboardShell({
   }, [hasSession])
 
   if (
+    !hasCheckedBrowserSession ||
     !hasSession ||
     (isCaRoute && accountType !== "ca") ||
     (!isCaRoute && accountType === "ca")

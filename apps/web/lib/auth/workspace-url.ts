@@ -2,6 +2,7 @@ const reservedWorkspaceSlugs = new Set([
   "api",
   "app",
   "auth",
+  "ca",
   "admin",
   "www",
   "mail",
@@ -28,6 +29,10 @@ export function getWorkspaceUrlPreview(workspaceSlug: string) {
 
 export function getAuthSubdomainUrl(path = "") {
   return buildSubdomainUrl("auth", path)
+}
+
+export function getCaAppSubdomainUrl(path = "") {
+  return buildSubdomainUrl("ca", path)
 }
 
 export function appendPathToUrl(baseUrl: string, path: string) {

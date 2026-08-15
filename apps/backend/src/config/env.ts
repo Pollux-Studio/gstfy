@@ -21,6 +21,7 @@ const envSchema = z.object({
   APP_BASE_DOMAIN: z.string().default("localhost:3000"),
   COOKIE_DOMAIN: z.string().optional(),
   COOKIE_SECURE: z.coerce.boolean().default(false),
+  COOKIE_SAME_SITE: z.enum(["lax", "strict", "none"]).default("lax"),
   JWT_ACCESS_SECRET: z
     .string()
     .min(32, "JWT_ACCESS_SECRET must be at least 32 characters")

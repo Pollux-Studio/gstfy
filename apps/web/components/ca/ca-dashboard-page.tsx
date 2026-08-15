@@ -54,11 +54,17 @@ const initialFormState: ClientFormState = {
 
 export function CaDashboardPage() {
   const queryClient = useQueryClient()
-  const storedSession = getStoredAuthSession()
+  const [storedSession, setStoredSession] = React.useState<ReturnType<
+    typeof getStoredAuthSession
+  >>(null)
   const userId = storedSession?.user.id ?? ""
   const accessToken = storedSession?.session.accessToken ?? ""
   const [formState, setFormState] = React.useState<ClientFormState>(initialFormState)
   const [latestInvite, setLatestInvite] = React.useState<CaClientInviteRecord | null>(null)
+
+  React.useEffect(() => {
+    setStoredSession(getStoredAuthSession())
+  }, [])
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["ca", "dashboard", userId],
@@ -126,7 +132,7 @@ export function CaDashboardPage() {
     createMutation.mutate()
   }
 
-  if (isLoading) {
+  if (!storedSession || isLoading) {
     return <CaDashboardSkeleton />
   }
 
@@ -307,7 +313,10 @@ export function CaDashboardPage() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            render={<Link href={`/ca/clients/${client.businessId}`} />}
+                            nativeButton={false}
+                            render={
+                              <Link href={`/dashboard/clients/${client.businessId}`} />
+                            }
                           >
                             Open
                             <ExternalLinkIcon className="size-3.5" />

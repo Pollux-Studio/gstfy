@@ -2,6 +2,7 @@ const reservedSlugs = new Set([
   "api",
   "app",
   "auth",
+  "ca",
   "admin",
   "www",
   "mail",

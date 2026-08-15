@@ -88,6 +88,13 @@ export async function registerAuthRoutes(app: FastifyInstance) {
 
   app.get("/auth/session", async (request) => {
     const refreshToken = request.cookies[authService.getRefreshCookieName()]
+    request.log.info(
+      {
+        hasRefreshCookie: Boolean(refreshToken),
+        cookieNames: Object.keys(request.cookies),
+      },
+      "auth session cookie lookup"
+    )
     return authService.getSession(refreshToken)
   })
 
@@ -133,7 +140,7 @@ function setRefreshCookie(reply: FastifyReply, refreshToken: string) {
     domain: env.COOKIE_DOMAIN || undefined,
     httpOnly: true,
     secure: env.COOKIE_SECURE,
-    sameSite: "lax",
+    sameSite: env.COOKIE_SAME_SITE,
     maxAge: env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60,
   })
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import type * as React from "react"
+import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
   ArrowLeftIcon,
@@ -18,7 +18,9 @@ import { getStoredAuthSession } from "@/lib/auth/session"
 import { getCaClientSummary } from "@/lib/ca/api"
 
 export function CaClientSummaryPage({ businessId }: { businessId: string }) {
-  const storedSession = getStoredAuthSession()
+  const [storedSession, setStoredSession] = React.useState<ReturnType<
+    typeof getStoredAuthSession
+  >>(null)
   const accessToken = storedSession?.session.accessToken ?? ""
   const { data, isLoading, error } = useQuery({
     queryKey: ["ca", "client-summary", businessId],
@@ -26,7 +28,11 @@ export function CaClientSummaryPage({ businessId }: { businessId: string }) {
     enabled: accessToken.length > 0,
   })
 
-  if (isLoading) {
+  React.useEffect(() => {
+    setStoredSession(getStoredAuthSession())
+  }, [])
+
+  if (!storedSession || isLoading) {
     return (
       <div className="flex flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
         <Skeleton className="h-32 rounded-2xl" />
@@ -55,7 +61,13 @@ export function CaClientSummaryPage({ businessId }: { businessId: string }) {
   return (
     <div className="flex flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
       <section className="rounded-2xl border border-border bg-card p-4 sm:p-5 lg:p-6">
-        <Button type="button" variant="ghost" size="sm" render={<Link href="/ca" />}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          nativeButton={false}
+          render={<Link href="/dashboard" />}
+        >
           <ArrowLeftIcon className="size-4" />
           CA clients
         </Button>

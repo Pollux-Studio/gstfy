@@ -4,7 +4,7 @@ import { getEnv } from "../config/env.js"
 import { HttpError } from "./http-error.js"
 
 const tenantHeaderName = "x-gstfy-tenant"
-const reservedSubdomains = new Set(["app", "api", "auth", "www"])
+const reservedSubdomains = new Set(["app", "api", "auth", "ca", "www"])
 
 export function getTenantSlugFromRequest(request: FastifyRequest) {
   const env = getEnv()

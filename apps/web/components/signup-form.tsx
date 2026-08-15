@@ -28,7 +28,7 @@ import {
   verifyCaReferral,
   verifyOtp,
 } from "@/lib/auth/api"
-import { setStoredAuthSession } from "@/lib/auth/session"
+import { clearStoredAuthSession, setStoredAuthSession } from "@/lib/auth/session"
 import {
   appendPathToUrl,
   createWorkspaceSlugPreview,
@@ -1536,12 +1536,7 @@ export function SignupForm({
                           onClick={handleVerifyCaReferral}
                         >
                           {verifyCaReferralMutation.isPending ? (
-                            <>
-                              <Spinner />
-                              <span className="sr-only">
-                                {t("auth.register.steps.account.verifyingCaReferral")}
-                              </span>
-                            </>
+                            <Spinner />
                           ) : (
                             t("auth.register.steps.account.verifyCaReferral")
                           )}
@@ -1724,12 +1719,7 @@ export function SignupForm({
                     className="w-full"
                   >
                     {isAccountSubmitPending ? (
-                      <>
-                        <Spinner />
-                        <span className="sr-only">
-                          {t("auth.register.steps.account.submitting")}
-                        </span>
-                      </>
+                      <Spinner />
                     ) : (
                       t("auth.register.steps.account.cta")
                     )}
@@ -1751,12 +1741,7 @@ export function SignupForm({
                     className="w-full"
                   >
                     {verifyOtpMutation.isPending ? (
-                      <>
-                        <Spinner />
-                        <span className="sr-only">
-                          {t("auth.register.steps.account.verifyingOtp")}
-                        </span>
-                      </>
+                      <Spinner />
                     ) : (
                       t("auth.register.steps.account.verifyOtp")
                     )}
@@ -1769,12 +1754,7 @@ export function SignupForm({
                     onClick={handleResendPhoneOtp}
                   >
                     {sendOtpMutation.isPending ? (
-                      <>
-                        <Spinner />
-                        <span className="sr-only">
-                          {t("auth.register.steps.account.resendingOtp")}
-                        </span>
-                      </>
+                      <Spinner />
                     ) : (
                       t("auth.register.steps.account.resendOtp")
                     )}
@@ -2144,9 +2124,19 @@ function navigateAfterBusinessAuth(
   router: ReturnType<typeof useRouter>
 ) {
   if (/^https?:\/\//.test(redirectTo)) {
-    window.location.assign(redirectTo)
+    assignAuthTarget(redirectTo)
     return
   }
 
   router.push(redirectTo)
+}
+
+function assignAuthTarget(target: string) {
+  const targetUrl = new URL(target, window.location.href)
+
+  if (targetUrl.origin !== window.location.origin) {
+    clearStoredAuthSession()
+  }
+
+  window.location.assign(targetUrl.toString())
 }

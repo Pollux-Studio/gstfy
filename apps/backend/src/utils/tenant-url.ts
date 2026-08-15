@@ -16,6 +16,14 @@ export function getTenantUrl(tenantSlug: string, env: AppEnv = getEnv()) {
 }
 
 export function getAuthUrl(path = "", env: AppEnv = getEnv()) {
+  return getSubdomainUrl("auth", path, env)
+}
+
+export function getCaAppUrl(path = "", env: AppEnv = getEnv()) {
+  return getSubdomainUrl("ca", path, env)
+}
+
+function getSubdomainUrl(subdomain: string, path = "", env: AppEnv = getEnv()) {
   const baseDomain = getBaseDomain(env.APP_BASE_DOMAIN)
 
   if (!baseDomain) {
@@ -26,7 +34,7 @@ export function getAuthUrl(path = "", env: AppEnv = getEnv()) {
     getProtocol(env.APP_BASE_DOMAIN) ?? getProtocol(env.WEB_ORIGIN) ?? "https:"
   const normalizedPath = path.startsWith("/") || path.length === 0 ? path : `/${path}`
 
-  return `${protocol}//auth.${baseDomain}${normalizedPath}`
+  return `${protocol}//${subdomain}.${baseDomain}${normalizedPath}`
 }
 
 function getBaseDomain(value: string) {

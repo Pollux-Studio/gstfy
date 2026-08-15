@@ -1,5 +1,5 @@
-import { CaDashboardPage } from "@/components/ca/ca-dashboard-page"
+import { redirect } from "next/navigation"
 
 export default function CaPage() {
-  return <CaDashboardPage />
+  redirect("/dashboard")
 }

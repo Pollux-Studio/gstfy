@@ -2,7 +2,9 @@
 
 import { useRouter } from "next/navigation"
 
+import { logout } from "@/lib/auth/api"
 import { clearStoredAuthSession } from "@/lib/auth/session"
+import { getAuthSubdomainUrl } from "@/lib/auth/workspace-url"
 import {
   Avatar,
   AvatarFallback,
@@ -41,9 +43,22 @@ export function NavUser({
   const { isMobile } = useSidebar()
   const router = useRouter()
 
-  function handleLogout() {
-    clearStoredAuthSession()
-    router.replace(logoutPath)
+  async function handleLogout() {
+    try {
+      await logout()
+    } catch {
+      // Local session should still be cleared if the server logout request fails.
+    } finally {
+      clearStoredAuthSession()
+      const targetPath = getLogoutTarget(logoutPath)
+
+      if (/^https?:\/\//.test(targetPath)) {
+        window.location.replace(targetPath)
+        return
+      }
+
+      router.replace(targetPath)
+    }
   }
 
   return (
@@ -118,6 +133,10 @@ export function NavUser({
       </SidebarMenuItem>
     </SidebarMenu>
   )
+}
+
+function getLogoutTarget(path: string) {
+  return path.startsWith("/auth") ? getAuthSubdomainUrl(path) : path
 }
 
 function getInitials(value: string) {

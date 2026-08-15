@@ -18,8 +18,8 @@ import { useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
 
 import { caRegister } from "@/lib/auth/api"
-import { setStoredAuthSession } from "@/lib/auth/session"
-import { getAuthSubdomainUrl } from "@/lib/auth/workspace-url"
+import { clearStoredAuthSession, setStoredAuthSession } from "@/lib/auth/session"
+import { getAuthSubdomainUrl, getCaAppSubdomainUrl } from "@/lib/auth/workspace-url"
 import { Button } from "@/components/ui/button"
 import {
   Field,
@@ -34,6 +34,7 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
 type CaRegisterValues = {
@@ -287,7 +288,11 @@ export function CaRegisterForm({
                 registerMutation.isPending
               }
             >
-              {registerMutation.isPending ? "Creating..." : "Create CA account"}
+              {registerMutation.isPending ? (
+                <Spinner />
+              ) : (
+                "Create CA account"
+              )}
             </Button>
             <Button
               type="button"
@@ -307,9 +312,41 @@ export function CaRegisterForm({
 
 function navigateAfterCaAuth(redirectTo: string, router: ReturnType<typeof useRouter>) {
   if (/^https?:\/\//.test(redirectTo)) {
-    window.location.assign(redirectTo)
+    assignAuthTarget(redirectTo)
     return
   }
 
-  router.push(redirectTo)
+  const normalizedRedirect = normalizeCaRedirectPath(redirectTo)
+
+  if (
+    normalizedRedirect === "/dashboard" ||
+    normalizedRedirect.startsWith("/dashboard/clients")
+  ) {
+    assignAuthTarget(getCaAppSubdomainUrl(normalizedRedirect))
+    return
+  }
+
+  router.push(normalizedRedirect)
+}
+
+function normalizeCaRedirectPath(path: string) {
+  if (path === "/ca") {
+    return "/dashboard"
+  }
+
+  if (path.startsWith("/ca/clients")) {
+    return path.replace(/^\/ca\/clients/, "/dashboard/clients")
+  }
+
+  return path
+}
+
+function assignAuthTarget(target: string) {
+  const targetUrl = new URL(target, window.location.href)
+
+  if (targetUrl.origin !== window.location.origin) {
+    clearStoredAuthSession()
+  }
+
+  window.location.assign(targetUrl.toString())
 }

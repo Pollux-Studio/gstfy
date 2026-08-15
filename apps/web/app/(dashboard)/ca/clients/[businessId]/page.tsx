@@ -1,4 +1,4 @@
-import { CaClientSummaryPage } from "@/components/ca/ca-client-summary-page"
+import { redirect } from "next/navigation"
 
 export default async function CaClientSummaryRoute({
   params,
@@ -7,5 +7,5 @@ export default async function CaClientSummaryRoute({
 }) {
   const { businessId } = await params
 
-  return <CaClientSummaryPage businessId={businessId} />
+  redirect(`/dashboard/clients/${businessId}`)
 }

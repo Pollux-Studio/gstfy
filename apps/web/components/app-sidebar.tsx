@@ -100,9 +100,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     if (isCaAccount) {
       return {
         title: "Clients",
-        url: "/ca",
+        url: "/dashboard",
         icon: <BriefcaseBusinessIcon />,
-        isActive: pathname === "/ca" || pathname.startsWith("/ca/"),
+        isActive:
+          pathname === "/dashboard" ||
+          pathname.startsWith("/dashboard/clients") ||
+          pathname === "/ca" ||
+          pathname.startsWith("/ca/"),
       }
     }
 

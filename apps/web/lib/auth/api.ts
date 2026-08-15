@@ -267,6 +267,12 @@ export function resetPassword(payload: ResetPasswordPayload) {
   })
 }
 
+export function logout() {
+  return apiRequest<{ success: true }>("/auth/logout", {
+    method: "POST",
+  })
+}
+
 export function register(payload: RegisterPayload) {
   return apiRequest<RegisterResponse>("/auth/register", {
     method: "POST",

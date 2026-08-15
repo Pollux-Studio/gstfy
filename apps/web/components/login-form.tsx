@@ -7,8 +7,11 @@ import { useMutation } from "@tanstack/react-query"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import {
+  ArrowRightIcon,
+  Building2Icon,
   EyeIcon,
   EyeOffIcon,
+  ExternalLinkIcon,
   GalleryVerticalEndIcon,
   LockKeyholeIcon,
 } from "lucide-react"
@@ -24,8 +27,8 @@ import {
   type LookupIdentifierResponse,
   verifyOtp,
 } from "@/lib/auth/api"
-import { setStoredAuthSession } from "@/lib/auth/session"
-import { getAuthSubdomainUrl } from "@/lib/auth/workspace-url"
+import { clearStoredAuthSession, setStoredAuthSession } from "@/lib/auth/session"
+import { appendPathToUrl, getAuthSubdomainUrl } from "@/lib/auth/workspace-url"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -48,13 +51,14 @@ import {
   InputOTPGroup,
   InputOTPSlot,
 } from "@/components/ui/input-otp"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
 type IdentifierValues = { identifier: string }
 type PasswordValues = { password: string }
 type OtpValues = { token: string }
 type Account = LookupIdentifierResponse["account"]
-type LoginStep = "identifier" | "password" | "otp"
+type LoginStep = "identifier" | "workspace" | "password" | "otp"
 type LoginFormProps = HTMLAttributes<HTMLDivElement> & {
   registrationBanner?: string
 }
@@ -255,18 +259,12 @@ export function LoginForm({
       passwordForm.reset()
       otpForm.reset()
 
-      if (nextPhoneMode) {
-        await sendOtpMutation.mutateAsync({
-          identifier: normalizePhone(values.identifier),
-          purpose: "login",
-        })
-        startOtpResendCooldown()
-        setOtpFeedback(t("auth.login.otpSent"))
-        setStep("otp")
+      if (shouldOfferWorkspaceSwitch(response.account)) {
+        setStep("workspace")
         return
       }
 
-      setStep("password")
+      await continueWithAuthMethod(nextPhoneMode, values.identifier)
     } catch (error) {
       const message =
         error instanceof Error ? error.message : t("auth.login.errors.generic")
@@ -282,6 +280,47 @@ export function LoginForm({
         message,
       })
     }
+  }
+
+  async function continueWithAuthMethod(nextPhoneMode: boolean, identifier: string) {
+    if (nextPhoneMode) {
+      await sendOtpMutation.mutateAsync({
+        identifier: normalizePhone(identifier),
+        purpose: "login",
+      })
+      startOtpResendCooldown()
+      setOtpFeedback(t("auth.login.otpSent"))
+      setStep("otp")
+      return
+    }
+
+    setStep("password")
+  }
+
+  async function handleContinueHere() {
+    setAuthError("")
+
+    try {
+      await continueWithAuthMethod(isPhoneMode(rawIdentifier), rawIdentifier)
+    } catch (error) {
+      setAuthError(
+        error instanceof Error ? error.message : t("auth.login.errors.generic")
+      )
+    }
+  }
+
+  function handleSwitchToWorkspace() {
+    if (!account?.tenantUrl) {
+      return
+    }
+
+    const workspaceLoginUrl = appendPathToUrl(account.tenantUrl, "/auth/login")
+    const workspaceRedirectUrl =
+      nextPath === "/dashboard"
+        ? workspaceLoginUrl
+        : `${workspaceLoginUrl}?next=${encodeURIComponent(nextPath)}`
+
+    window.location.assign(workspaceRedirectUrl)
   }
 
   async function handlePasswordSubmit() {
@@ -421,6 +460,8 @@ export function LoginForm({
   const stepDescription =
     step === "identifier"
       ? t("auth.login.stepOneDescription")
+      : step === "workspace"
+        ? t("auth.login.stepWorkspaceDescription")
       : step === "password"
         ? t("auth.login.stepTwoDescription")
         : t("auth.login.stepOtpDescription")
@@ -512,9 +553,11 @@ export function LoginForm({
 
               <Field>
                 <Button type="submit" className="w-full" disabled={!canContinue}>
-                  {lookupMutation.isPending || sendOtpMutation.isPending
-                    ? t("auth.login.checkingAccount")
-                    : t("auth.login.continue")}
+                  {lookupMutation.isPending || sendOtpMutation.isPending ? (
+                    <Spinner />
+                  ) : (
+                    t("auth.login.continue")
+                  )}
                 </Button>
               </Field>
               <FieldSeparator>{t("auth.login.or")}</FieldSeparator>
@@ -543,6 +586,92 @@ export function LoginForm({
               </Field>
             </FieldGroup>
           </motion.form>
+        ) : step === "workspace" ? (
+          <motion.div
+            key="workspace-step"
+            initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: shouldReduceMotion ? 0 : -12 }}
+            transition={transition}
+          >
+            <FieldGroup>
+              <AccountSummary account={account} />
+
+              <div className="relative overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-50">
+                <div className="pointer-events-none absolute -right-8 -top-8 size-24 rounded-full bg-emerald-300/30 blur-2xl dark:bg-emerald-500/15" />
+                <div className="relative flex items-start gap-3">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm shadow-emerald-900/10">
+                    <Building2Icon className="size-4" />
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">
+                        {t("auth.login.workspaceSwitchTitle")}
+                      </p>
+                      <span className="flex size-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15" />
+                    </div>
+                    <p className="text-sm text-emerald-800/80 dark:text-emerald-100/75">
+                      {t("auth.login.workspaceSwitchDescription", {
+                        business:
+                          account?.displayName ??
+                          t("auth.login.workspaceFallbackName"),
+                      })}
+                    </p>
+                    {account?.tenantUrl ? (
+                      <p
+                        className="truncate font-mono text-xs text-emerald-700 dark:text-emerald-200"
+                        title={account.tenantUrl}
+                      >
+                        {getWorkspaceHost(account.tenantUrl)}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              {authError ? (
+                <FieldDescription className="text-destructive">
+                  {authError}
+                </FieldDescription>
+              ) : null}
+
+              <Field className="gap-3">
+                <Button
+                  type="button"
+                  className="w-full"
+                  disabled={!account?.tenantUrl}
+                  onClick={handleSwitchToWorkspace}
+                >
+                  {t("auth.login.switchToWorkspace")}
+                  <ExternalLinkIcon className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={sendOtpMutation.isPending}
+                  onClick={handleContinueHere}
+                >
+                  {sendOtpMutation.isPending ? (
+                    <Spinner />
+                  ) : (
+                    <>
+                      {t("auth.login.continueHere")}
+                      <ArrowRightIcon className="size-4" />
+                    </>
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={handleResetToIdentifier}
+                >
+                  {t("auth.login.useDifferentIdentifier")}
+                </Button>
+              </Field>
+            </FieldGroup>
+          </motion.div>
         ) : step === "password" ? (
           <motion.form
             key="password-step"
@@ -614,9 +743,11 @@ export function LoginForm({
 
               <Field className="gap-3">
                 <Button type="submit" className="w-full" disabled={!canLogin}>
-                  {loginMutation.isPending
-                    ? t("auth.login.signingIn")
-                    : t("auth.login.login")}
+                  {loginMutation.isPending ? (
+                    <Spinner />
+                  ) : (
+                    t("auth.login.login")
+                  )}
                 </Button>
                 <Button
                   type="button"
@@ -680,9 +811,11 @@ export function LoginForm({
 
               <Field className="gap-3">
                 <Button type="submit" className="w-full" disabled={!canVerifyOtp}>
-                  {verifyOtpMutation.isPending
-                    ? t("auth.login.verifyingOtp")
-                    : t("auth.login.verifyOtp")}
+                  {verifyOtpMutation.isPending ? (
+                    <Spinner />
+                  ) : (
+                    t("auth.login.verifyOtp")
+                  )}
                 </Button>
                 <Button
                   type="button"
@@ -691,9 +824,9 @@ export function LoginForm({
                   disabled={!canResendOtp}
                   onClick={handleResendOtp}
                 >
-                  {sendOtpMutation.isPending
-                    ? t("auth.login.resendingOtp")
-                    : resendRemainingSeconds > 0
+                  {sendOtpMutation.isPending ? (
+                    <Spinner />
+                  ) : resendRemainingSeconds > 0
                       ? t("auth.login.resendOtpIn", {
                           seconds: resendRemainingSeconds,
                         })
@@ -809,6 +942,26 @@ function sanitizeNextPath(value: string | null) {
   return value
 }
 
+function shouldOfferWorkspaceSwitch(account: Account) {
+  if (!account.tenantUrl || typeof window === "undefined") {
+    return false
+  }
+
+  try {
+    return new URL(account.tenantUrl).origin !== window.location.origin
+  } catch {
+    return false
+  }
+}
+
+function getWorkspaceHost(tenantUrl: string) {
+  try {
+    return new URL(tenantUrl).host
+  } catch {
+    return tenantUrl
+  }
+}
+
 function navigateAfterBusinessLogin(
   redirectTo: string,
   nextPath: string,
@@ -817,9 +970,19 @@ function navigateAfterBusinessLogin(
   const targetPath = nextPath === "/dashboard" ? redirectTo : nextPath
 
   if (/^https?:\/\//.test(targetPath)) {
-    window.location.assign(targetPath)
+    assignAuthTarget(targetPath)
     return
   }
 
   router.push(targetPath)
+}
+
+function assignAuthTarget(target: string) {
+  const targetUrl = new URL(target, window.location.href)
+
+  if (targetUrl.origin !== window.location.origin) {
+    clearStoredAuthSession()
+  }
+
+  window.location.assign(targetUrl.toString())
 }

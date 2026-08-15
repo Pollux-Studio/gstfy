@@ -23,7 +23,7 @@ import { createUrlToken, sha256 } from "../../utils/crypto.js"
 import { createProfileImage } from "../../utils/avatar.js"
 import { HttpError } from "../../utils/http-error.js"
 import { createTenantSlug } from "../../utils/tenant-slug.js"
-import { getAuthUrl, getTenantUrl } from "../../utils/tenant-url.js"
+import { getCaAppUrl, getTenantUrl } from "../../utils/tenant-url.js"
 import { verifyFirebaseIdToken } from "../firebase/firebase-admin.js"
 import { MailService } from "../mail/mail.service.js"
 import type {
@@ -993,7 +993,7 @@ export class AuthService {
   }
 
   private getCaRedirect() {
-    return getAuthUrl("/ca", this.env)
+    return getCaAppUrl("/dashboard", this.env)
   }
 
   private getBusinessUrl(business: Pick<BusinessRecord, "tenantSlug">) {
