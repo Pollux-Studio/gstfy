@@ -102,7 +102,7 @@ type VoucherCommandInput = {
   idempotencyKey?: string
 }
 
-type PartySnapshot = {
+export type PartySnapshot = {
   id: string
   displayName: string
   legalName: string | null
@@ -231,7 +231,8 @@ export async function resolveTransactionContext(
 
 export async function getPartySnapshot(
   businessId: string,
-  partyId: string | null | undefined
+  partyId: string | null | undefined,
+  options: { allowArchived?: boolean } = {}
 ): Promise<PartySnapshot | null> {
   if (!partyId) {
     return null
@@ -243,6 +244,13 @@ export async function getPartySnapshot(
 
   if (!party) {
     throw new HttpError(404, "Party not found.")
+  }
+
+  if (party.status === "archived" && !options.allowArchived) {
+    throw new HttpError(
+      409,
+      "This party is archived. Restore it before creating new sales or POS transactions."
+    )
   }
 
   const gstRegistration = await db.query.partyGstRegistrations.findFirst({

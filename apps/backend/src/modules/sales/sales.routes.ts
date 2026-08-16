@@ -16,6 +16,7 @@ import {
   resolveTransactionContext,
   sumPayments,
   postSalesVoucher,
+  type PartySnapshot,
   type CalculatedTransaction,
   type PaymentInput,
 } from "../accounting/accounting-domain.service.js"
@@ -121,7 +122,10 @@ export async function registerSalesRoutes(app: FastifyInstance) {
         referenceNumber: payment.referenceNumber,
       })),
     }
-    const posted = await postSalesInvoice(access, body)
+    const posted = await postSalesInvoice(access, body, {
+      allowArchivedParty: true,
+      partySnapshot: coercePartySnapshot(detail.partySnapshot),
+    })
 
     await db.transaction(async (tx) => {
       await tx
@@ -206,7 +210,11 @@ async function createSalesInvoice(access: BusinessAccess, body: CreateSalesInvoi
   return getSalesInvoiceDetail(access.business.id, invoice.id)
 }
 
-async function postSalesInvoice(access: BusinessAccess, body: CreateSalesInvoiceInput) {
+async function postSalesInvoice(
+  access: BusinessAccess,
+  body: CreateSalesInvoiceInput,
+  options: { allowArchivedParty?: boolean; partySnapshot?: PartySnapshot | null } = {}
+) {
   const context = await resolveTransactionContext(access, {
     transactionDate: body.invoiceDate,
     gstRegistrationId: body.gstRegistrationId,
@@ -230,7 +238,11 @@ async function postSalesInvoice(access: BusinessAccess, body: CreateSalesInvoice
     throw new HttpError(400, "Sales payments cannot exceed invoice total.")
   }
 
-  const party = await getPartySnapshot(access.business.id, body.partyId)
+  const party =
+    options.partySnapshot ??
+    (await getPartySnapshot(access.business.id, body.partyId, {
+      allowArchived: options.allowArchivedParty,
+    }))
   const customerName = resolveCounterpartyName(body.customerName, party?.displayName, "Walk-in customer")
   const result = await postSalesVoucher({
     access,
@@ -345,6 +357,27 @@ function resolveCounterpartyName(
   fallback: string
 ) {
   return requestedName?.trim() || partyName?.trim() || fallback
+}
+
+function coercePartySnapshot(value: unknown): PartySnapshot | null {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const snapshot = value as Record<string, unknown>
+
+  if (typeof snapshot.id !== "string" || typeof snapshot.displayName !== "string") {
+    return null
+  }
+
+  return {
+    id: snapshot.id,
+    displayName: snapshot.displayName,
+    legalName: typeof snapshot.legalName === "string" ? snapshot.legalName : null,
+    tradeName: typeof snapshot.tradeName === "string" ? snapshot.tradeName : null,
+    gstin: typeof snapshot.gstin === "string" ? snapshot.gstin : null,
+    stateCode: typeof snapshot.stateCode === "string" ? snapshot.stateCode : null,
+  }
 }
 
 function escapeLikeTerm(value: string) {

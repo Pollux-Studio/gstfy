@@ -3,6 +3,16 @@ import { apiRequest } from "@/lib/api/client"
 export type PartyRole = "customer" | "supplier"
 export type PartyType = "business" | "individual" | "government" | "other"
 export type PartyStatus = "active" | "inactive" | "blocked" | "archived"
+export type PartySortBy =
+  | "name"
+  | "role"
+  | "gstin"
+  | "pan"
+  | "contact"
+  | "status"
+  | "createdAt"
+  | "updatedAt"
+export type PartySortDir = "asc" | "desc"
 
 export type PartyGstRegistration = {
   id: string
@@ -105,6 +115,7 @@ export type PartyListItem = {
   tradeName: string | null
   shortName: string | null
   pan: string | null
+  profileImageSeed: string | null
   status: PartyStatus
   roles: PartyRole[]
   customerCode: string | null
@@ -188,13 +199,28 @@ export type CreatePartyPayload = {
 export type UpdatePartyPayload = Partial<
   Pick<
     CreatePartyPayload,
-    "partyType" | "displayName" | "legalName" | "tradeName" | "shortName" | "pan" | "status" | "notes"
+    | "partyType"
+    | "roles"
+    | "displayName"
+    | "legalName"
+    | "tradeName"
+    | "shortName"
+    | "pan"
+    | "status"
+    | "notes"
   >
 >
 
 export function listParties(
   accessToken: string,
-  filters: { search?: string; role?: PartyRole; status?: PartyStatus; limit?: number } = {}
+  filters: {
+    search?: string
+    role?: PartyRole
+    status?: PartyStatus
+    sortBy?: PartySortBy
+    sortDir?: PartySortDir
+    limit?: number
+  } = {}
 ) {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {

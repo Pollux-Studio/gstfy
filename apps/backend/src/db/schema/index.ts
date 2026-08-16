@@ -1459,6 +1459,7 @@ export const parties = pgTable(
     tradeName: text("trade_name"),
     shortName: text("short_name"),
     pan: text("pan"),
+    profileImageSeed: text("profile_image_seed"),
     status: text("status").notNull().default("active"),
     notes: text("notes"),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),

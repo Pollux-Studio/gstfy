@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 
-import { and, desc, eq, ilike, inArray, or, sql as drizzleSql, type SQL } from "drizzle-orm"
+import { and, asc, desc, eq, ilike, inArray, or, sql as drizzleSql, type SQL } from "drizzle-orm"
 import type { FastifyInstance } from "fastify"
 
 import { db } from "../../db/client.js"
@@ -21,6 +21,7 @@ import {
   type PartySupplierProfileRecord,
 } from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
+import { createProfileImage } from "../../utils/avatar.js"
 import { requirePrimaryBusinessAccess } from "../businesses/business-access.js"
 import {
   customerProfileSchema,
@@ -92,11 +93,12 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
       }
     }
 
+    const orderBy = query.sortDir === "asc" ? asc : desc
     const rows = await db
       .select()
       .from(parties)
       .where(and(...conditions))
-      .orderBy(desc(parties.createdAt))
+      .orderBy(orderBy(getPartySortColumn(query.sortBy)))
       .limit(query.limit)
 
     return {
@@ -134,6 +136,7 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
           tradeName: body.tradeName ?? null,
           shortName: body.shortName ?? null,
           pan: body.pan ?? null,
+          profileImageSeed: createProfileImage().profileImageSeed,
           status: body.status,
           notes: body.notes ?? null,
           createdBy: access.userId,
@@ -310,7 +313,8 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
     await assertCanUseParties(access, "edit")
     const { id } = idParamsSchema.parse(request.params)
     const before = await requireParty(access.business.id, id)
-    const body = compactObject(updatePartySchema.parse(request.body))
+    const parsedBody = compactObject(updatePartySchema.parse(request.body))
+    const { roles, ...body } = parsedBody
 
     const [party] = await db
       .update(parties)
@@ -326,10 +330,15 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
       throw new HttpError(500, "Unable to update party.")
     }
 
-    await writeAudit(access, "party", id, "PARTY_UPDATED", before, party)
+    if (roles) {
+      await reconcilePartyRoles(access, id, roles)
+    }
+
+    const after = await getPartyDetail(access.business.id, id)
+    await writeAudit(access, "party", id, "PARTY_UPDATED", before, after)
 
     return {
-      party: await getPartyDetail(access.business.id, id),
+      party: after,
     }
   })
 
@@ -1113,6 +1122,7 @@ async function buildPartySummaries(businessId: string, partyRows: PartyRecord[])
       tradeName: party.tradeName,
       shortName: party.shortName,
       pan: party.pan,
+      profileImageSeed: party.profileImageSeed,
       status: party.status,
       roles: resolveRoles(customerProfile, supplierProfile),
       customerCode: customerProfile?.customerCode ?? null,
@@ -1141,6 +1151,83 @@ async function findPartyIdsByRole(businessId: string, role: "customer" | "suppli
     .where(eq(partySupplierProfiles.businessId, businessId))
 
   return rows.map((row) => row.partyId)
+}
+
+async function reconcilePartyRoles(
+  access: BusinessAccess,
+  partyId: string,
+  roles: ("customer" | "supplier")[]
+) {
+  const wantsCustomer = roles.includes("customer")
+  const wantsSupplier = roles.includes("supplier")
+  const [customerProfile, supplierProfile] = await Promise.all([
+    db.query.partyCustomerProfiles.findFirst({
+      where: and(
+        eq(partyCustomerProfiles.businessId, access.business.id),
+        eq(partyCustomerProfiles.partyId, partyId)
+      ),
+    }),
+    db.query.partySupplierProfiles.findFirst({
+      where: and(
+        eq(partySupplierProfiles.businessId, access.business.id),
+        eq(partySupplierProfiles.partyId, partyId)
+      ),
+    }),
+  ])
+
+  if (wantsCustomer && !customerProfile) {
+    await db.insert(partyCustomerProfiles).values({
+      businessId: access.business.id,
+      partyId,
+      customerCode: await allocateCustomerCode(access.business.id),
+      creditLimit: "0.00",
+      creditDays: 0,
+      defaultPaymentTerm: null,
+      defaultBillingAddressId: null,
+      defaultShippingAddressId: null,
+      defaultGstRegistrationId: null,
+      priceGroupId: null,
+      salesRepId: null,
+      status: "active",
+    })
+  }
+
+  if (!wantsCustomer && customerProfile) {
+    await db
+      .delete(partyCustomerProfiles)
+      .where(
+        and(
+          eq(partyCustomerProfiles.businessId, access.business.id),
+          eq(partyCustomerProfiles.partyId, partyId)
+        )
+      )
+  }
+
+  if (wantsSupplier && !supplierProfile) {
+    await db.insert(partySupplierProfiles).values({
+      businessId: access.business.id,
+      partyId,
+      supplierCode: await allocateSupplierCode(access.business.id),
+      creditDays: 0,
+      defaultPaymentTerm: null,
+      defaultPurchaseAddressId: null,
+      defaultGstRegistrationId: null,
+      preferredWarehouseId: null,
+      leadTimeDays: 0,
+      status: "active",
+    })
+  }
+
+  if (!wantsSupplier && supplierProfile) {
+    await db
+      .delete(partySupplierProfiles)
+      .where(
+        and(
+          eq(partySupplierProfiles.businessId, access.business.id),
+          eq(partySupplierProfiles.partyId, partyId)
+        )
+      )
+  }
 }
 
 async function findPartyIdsBySearch(businessId: string, search: string) {
@@ -1659,6 +1746,23 @@ function compactObject<T extends Record<string, unknown>>(input: T) {
   return Object.fromEntries(
     Object.entries(input).filter(([, value]) => value !== undefined)
   ) as T
+}
+
+function getPartySortColumn(sortBy: string) {
+  switch (sortBy) {
+    case "name":
+      return parties.displayName
+    case "pan":
+      return parties.pan
+    case "status":
+      return parties.status
+    case "createdAt":
+      return parties.createdAt
+    case "updatedAt":
+      return parties.updatedAt
+    default:
+      return parties.updatedAt
+  }
 }
 
 function escapeLikeTerm(value: string) {

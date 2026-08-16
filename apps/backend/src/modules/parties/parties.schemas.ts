@@ -3,11 +3,19 @@ import { z } from "zod"
 export const partyTypes = ["business", "individual", "government", "other"] as const
 export const partyStatuses = ["active", "inactive", "blocked", "archived"] as const
 export const partyRoles = ["customer", "supplier"] as const
+export const partySortFields = [
+  "name",
+  "role",
+  "gstin",
+  "pan",
+  "contact",
+  "status",
+  "createdAt",
+  "updatedAt",
+] as const
 
 const nullableTrimmed = z
-  .string()
-  .trim()
-  .max(240)
+  .union([z.string().trim().max(240), z.null()])
   .optional()
   .transform((value) => (value === undefined ? undefined : value || null))
 
@@ -58,6 +66,8 @@ export const listPartiesQuerySchema = z.object({
   search: z.string().trim().max(120).optional(),
   role: z.enum(partyRoles).optional(),
   status: z.enum(partyStatuses).optional(),
+  sortBy: z.enum(partySortFields).default("createdAt"),
+  sortDir: z.enum(["asc", "desc"]).default("desc"),
   limit: z
     .union([z.string(), z.number()])
     .optional()
@@ -200,12 +210,12 @@ export const createPartySchema = z.object({
   tradeName: nullableTrimmed,
   shortName: nullableTrimmed,
   pan: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^[A-Z]{5}\d{4}[A-Z]$/)
+    .union([
+      z.string().trim().toUpperCase().regex(/^[A-Z]{5}\d{4}[A-Z]$/),
+      z.literal(""),
+      z.null(),
+    ])
     .optional()
-    .or(z.literal(""))
     .transform((value) => value || null),
   status: z.enum(partyStatuses).default("active"),
   notes: nullableTrimmed,
@@ -219,7 +229,6 @@ export const createPartySchema = z.object({
 
 export const updatePartySchema = createPartySchema
   .omit({
-    roles: true,
     customerProfile: true,
     supplierProfile: true,
     gstRegistration: true,
