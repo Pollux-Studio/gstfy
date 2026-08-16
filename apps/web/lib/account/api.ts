@@ -35,6 +35,11 @@ export type ChangeAccountPasswordPayload = {
   confirmPassword: string
 }
 
+export type CompleteFirstLoginPasswordPayload = {
+  newPassword: string
+  confirmPassword: string
+}
+
 export function getAccountSettings(accessToken: string) {
   return apiRequest<AccountSettingsResponse>("/account/settings", {
     method: "GET",
@@ -77,4 +82,18 @@ export function changeAccountPassword(
     body: payload,
     accessToken,
   })
+}
+
+export function completeFirstLoginPasswordChange(
+  payload: CompleteFirstLoginPasswordPayload,
+  accessToken: string
+) {
+  return apiRequest<{ success: true; mustChangePassword: false }>(
+    "/account/settings/user/password/first-login",
+    {
+      method: "POST",
+      body: payload,
+      accessToken,
+    }
+  )
 }

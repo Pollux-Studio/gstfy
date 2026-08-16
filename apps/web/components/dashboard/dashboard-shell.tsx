@@ -1,10 +1,14 @@
 "use client"
 
 import { usePathname, useRouter } from "next/navigation"
+import { useQuery } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 
+import { ForcePasswordChangeDialog } from "@/components/account/force-password-change-dialog"
 import { AppSidebar } from "@/components/app-sidebar"
 import { DashboardTopbar } from "@/components/dashboard/dashboard-topbar"
+import { getCurrentUser } from "@/lib/auth/api"
+import { canAccessBusinessPath } from "@/lib/auth/permissions"
 import {
   AUTH_SESSION_CHANGE_EVENT,
   clearStoredAuthSession,
@@ -33,6 +37,8 @@ export function DashboardShell({
   const hasSession =
     storedSession?.isAuthenticated === true && Boolean(storedSession.session.accessToken)
   const accountType = storedSession?.accountType ?? "business"
+  const userId = storedSession?.user.id ?? ""
+  const accessToken = storedSession?.session.accessToken ?? ""
   const isLegacyCaRoute =
     pathname === "/ca" ||
     pathname.startsWith("/ca/clients") ||
@@ -42,6 +48,15 @@ export function DashboardShell({
     pathname.startsWith("/dashboard/clients") ||
     pathname.startsWith("/dashboard/referral-codes")
   const isCaRoute = isLegacyCaRoute || (isCaHost && (isCaDashboardRoute || pathname === "/account"))
+  const { data: currentUser } = useQuery({
+    queryKey: ["auth", "current-user", accountType, userId],
+    queryFn: () => getCurrentUser(accessToken),
+    enabled: hasSession && accountType === "business" && userId.length > 0,
+    refetchOnMount: "always",
+    staleTime: 1000 * 60 * 5,
+  })
+  const currentUserForSession =
+    currentUser?.auth.userId === storedSession?.user.id ? currentUser : undefined
 
   useEffect(() => {
     function syncStoredSession() {
@@ -134,6 +149,38 @@ export function DashboardShell({
   ])
 
   useEffect(() => {
+    if (
+      !hasSession ||
+      accountType !== "business" ||
+      isCaRoute ||
+      !currentUserForSession
+    ) {
+      return
+    }
+
+    if (
+      canAccessBusinessPath(pathname, currentUserForSession, storedSession?.tenant?.id)
+    ) {
+      return
+    }
+
+    const fallbackPath =
+      canAccessBusinessPath("/dashboard", currentUserForSession, storedSession?.tenant?.id) ?
+        "/dashboard"
+      : "/account"
+
+    router.replace(fallbackPath)
+  }, [
+    accountType,
+    currentUserForSession,
+    hasSession,
+    isCaRoute,
+    pathname,
+    router,
+    storedSession?.tenant?.id,
+  ])
+
+  useEffect(() => {
     if (!hasSession) {
       return
     }
@@ -204,6 +251,12 @@ export function DashboardShell({
       <SidebarInset>
         <DashboardTopbar />
         {children}
+        {storedSession?.user.mustChangePassword ? (
+          <ForcePasswordChangeDialog
+            session={storedSession}
+            onComplete={setStoredSession}
+          />
+        ) : null}
       </SidebarInset>
     </SidebarProvider>
   )

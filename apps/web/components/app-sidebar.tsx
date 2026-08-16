@@ -37,6 +37,11 @@ import {
   planLabels,
 } from "@/lib/dashboard/modules"
 import {
+  canManageWorkspace,
+  canViewModule,
+  getActiveBusinessMembership,
+} from "@/lib/auth/permissions"
+import {
   AUTH_SESSION_CHANGE_EVENT,
   getStoredAuthSession,
   type StoredAuthSession,
@@ -78,6 +83,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   })
   const currentUserForSession =
     currentUser?.auth.userId === storedSession?.user.id ? currentUser : undefined
+  const activeBusinessMembership = React.useMemo(
+    () => getActiveBusinessMembership(currentUserForSession, storedSession?.tenant?.id),
+    [currentUserForSession, storedSession?.tenant?.id]
+  )
+  const canManageBusinessWorkspace = canManageWorkspace(activeBusinessMembership)
   const { data: caDashboard } = useQuery({
     queryKey: ["ca", "dashboard", userId],
     queryFn: () => getCaDashboard(accessToken),
@@ -99,7 +109,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
   }, [])
 
-  const overviewItem: SidebarNavItem = React.useMemo(() => {
+  const overviewItem: SidebarNavItem | null = React.useMemo(() => {
     if (isCaAccount) {
       return {
         title: "Filing Dashboard",
@@ -109,13 +119,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       }
     }
 
+    if (
+      !currentUserForSession ||
+      !canViewModule(activeBusinessMembership, "overview")
+    ) {
+      return null
+    }
+
     return {
       title: "Overview",
       url: "/dashboard",
       icon: <LayoutDashboardIcon />,
       isActive: pathname === "/dashboard",
     }
-  }, [isCaAccount, pathname])
+  }, [activeBusinessMembership, currentUserForSession, isCaAccount, pathname])
 
   const visibleCategories = React.useMemo(() => {
     if (isCaAccount) {
@@ -153,30 +170,36 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       ]
     }
 
+    if (!currentUserForSession) {
+      return []
+    }
+
     const categories = getVisibleFeatureCategories(currentPlan).map((category) => ({
       title: category.title,
       items: [
-        ...category.items.map((item) => ({
-          title: item.title,
-          url: item.url,
-          isActive:
-            item.url !== "#" &&
-            (pathname === item.url || pathname.startsWith(`${item.url}/`)),
-          disabled: item.url === "#",
-          icon:
-            item.module === "invoices" ? <CreditCardIcon /> :
-            item.module === "pos" ? <Building2Icon /> :
-            item.module === "purchases" ? <ShoppingCartIcon /> :
-            item.module === "expenses" ? <HandCoinsIcon /> :
-            item.module === "gstr" ? <ReceiptTextIcon /> :
-            item.title === "Products" ? <PackageIcon /> :
-            item.module === "inventory" ? <WarehouseIcon /> :
-            item.module === "parties" ? <UsersIcon /> :
-            item.module === "reports" ? <FileChartColumnIcon /> :
-            item.module === "accounting" ? <NotebookTextIcon /> :
-            undefined,
-        })),
-        ...(category.title === "Contacts" ?
+        ...category.items
+          .filter((item) => canViewModule(activeBusinessMembership, item.module))
+          .map((item) => ({
+            title: item.title,
+            url: item.url,
+            isActive:
+              item.url !== "#" &&
+              (pathname === item.url || pathname.startsWith(`${item.url}/`)),
+            disabled: item.url === "#",
+            icon:
+              item.module === "invoices" ? <CreditCardIcon /> :
+              item.module === "pos" ? <Building2Icon /> :
+              item.module === "purchases" ? <ShoppingCartIcon /> :
+              item.module === "expenses" ? <HandCoinsIcon /> :
+              item.module === "gstr" ? <ReceiptTextIcon /> :
+              item.title === "Products" ? <PackageIcon /> :
+              item.module === "inventory" ? <WarehouseIcon /> :
+              item.module === "parties" ? <UsersIcon /> :
+              item.module === "reports" ? <FileChartColumnIcon /> :
+              item.module === "accounting" ? <NotebookTextIcon /> :
+              undefined,
+          })),
+        ...(category.title === "Contacts" && canManageBusinessWorkspace ?
           [
             {
               title: "Users",
@@ -187,10 +210,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           ]
         : []),
       ],
-    }))
+    })).filter((category) => category.items.length > 0)
 
     return categories
-  }, [isCaAccount, pathname])
+  }, [
+    activeBusinessMembership,
+    canManageBusinessWorkspace,
+    currentUserForSession,
+    isCaAccount,
+    pathname,
+  ])
 
   const sidebarUser = React.useMemo(
     () => buildSidebarUser(storedSession?.user ?? null, currentUserForSession),
@@ -219,7 +248,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
-          {!isCaAccount ? (
+          {!isCaAccount && canManageBusinessWorkspace ? (
             <SidebarMenuItem>
               <SidebarMenuButton
                 render={<Link href="/settings" />}

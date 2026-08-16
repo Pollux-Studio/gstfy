@@ -1,5 +1,5 @@
 import argon2 from "argon2"
-import { and, eq, gt, isNull } from "drizzle-orm"
+import { and, eq, gt, inArray, isNull } from "drizzle-orm"
 import { SignJWT } from "jose"
 
 import { getEnv } from "../../config/env.js"
@@ -7,6 +7,7 @@ import { db } from "../../db/client.js"
 import {
   businessBranches,
   businessLocations,
+  businessMemberPermissions,
   businessMembers,
   businessProfiles,
   businesses,
@@ -67,6 +68,7 @@ type PublicUser = {
   fullName: string | null
   profileImageSeed: string | null
   profileImageStyle: string
+  mustChangePassword: boolean
   emailVerified: boolean
   phoneVerified: boolean
 }
@@ -126,6 +128,7 @@ export class AuthService {
   async getCurrentUser(user: UserRecord) {
     const memberships = await db
       .select({
+        membershipId: businessMembers.id,
         businessId: businesses.id,
         businessName: businesses.tradeName,
         tenantSlug: businesses.tenantSlug,
@@ -138,6 +141,21 @@ export class AuthService {
       .innerJoin(businesses, eq(businesses.id, businessMembers.businessId))
       .leftJoin(businessProfiles, eq(businessProfiles.businessId, businesses.id))
       .where(eq(businessMembers.userId, user.id))
+    const membershipIds = memberships.map((membership) => membership.membershipId)
+    const permissionRows =
+      membershipIds.length > 0 ?
+        await db
+          .select({
+            businessMemberId: businessMemberPermissions.businessMemberId,
+            module: businessMemberPermissions.module,
+            canView: businessMemberPermissions.canView,
+            canCreate: businessMemberPermissions.canCreate,
+            canEdit: businessMemberPermissions.canEdit,
+            canDelete: businessMemberPermissions.canDelete,
+          })
+          .from(businessMemberPermissions)
+          .where(inArray(businessMemberPermissions.businessMemberId, membershipIds))
+      : []
 
     return {
       auth: {
@@ -155,6 +173,7 @@ export class AuthService {
         profile_image_seed: user.profileImageSeed,
         profile_image_style: user.profileImageStyle,
         locale: user.locale,
+        must_change_password: user.mustChangePassword,
         onboarding_status:
           memberships.some((membership) => membership.status === "active") ?
             "completed"
@@ -162,6 +181,7 @@ export class AuthService {
         last_login_at: user.lastLoginAt,
       },
       memberships: memberships.map((membership) => ({
+        membership_id: membership.membershipId,
         business_id: membership.businessId,
         business_name: membership.businessName,
         tenant_slug: membership.tenantSlug,
@@ -170,6 +190,14 @@ export class AuthService {
         status: membership.status,
         gstin: membership.gstin,
         registration_date: membership.registrationDate,
+        permissions:
+          membership.role === "owner" || membership.role === "admin" ?
+            {}
+          : toPermissionMap(
+              permissionRows.filter(
+                (permission) => permission.businessMemberId === membership.membershipId
+              )
+            ),
       })),
     }
   }
@@ -506,6 +534,7 @@ export class AuthService {
           phone: result.user.phoneE164,
           profileImageSeed: result.user.profileImageSeed,
           profileImageStyle: result.user.profileImageStyle,
+          mustChangePassword: result.user.mustChangePassword,
         },
         session: null,
         tenant: this.toPublicTenant(result.business),
@@ -654,7 +683,12 @@ export class AuthService {
     const business = await this.findPrimaryBusiness(user.id, context.tenantSlug)
 
     if (!business) {
-      throw new HttpError(404, "Business account not found.")
+      throw new HttpError(
+        403,
+        context.tenantSlug ?
+          "You do not have access to this workspace."
+        : "Business account not found."
+      )
     }
 
     await this.markLastLogin(user.id)
@@ -717,7 +751,12 @@ export class AuthService {
     const business = await this.findPrimaryBusiness(user.id, context.tenantSlug)
 
     if (!business) {
-      throw new HttpError(404, "Business account not found.")
+      throw new HttpError(
+        403,
+        context.tenantSlug ?
+          "You do not have access to this workspace."
+        : "Business account not found."
+      )
     }
 
     await db
@@ -846,6 +885,7 @@ export class AuthService {
         .update(users)
         .set({
           passwordHash,
+          mustChangePassword: false,
         })
         .where(eq(users.id, resetToken.userId))
 
@@ -1203,9 +1243,32 @@ function toPublicUser(user: UserRecord): PublicUser {
     fullName: user.fullName,
     profileImageSeed: user.profileImageSeed,
     profileImageStyle: user.profileImageStyle,
+    mustChangePassword: user.mustChangePassword,
     emailVerified: Boolean(user.emailVerifiedAt),
     phoneVerified: Boolean(user.phoneVerifiedAt),
   }
+}
+
+function toPermissionMap(
+  permissions: Array<{
+    module: string
+    canView: boolean
+    canCreate: boolean
+    canEdit: boolean
+    canDelete: boolean
+  }>
+) {
+  return Object.fromEntries(
+    permissions.map((permission) => [
+      permission.module,
+      {
+        view: permission.canView,
+        create: permission.canCreate,
+        edit: permission.canEdit,
+        delete: permission.canDelete,
+      },
+    ])
+  )
 }
 
 function mapDatabaseError(error: unknown): unknown {

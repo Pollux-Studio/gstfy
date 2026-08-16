@@ -32,6 +32,7 @@ type RefreshSessionResponse = {
     phoneE164: string | null
     profileImageSeed: string | null
     profileImageStyle: string | null
+    mustChangePassword?: boolean
   }
   accessToken: string
   accessTokenExpiresIn: number
@@ -61,7 +62,10 @@ export function getStoredAuthSession(): StoredAuthSession | null {
     return {
       isAuthenticated: true,
       accountType: getSafeAccountType(parsedValue.accountType),
-      user: parsedValue.user,
+      user: {
+        ...parsedValue.user,
+        mustChangePassword: Boolean(parsedValue.user.mustChangePassword),
+      },
       session: parsedValue.session,
       tenant: parsedValue.tenant ?? null,
     }
@@ -191,6 +195,7 @@ async function refreshAuthSession() {
         profileImageSeed: payload.user.profileImageSeed,
         profileImageStyle:
           payload.user.profileImageStyle === "glyphs" ? "glyphs" : undefined,
+        mustChangePassword: Boolean(payload.user.mustChangePassword),
       },
       session: {
         accessToken: payload.accessToken,

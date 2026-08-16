@@ -1,6 +1,5 @@
 "use client"
 
-import Image from "next/image"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useMutation } from "@tanstack/react-query"
@@ -15,7 +14,13 @@ import {
   GalleryVerticalEndIcon,
   LockKeyholeIcon,
 } from "lucide-react"
-import { type HTMLAttributes, useEffect, useMemo, useState } from "react"
+import {
+  type HTMLAttributes,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
@@ -44,8 +49,8 @@ import {
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
-  InputGroupText,
 } from "@/components/ui/input-group"
+import { IndianPhoneInput } from "@/components/ui/indian-phone-input"
 import {
   InputOTP,
   InputOTPGroup,
@@ -83,7 +88,11 @@ export function LoginForm({
   const [otpFeedback, setOtpFeedback] = useState("")
   const [otpResendAvailableAt, setOtpResendAvailableAt] = useState(0)
   const [otpResendNow, setOtpResendNow] = useState(0)
-  const [caLoginHref, setCaLoginHref] = useState("/auth/ca/login")
+  const caLoginHref = useSyncExternalStore(
+    subscribeToLocationSnapshot,
+    getCaLoginHrefSnapshot,
+    getCaLoginHrefServerSnapshot
+  )
 
   const identifierSchema = useMemo(
     () =>
@@ -226,20 +235,16 @@ export function LoginForm({
     : { duration: 0.24, ease: "easeOut" as const }
 
   useEffect(() => {
-    setCaLoginHref(getAuthSubdomainUrl("/auth/ca/login"))
-  }, [])
-
-  useEffect(() => {
     if (step !== "otp" || otpResendAvailableAt === 0) {
       return
     }
 
-    if (otpResendAvailableAt <= Date.now()) {
+    if (otpResendAvailableAt <= getCurrentTimestamp()) {
       return
     }
 
     const timeoutId = window.setTimeout(() => {
-      setOtpResendNow(Date.now())
+      setOtpResendNow(getCurrentTimestamp())
     }, 1000)
 
     return () => window.clearTimeout(timeoutId)
@@ -450,7 +455,7 @@ export function LoginForm({
   }
 
   function startOtpResendCooldown() {
-    const now = Date.now()
+    const now = getCurrentTimestamp()
 
     setOtpResendNow(now)
     setOtpResendAvailableAt(now + OTP_RESEND_INTERVAL_SECONDS * 1000)
@@ -500,49 +505,24 @@ export function LoginForm({
                 <FieldLabel htmlFor="identifier">
                   {t("auth.login.identifierLabel")}
                 </FieldLabel>
-                <InputGroup>
-                  <InputGroupAddon
-                    aria-hidden={!phoneMode}
-                    className={cn(
-                      "overflow-hidden transition-all",
-                      phoneMode
-                        ? "w-auto pl-2 opacity-100"
-                        : "w-0 gap-0 overflow-hidden p-0 opacity-0"
-                    )}
-                  >
-                    <InputGroupText
-                      className={cn(
-                        "whitespace-nowrap transition-opacity",
-                        !phoneMode && "opacity-0"
-                      )}
-                    >
-                      <Image
-                        src="/india-flag.png"
-                        alt="India"
-                        width={16}
-                        height={12}
-                        className="h-3 w-4 rounded-[2px] object-cover"
-                      />
-                      <span>+91</span>
-                    </InputGroupText>
-                  </InputGroupAddon>
-                  <InputGroupInput
-                    id="identifier"
-                    type="text"
-                    value={rawIdentifier}
-                    inputMode={phoneMode ? "numeric" : "email"}
-                    maxLength={phoneMode ? 10 : undefined}
-                    placeholder={
-                      phoneMode
-                        ? t("auth.login.phonePlaceholder")
-                        : t("auth.login.emailPlaceholder")
-                    }
-                    autoComplete={phoneMode ? "tel-national" : "username"}
-                    aria-invalid={shouldShowIdentifierError}
-                    className={cn(phoneMode && "font-mono")}
-                    onChange={(event) => handleIdentifierChange(event.target.value)}
-                  />
-                </InputGroup>
+                <IndianPhoneInput
+                  id="identifier"
+                  type="text"
+                  value={rawIdentifier}
+                  inputMode={phoneMode ? "numeric" : "email"}
+                  maxLength={phoneMode ? 10 : undefined}
+                  numericOnly={false}
+                  showPrefix={phoneMode}
+                  placeholder={
+                    phoneMode ?
+                      t("auth.login.phonePlaceholder")
+                    : t("auth.login.emailPlaceholder")
+                  }
+                  autoComplete={phoneMode ? "tel-national" : "username"}
+                  aria-invalid={shouldShowIdentifierError}
+                  inputClassName={cn(phoneMode && "font-mono")}
+                  onChange={(event) => handleIdentifierChange(event.target.value)}
+                />
                 {shouldShowIdentifierError ? (
                   <FieldError errors={[identifierError]} />
                 ) : null}
@@ -985,4 +965,20 @@ function assignAuthTarget(target: string) {
   }
 
   window.location.assign(targetUrl.toString())
+}
+
+function subscribeToLocationSnapshot() {
+  return () => {}
+}
+
+function getCaLoginHrefSnapshot() {
+  return getAuthSubdomainUrl("/auth/ca/login")
+}
+
+function getCaLoginHrefServerSnapshot() {
+  return "/auth/ca/login"
+}
+
+function getCurrentTimestamp() {
+  return Date.now()
 }

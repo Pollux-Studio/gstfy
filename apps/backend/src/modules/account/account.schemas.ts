@@ -31,7 +31,18 @@ export const changeAccountPasswordSchema = z
     message: "Passwords do not match.",
   })
 
+export const completeFirstLoginPasswordSchema = z
+  .object({
+    newPassword: passwordSchema,
+    confirmPassword: z.string().min(1, "Confirm your new password."),
+  })
+  .refine((value) => value.newPassword === value.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Passwords do not match.",
+  })
+
 export type UpdateAccountInput = z.infer<typeof updateAccountSchema>
 export type UpdateAccountSettingsInput = z.infer<typeof updateAccountSettingsSchema>
 export type VerifyAccountPhoneInput = z.infer<typeof verifyAccountPhoneSchema>
 export type ChangeAccountPasswordInput = z.infer<typeof changeAccountPasswordSchema>
+export type CompleteFirstLoginPasswordInput = z.infer<typeof completeFirstLoginPasswordSchema>

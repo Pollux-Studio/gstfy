@@ -10,6 +10,7 @@ export type AuthUser = {
   phone: string | null
   profileImageSeed?: string | null
   profileImageStyle?: "glyphs"
+  mustChangePassword: boolean
 }
 
 export type AuthSession = {
@@ -60,6 +61,7 @@ export type CurrentUserResponse = {
     display_name: string | null
     profile_image_seed: string | null
     profile_image_style: "glyphs"
+    must_change_password: boolean
     locale: string
     onboarding_status: string
     last_login_at: string | null
@@ -73,6 +75,15 @@ export type CurrentUserResponse = {
     status: string
     gstin: string | null
     registration_date: string | null
+    permissions?: Record<
+      string,
+      {
+        view: boolean
+        create: boolean
+        edit: boolean
+        delete: boolean
+      }
+    >
   }>
 }
 
@@ -318,6 +329,7 @@ type BackendAuthResponse = {
     fullName?: string | null
     profileImageSeed: string | null
     profileImageStyle: "glyphs"
+    mustChangePassword: boolean
   }
   accessToken: string
   accessTokenExpiresIn: number
@@ -333,6 +345,7 @@ function toLoginResponse(response: BackendAuthResponse): LoginResponse {
       phone: response.user.phoneE164,
       profileImageSeed: response.user.profileImageSeed,
       profileImageStyle: response.user.profileImageStyle,
+      mustChangePassword: response.user.mustChangePassword,
     },
     session: {
       accessToken: response.accessToken,

@@ -1,7 +1,11 @@
+import { randomBytes } from "node:crypto"
+
+import argon2 from "argon2"
 import { and, eq, inArray } from "drizzle-orm"
-import type { FastifyInstance } from "fastify"
+import type { FastifyInstance, FastifyRequest } from "fastify"
 import { z } from "zod"
 
+import { getEnv } from "../../config/env.js"
 import { db } from "../../db/client.js"
 import {
   businessBranches,
@@ -17,8 +21,11 @@ import {
   assertCanManageBusiness,
   requirePrimaryBusinessAccess,
 } from "../businesses/business-access.js"
+import { buildActionEmailHtml, MailService } from "../mail/mail.service.js"
 import {
   createUserSchema,
+  listUsersQuerySchema,
+  type ListUsersQueryInput,
   type PermissionMapInput,
   updateUserSchema,
 } from "./users.schemas.js"
@@ -26,6 +33,8 @@ import {
 const memberParamsSchema = z.object({
   memberId: z.uuid(),
 })
+
+const mailService = new MailService()
 
 const userPresets = [
   {
@@ -70,12 +79,25 @@ const userPresets = [
 ] as const
 
 type PermissionPreset = (typeof userPresets)[number]["key"] | "owner"
+type TeamMemberEmailDelivery = {
+  attempted: boolean
+  sent: boolean
+  skipped: boolean
+  recipient: string | null
+  reason: string | null
+}
 
 export async function registerUsersRoutes(app: FastifyInstance) {
   app.get("/users", async (request) => {
     const access = await requirePrimaryBusinessAccess(request)
+    const query = listUsersQuerySchema.parse(request.query)
 
-    return buildUsersResponse(access.business.id, access.business.tradeName, access.membership.role)
+    return buildUsersResponse(
+      access.business.id,
+      access.business.tradeName,
+      access.membership.role,
+      query
+    )
   })
 
   app.post("/users", async (request) => {
@@ -83,7 +105,7 @@ export async function registerUsersRoutes(app: FastifyInstance) {
     assertCanManageBusiness(access.membership)
 
     const body = createUserSchema.parse(request.body)
-    const email = normalizeEmail(body.contact)
+    const contact = normalizeContact(body.contact)
 
     await validateBranchScope(
       access.business.id,
@@ -97,7 +119,12 @@ export async function registerUsersRoutes(app: FastifyInstance) {
       .from(businessMembers)
       .innerJoin(users, eq(users.id, businessMembers.userId))
       .where(
-        and(eq(businessMembers.businessId, access.business.id), eq(users.email, email))
+        and(
+          eq(businessMembers.businessId, access.business.id),
+          contact.kind === "email" ?
+            eq(users.email, contact.email)
+          : eq(users.phoneE164, contact.phoneE164)
+        )
       )
       .limit(1)
 
@@ -105,7 +132,8 @@ export async function registerUsersRoutes(app: FastifyInstance) {
       throw new HttpError(409, "This user is already part of the business.")
     }
 
-    const user = await findOrCreateUser(email, body.name)
+    const userProvisioning = await findOrCreateUser(contact, body.name)
+    const user = userProvisioning.user
     const [member] = await db
       .insert(businessMembers)
       .values({
@@ -125,6 +153,13 @@ export async function registerUsersRoutes(app: FastifyInstance) {
     await replacePermissions(member.id, permissionMapToRows(body.permissions))
     await replaceBranchScope(member.id, body.branchIds, body.primaryBranchId ?? null)
 
+    const emailDelivery = await sendProvisioningEmail({
+      contact,
+      businessName: access.business.tradeName,
+      temporaryPassword: userProvisioning.temporaryPassword,
+      request,
+    })
+
     return {
       ...(await buildUsersResponse(
         access.business.id,
@@ -133,11 +168,15 @@ export async function registerUsersRoutes(app: FastifyInstance) {
       )),
       provisioning: {
         authUserId: user.id,
-        identifier: email,
-        loginMethod: "password",
-        temporaryPassword: null,
-        authUserCreated: true,
-        linkedExistingAuthUser: Boolean(user.emailVerifiedAt || user.lastLoginAt),
+        identifier: contact.email ?? contact.phoneE164,
+        loginMethod: contact.email ? "password" : "otp",
+        temporaryPassword: userProvisioning.temporaryPassword,
+        authUserCreated: userProvisioning.created,
+        linkedExistingAuthUser: Boolean(
+          !userProvisioning.created &&
+            (user.emailVerifiedAt || user.phoneVerifiedAt || user.lastLoginAt)
+        ),
+        emailDelivery,
       },
     }
   })
@@ -219,13 +258,7 @@ export async function registerUsersRoutes(app: FastifyInstance) {
       throw new HttpError(403, "Owner access cannot be removed.")
     }
 
-    await db
-      .update(businessMembers)
-      .set({
-        status: "disabled",
-        updatedAt: new Date(),
-      })
-      .where(eq(businessMembers.id, memberId))
+    await db.delete(businessMembers).where(eq(businessMembers.id, memberId))
 
     return {
       ...(await buildUsersResponse(
@@ -241,10 +274,11 @@ export async function registerUsersRoutes(app: FastifyInstance) {
 async function buildUsersResponse(
   businessId: string,
   businessName: string,
-  requesterRole: string
+  requesterRole: string,
+  query?: ListUsersQueryInput
 ) {
   const branches = await listBranches(businessId)
-  const usersList = await listBusinessUsers(businessId, branches)
+  const usersList = await listBusinessUsers(businessId, branches, query)
 
   return {
     meta: {
@@ -287,7 +321,8 @@ async function listBranches(businessId: string) {
 
 async function listBusinessUsers(
   businessId: string,
-  branches: Awaited<ReturnType<typeof listBranches>>
+  branches: Awaited<ReturnType<typeof listBranches>>,
+  query: ListUsersQueryInput = listUsersQuerySchema.parse({})
 ) {
   const rows = await db
     .select({
@@ -296,6 +331,8 @@ async function listBusinessUsers(
       email: users.email,
       phoneE164: users.phoneE164,
       fullName: users.fullName,
+      profileImageSeed: users.profileImageSeed,
+      profileImageStyle: users.profileImageStyle,
       role: businessMembers.role,
       designation: businessMembers.designation,
       permissionPreset: businessMembers.permissionPreset,
@@ -332,8 +369,8 @@ async function listBusinessUsers(
         .where(inArray(businessMemberBranches.businessMemberId, memberIds))
     : []
 
-  return rows.map((row) => {
-    const preset = normalizePreset(row.role, row.permissionPreset)
+  const usersList = rows.map((row) => {
+    const preset = normalizePreset(row.role, row.permissionPreset, row.designation)
     const memberBranchScopes = branchScopes.filter(
       (scope) => scope.businessMemberId === row.memberId
     )
@@ -346,6 +383,8 @@ async function listBusinessUsers(
       authUserId: row.userId,
       name: row.fullName ?? row.email ?? row.phoneE164 ?? "GSTFY user",
       contact: row.email ?? row.phoneE164 ?? "",
+      profileImageSeed: row.profileImageSeed,
+      profileImageStyle: row.profileImageStyle,
       designation: row.designation ?? designationFromPreset(preset),
       status: toDisplayStatus(row.status),
       permissionPreset: preset,
@@ -364,6 +403,92 @@ async function listBusinessUsers(
       linkedAuthUser: true,
     }
   })
+
+  return applyUserListQuery(usersList, query)
+}
+
+function applyUserListQuery<
+  TUser extends {
+    name: string
+    contact: string
+    designation: string
+    status: string
+    permissionPreset: PermissionPreset
+    branchIds: string[]
+    branchNames: string[]
+    isSystemManaged: boolean
+  },
+>(usersList: TUser[], query: ListUsersQueryInput) {
+  const search = query.search.trim().toLowerCase()
+  let result = usersList
+
+  if (search) {
+    result = result.filter((user) =>
+      [
+        user.name,
+        user.contact,
+        user.designation,
+        user.status,
+        user.permissionPreset,
+        user.branchNames.join(" "),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(search)
+    )
+  }
+
+  if (query.status !== "all") {
+    result = result.filter((user) => user.status === toDisplayStatus(query.status))
+  }
+
+  if (query.preset !== "all") {
+    result = result.filter((user) => user.permissionPreset === query.preset)
+  }
+
+  if (query.branchId !== "all") {
+    result = result.filter(
+      (user) => user.isSystemManaged || user.branchIds.includes(query.branchId)
+    )
+  }
+
+  return [...result].sort((firstUser, secondUser) => {
+    const firstValue = getUserSortValue(firstUser, query.sortBy)
+    const secondValue = getUserSortValue(secondUser, query.sortBy)
+    const comparison = firstValue.localeCompare(secondValue, "en", {
+      numeric: true,
+      sensitivity: "base",
+    })
+
+    return query.sortDir === "asc" ? comparison : -comparison
+  })
+}
+
+function getUserSortValue(
+  user: {
+    name: string
+    contact: string
+    designation: string
+    status: string
+    permissionPreset: PermissionPreset
+    branchNames: string[]
+  },
+  sortBy: ListUsersQueryInput["sortBy"]
+) {
+  switch (sortBy) {
+    case "branch":
+      return user.branchNames[0] ?? ""
+    case "contact":
+      return user.contact
+    case "designation":
+      return user.designation
+    case "preset":
+      return user.permissionPreset
+    case "status":
+      return user.status
+    case "name":
+      return user.name
+  }
 }
 
 async function requireBusinessMember(businessId: string, memberId: string) {
@@ -378,32 +503,80 @@ async function requireBusinessMember(businessId: string, memberId: string) {
   return member
 }
 
-async function findOrCreateUser(email: string, fullName: string) {
+type NormalizedContact =
+  | {
+      kind: "email"
+      email: string
+      phoneE164: null
+    }
+  | {
+      kind: "phone"
+      email: null
+      phoneE164: string
+    }
+
+async function findOrCreateUser(contact: NormalizedContact, fullName: string) {
   const existingUser = await db.query.users.findFirst({
-    where: eq(users.email, email),
+    where:
+      contact.kind === "email" ?
+        eq(users.email, contact.email)
+      : eq(users.phoneE164, contact.phoneE164),
   })
 
   if (existingUser) {
-    if (!existingUser.fullName) {
+    const temporaryPassword =
+      contact.kind === "email" && !existingUser.passwordHash ?
+        createTemporaryPassword()
+      : null
+    const passwordHash =
+      temporaryPassword ?
+        await argon2.hash(temporaryPassword, {
+          type: argon2.argon2id,
+        })
+      : undefined
+
+    if (!existingUser.fullName || passwordHash) {
       const [updatedUser] = await db
         .update(users)
         .set({
-          fullName,
+          fullName: existingUser.fullName || fullName,
+          ...(passwordHash ? { passwordHash } : {}),
+          ...(passwordHash ? { mustChangePassword: true } : {}),
           updatedAt: new Date(),
         })
         .where(eq(users.id, existingUser.id))
         .returning()
 
-      return updatedUser ?? existingUser
+      return {
+        user: updatedUser ?? existingUser,
+        created: false,
+        temporaryPassword,
+      }
     }
 
-    return existingUser
+    return {
+      user: existingUser,
+      created: false,
+      temporaryPassword,
+    }
   }
+
+  const temporaryPassword =
+    contact.kind === "email" ? createTemporaryPassword() : null
+  const passwordHash =
+    temporaryPassword ?
+      await argon2.hash(temporaryPassword, {
+        type: argon2.argon2id,
+      })
+    : null
 
   const [user] = await db
     .insert(users)
     .values({
-      email,
+      email: contact.email,
+      phoneE164: contact.phoneE164,
+      passwordHash,
+      mustChangePassword: Boolean(temporaryPassword),
       fullName,
       status: "active",
       ...createProfileImage(),
@@ -414,7 +587,113 @@ async function findOrCreateUser(email: string, fullName: string) {
     throw new HttpError(500, "Unable to create user account.")
   }
 
-  return user
+  return {
+    user,
+    created: true,
+    temporaryPassword,
+  }
+}
+
+async function sendProvisioningEmail(input: {
+  contact: NormalizedContact
+  businessName: string
+  temporaryPassword: string | null
+  request: FastifyRequest
+}): Promise<TeamMemberEmailDelivery> {
+  if (input.contact.kind !== "email" || !input.temporaryPassword) {
+    return {
+      attempted: false,
+      sent: false,
+      skipped: false,
+      recipient: input.contact.kind === "email" ? input.contact.email : null,
+      reason:
+        input.contact.kind === "phone" ?
+          "Phone users sign in with OTP. No email sent."
+        : "Existing email user already has login credentials.",
+    }
+  }
+
+  const recipient = input.contact.email
+  const loginUrl = new URL("/auth/login", getEnv().WEB_ORIGIN).toString()
+
+  try {
+    const delivery = await mailService.sendMail({
+      to: recipient,
+      subject: `Your GSTFY login for ${input.businessName}`,
+      text: [
+        `You have been added to ${input.businessName} on GSTFY.`,
+        `Login email: ${recipient}`,
+        `Temporary password: ${input.temporaryPassword}`,
+        `Sign in: ${loginUrl}`,
+        "Change this password after your first login.",
+      ].join("\n\n"),
+      html: buildActionEmailHtml({
+        eyebrow: "GSTFY team access",
+        title: `Your ${input.businessName} login is ready`,
+        body: `You have been added to ${input.businessName} on GSTFY. Use login email ${recipient} and temporary password ${input.temporaryPassword}. Change this password after your first login.`,
+        actionLabel: "Sign in to GSTFY",
+        actionUrl: loginUrl,
+        footer: "If you do not recognize this business, ignore this email.",
+      }),
+    })
+
+    const emailDelivery = {
+      attempted: true,
+      sent: !delivery.skipped,
+      skipped: delivery.skipped,
+      recipient,
+      reason: delivery.reason,
+    }
+
+    if (delivery.skipped) {
+      input.request.log.warn({ recipient }, "Team member login email skipped")
+    } else {
+      input.request.log.info({ recipient }, "Team member login email sent")
+    }
+
+    return emailDelivery
+  } catch (error) {
+    const reason = getMailDeliveryErrorReason(error)
+    input.request.log.warn(
+      { err: error, recipient, reason },
+      "Team member login email could not be sent"
+    )
+
+    return {
+      attempted: true,
+      sent: false,
+      skipped: false,
+      recipient,
+      reason,
+    }
+  }
+}
+
+function createTemporaryPassword() {
+  return `Gstfy@${randomBytes(6).toString("base64url").slice(0, 8)}7`
+}
+
+function getMailDeliveryErrorReason(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return "Email delivery failed."
+  }
+
+  const smtpError = error as {
+    code?: unknown
+    command?: unknown
+    responseCode?: unknown
+    response?: unknown
+    message?: unknown
+  }
+  const details = [
+    typeof smtpError.code === "string" ? smtpError.code : null,
+    typeof smtpError.command === "string" ? smtpError.command : null,
+    typeof smtpError.responseCode === "number" ? String(smtpError.responseCode) : null,
+    typeof smtpError.response === "string" ? smtpError.response : null,
+    typeof smtpError.message === "string" ? smtpError.message.split(/\r?\n/)[0] : null,
+  ].filter(Boolean)
+
+  return details.join(" - ") || "Email delivery failed."
 }
 
 async function replacePermissions(
@@ -555,7 +834,11 @@ function roleFromPreset(preset: Exclude<PermissionPreset, "owner">) {
   return "staff"
 }
 
-function normalizePreset(role: string, preset: string | null): PermissionPreset {
+function normalizePreset(
+  role: string,
+  preset: string | null,
+  designation?: string | null
+): PermissionPreset {
   if (role === "owner") {
     return "owner"
   }
@@ -570,11 +853,33 @@ function normalizePreset(role: string, preset: string | null): PermissionPreset 
     return preset
   }
 
+  const designationPreset = presetFromDesignation(designation)
+
+  if (designationPreset) {
+    return designationPreset
+  }
+
   if (role === "cashier" || role === "accountant") {
     return role
   }
 
   return "custom"
+}
+
+function presetFromDesignation(designation?: string | null) {
+  switch (designation?.trim().toLowerCase()) {
+    case "cashier":
+      return "cashier" as const
+    case "branch manager":
+    case "manager":
+      return "manager" as const
+    case "accountant":
+      return "accountant" as const
+    case "operations":
+      return "operations" as const
+    default:
+      return null
+  }
 }
 
 function designationFromPreset(preset: PermissionPreset) {
@@ -601,6 +906,32 @@ function toDisplayStatus(status: string) {
   return "Active"
 }
 
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase()
+function normalizeContact(contact: string): NormalizedContact {
+  const trimmedContact = contact.trim()
+
+  if (isPhoneContact(trimmedContact)) {
+    return {
+      kind: "phone",
+      email: null,
+      phoneE164: toIndianE164(trimmedContact),
+    }
+  }
+
+  return {
+    kind: "email",
+    email: trimmedContact.toLowerCase(),
+    phoneE164: null,
+  }
+}
+
+function isPhoneContact(contact: string) {
+  return /^(?:\+91)?[6-9]\d{9}$/.test(contact)
+}
+
+function toIndianE164(phone: string) {
+  const digits = phone.replace(/\D/g, "")
+  const localNumber =
+    digits.startsWith("91") && digits.length > 10 ? digits.slice(2) : digits
+
+  return `+91${localNumber.slice(0, 10)}`
 }

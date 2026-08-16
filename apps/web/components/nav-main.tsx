@@ -13,12 +13,12 @@ export function NavMain({
   categories,
   workspaceLabel = "Workspace",
 }: {
-  overview: {
+  overview?: {
     title: string
     url: string
     icon?: React.ReactNode
     isActive?: boolean
-  }
+  } | null
   workspaceLabel?: string
   categories: {
     title: string
@@ -33,21 +33,23 @@ export function NavMain({
 }) {
   return (
     <>
-      <SidebarGroup>
-        <SidebarGroupLabel>{workspaceLabel}</SidebarGroupLabel>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              render={<Link href={overview.url} />}
-              tooltip={overview.title}
-              isActive={overview.isActive}
-            >
-              {overview.icon}
-              <span>{overview.title}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarGroup>
+      {overview ? (
+        <SidebarGroup>
+          <SidebarGroupLabel>{workspaceLabel}</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                render={<Link href={overview.url} />}
+                tooltip={overview.title}
+                isActive={overview.isActive}
+              >
+                {overview.icon}
+                <span>{overview.title}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+      ) : null}
       {categories.map((category) => (
         <SidebarGroup key={category.title}>
           <SidebarGroupLabel>{category.title}</SidebarGroupLabel>

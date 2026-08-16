@@ -18,9 +18,14 @@ export const permissionMapSchema = z.record(
   })
 )
 
+const contactSchema = z.union([
+  z.string().trim().email(),
+  z.string().trim().regex(/^(?:\+91)?[6-9]\d{9}$/),
+])
+
 export const createUserSchema = z.object({
   name: z.string().trim().min(2).max(120),
-  contact: z.string().trim().email(),
+  contact: contactSchema,
   designation: z.string().trim().min(2).max(80),
   status: z.enum(["active", "inactive", "invited"]).default("invited"),
   permissionPreset: z
@@ -33,6 +38,18 @@ export const createUserSchema = z.object({
 
 export const updateUserSchema = createUserSchema.partial()
 
+export const listUsersQuerySchema = z.object({
+  search: z.string().trim().max(120).default(""),
+  status: z.enum(["all", "active", "inactive", "invited"]).default("all"),
+  preset: z
+    .enum(["all", "owner", "manager", "cashier", "accountant", "operations", "custom"])
+    .default("all"),
+  branchId: z.union([z.uuid(), z.literal("all")]).default("all"),
+  sortBy: z.enum(["name", "contact", "designation", "status", "preset", "branch"]).default("name"),
+  sortDir: z.enum(["asc", "desc"]).default("asc"),
+})
+
 export type CreateUserInput = z.infer<typeof createUserSchema>
 export type UpdateUserInput = z.infer<typeof updateUserSchema>
+export type ListUsersQueryInput = z.infer<typeof listUsersQuerySchema>
 export type PermissionMapInput = z.infer<typeof permissionMapSchema>

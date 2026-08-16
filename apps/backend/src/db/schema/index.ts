@@ -24,6 +24,7 @@ export const users = pgTable(
     email: text("email"),
     phoneE164: text("phone_e164"),
     passwordHash: text("password_hash"),
+    mustChangePassword: boolean("must_change_password").notNull().default(false),
     fullName: text("full_name"),
     profileImageSeed: text("profile_image_seed"),
     profileImageStyle: text("profile_image_style").notNull().default("glyphs"),

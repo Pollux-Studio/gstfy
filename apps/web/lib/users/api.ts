@@ -24,6 +24,8 @@ export type UserRecord = {
   authUserId: string | null
   name: string
   contact: string
+  profileImageSeed: string | null
+  profileImageStyle: string | null
   designation: string
   status: UserStatus
   permissionPreset: PermissionPresetKey
@@ -63,6 +65,13 @@ export type UserProvisioningRecord = {
   temporaryPassword: string | null
   authUserCreated: boolean
   linkedExistingAuthUser: boolean
+  emailDelivery?: {
+    attempted: boolean
+    sent: boolean
+    skipped: boolean
+    recipient: string | null
+    reason: string | null
+  }
 }
 
 export type UsersResponse = {
@@ -81,6 +90,15 @@ export type UsersMutationResponse = UsersResponse & {
   provisioning: UserProvisioningRecord | null
 }
 
+export type UsersQueryParams = {
+  search?: string
+  status?: UserStatusValue
+  preset?: PermissionPresetKey
+  branchId?: string
+  sortBy?: "name" | "contact" | "designation" | "status" | "preset" | "branch"
+  sortDir?: "asc" | "desc"
+}
+
 export type UpsertUserPayload = {
   name: string
   contact: string
@@ -92,8 +110,36 @@ export type UpsertUserPayload = {
   permissions?: UserPermissionMap
 }
 
-export function getUsers(accessToken: string) {
-  return apiRequest<UsersResponse>("/users", {
+export function getUsers(accessToken: string, query?: UsersQueryParams) {
+  const searchParams = new URLSearchParams()
+
+  if (query?.search) {
+    searchParams.set("search", query.search)
+  }
+
+  if (query?.status) {
+    searchParams.set("status", query.status)
+  }
+
+  if (query?.preset) {
+    searchParams.set("preset", query.preset)
+  }
+
+  if (query?.branchId) {
+    searchParams.set("branchId", query.branchId)
+  }
+
+  if (query?.sortBy) {
+    searchParams.set("sortBy", query.sortBy)
+  }
+
+  if (query?.sortDir) {
+    searchParams.set("sortDir", query.sortDir)
+  }
+
+  const queryString = searchParams.toString()
+
+  return apiRequest<UsersResponse>(`/users${queryString ? `?${queryString}` : ""}`, {
     method: "GET",
     accessToken,
   })

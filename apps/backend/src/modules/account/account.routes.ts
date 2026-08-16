@@ -10,6 +10,7 @@ import { requireAuthenticatedUser } from "../auth/auth.guard.js"
 import { verifyFirebaseIdToken } from "../firebase/firebase-admin.js"
 import {
   changeAccountPasswordSchema,
+  completeFirstLoginPasswordSchema,
   updateAccountSchema,
   updateAccountSettingsSchema,
   verifyAccountPhoneSchema,
@@ -122,12 +123,47 @@ export async function registerAccountRoutes(app: FastifyInstance) {
       .update(users)
       .set({
         passwordHash,
+        mustChangePassword: false,
         updatedAt: new Date(),
       })
       .where(eq(users.id, user.id))
 
     return {
       success: true,
+    }
+  })
+
+  app.post("/account/settings/user/password/first-login", async (request) => {
+    const user = await requireAuthenticatedUser(request)
+    const body = completeFirstLoginPasswordSchema.parse(request.body)
+
+    if (!user.passwordHash) {
+      throw new HttpError(400, "Password login is not enabled for this account.")
+    }
+
+    if (!user.mustChangePassword) {
+      return {
+        success: true,
+        mustChangePassword: false,
+      }
+    }
+
+    const passwordHash = await argon2.hash(body.newPassword, {
+      type: argon2.argon2id,
+    })
+
+    await db
+      .update(users)
+      .set({
+        passwordHash,
+        mustChangePassword: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, user.id))
+
+    return {
+      success: true,
+      mustChangePassword: false,
     }
   })
 
