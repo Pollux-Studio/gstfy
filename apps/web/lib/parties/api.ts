@@ -85,7 +85,7 @@ export type PartyCustomerProfile = {
   customerCode: string
   creditLimit: string
   creditDays: number
-  defaultPaymentTerm: string | null
+  defaultPaymentTermId: string | null
   defaultBillingAddressId: string | null
   defaultShippingAddressId: string | null
   defaultGstRegistrationId: string | null
@@ -99,12 +99,21 @@ export type PartySupplierProfile = {
   businessId: string
   supplierCode: string
   creditDays: number
-  defaultPaymentTerm: string | null
+  defaultPaymentTermId: string | null
   defaultPurchaseAddressId: string | null
   defaultGstRegistrationId: string | null
   preferredWarehouseId: string | null
   leadTimeDays: number
   status: PartyStatus
+}
+
+export type PartyOutstandingSummary = {
+  receivable: string
+  payable: string
+  overdueReceivable: string
+  overduePayable: string
+  openReceivableCount: number
+  openPayableCount: number
 }
 
 export type PartyListItem = {
@@ -135,6 +144,7 @@ export type PartyDetail = PartyListItem & {
   addresses: PartyAddress[]
   contacts: PartyContact[]
   bankAccounts: PartyBankAccount[]
+  outstandingSummary: PartyOutstandingSummary
 }
 
 export type PartyGstRegistrationPayload = {

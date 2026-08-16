@@ -34,6 +34,7 @@ export type PosSale = {
   id: string
   receiptNumber: string
   receiptDate: string
+  partySnapshot?: unknown
   customerName: string
   status: "posted"
   taxableValue: string

@@ -85,9 +85,7 @@ export const customerProfileSchema = z.object({
   customerCode: z.string().trim().min(2).max(40).optional(),
   creditLimit: moneySchema.default("0"),
   creditDays: z.number().int().min(0).max(365).default(0),
-  defaultPaymentTerm: z
-    .enum(["immediate", "7_days", "15_days", "30_days", "45_days", "custom"])
-    .optional(),
+  defaultPaymentTermId: z.uuid().optional().nullable(),
   defaultBillingAddressId: z.uuid().optional().nullable(),
   defaultShippingAddressId: z.uuid().optional().nullable(),
   defaultGstRegistrationId: z.uuid().optional().nullable(),
@@ -99,9 +97,7 @@ export const customerProfileSchema = z.object({
 export const supplierProfileSchema = z.object({
   supplierCode: z.string().trim().min(2).max(40).optional(),
   creditDays: z.number().int().min(0).max(365).default(0),
-  defaultPaymentTerm: z
-    .enum(["immediate", "7_days", "15_days", "30_days", "45_days", "custom"])
-    .optional(),
+  defaultPaymentTermId: z.uuid().optional().nullable(),
   defaultPurchaseAddressId: z.uuid().optional().nullable(),
   defaultGstRegistrationId: z.uuid().optional().nullable(),
   preferredWarehouseId: z.uuid().optional().nullable(),

@@ -1,5 +1,7 @@
 import {
   boolean,
+  date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -207,6 +209,10 @@ export const businessBranches = pgTable(
   (table) => ({
     businessIndex: index("business_branches_business_id_idx").on(table.businessId),
     locationIndex: index("business_branches_location_id_idx").on(table.locationId),
+    businessIdentityUnique: uniqueIndex("business_branches_id_business_id_unique").on(
+      table.id,
+      table.businessId
+    ),
     businessCodeUnique: uniqueIndex("business_branches_business_code_unique").on(
       table.businessId,
       table.branchCode
@@ -235,6 +241,10 @@ export const warehouses = pgTable(
   (table) => ({
     businessIndex: index("warehouses_business_id_idx").on(table.businessId),
     locationIndex: index("warehouses_location_id_idx").on(table.locationId),
+    businessIdentityUnique: uniqueIndex("warehouses_id_business_id_unique").on(
+      table.id,
+      table.businessId
+    ),
     businessCodeUnique: uniqueIndex("warehouses_business_code_unique").on(
       table.businessId,
       table.warehouseCode
@@ -474,6 +484,10 @@ export const ledgerAccounts = pgTable(
   },
   (table) => ({
     businessIndex: index("ledger_accounts_business_id_idx").on(table.businessId),
+    businessIdentityUnique: uniqueIndex("ledger_accounts_id_business_id_unique").on(
+      table.id,
+      table.businessId
+    ),
     parentIndex: index("ledger_accounts_parent_account_id_idx").on(
       table.parentAccountId
     ),
@@ -865,6 +879,36 @@ export const receivablePayableEntries = pgTable(
   })
 )
 
+export const paymentTerms = pgTable(
+  "payment_terms",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    days: integer("days").notNull().default(0),
+    dueDateRule: text("due_date_rule")
+      .notNull()
+      .default("invoice_date_plus_days"),
+    status: text("status").notNull().default("active"),
+    isSystem: boolean("is_system").notNull().default(false),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("payment_terms_business_id_idx").on(table.businessId),
+    businessIdentityUnique: uniqueIndex("payment_terms_id_business_id_unique").on(
+      table.id,
+      table.businessId
+    ),
+    businessCodeUnique: uniqueIndex("payment_terms_business_code_unique").on(
+      table.businessId,
+      table.code
+    ),
+  })
+)
+
 export const paymentAllocations = pgTable(
   "payment_allocations",
   {
@@ -1253,6 +1297,7 @@ export const posSales = pgTable(
       onDelete: "set null",
     }),
     partyId: uuid("party_id").references(() => parties.id, { onDelete: "set null" }),
+    partySnapshot: jsonb("party_snapshot"),
     customerName: text("customer_name").notNull().default("Walk-in customer"),
     receiptNumber: text("receipt_number").notNull(),
     receiptDate: text("receipt_date").notNull(),
@@ -1470,6 +1515,10 @@ export const parties = pgTable(
     businessIndex: index("parties_business_id_idx").on(table.businessId),
     displayNameIndex: index("parties_display_name_idx").on(table.displayName),
     panIndex: index("parties_pan_idx").on(table.pan),
+    businessIdentityUnique: uniqueIndex("parties_id_business_id_unique").on(
+      table.id,
+      table.businessId
+    ),
   })
 )
 
@@ -1482,7 +1531,7 @@ export const partyGstRegistrations = pgTable(
       .references(() => businesses.id, { onDelete: "cascade" }),
     partyId: uuid("party_id")
       .notNull()
-      .references(() => parties.id, { onDelete: "cascade" }),
+      .references(() => parties.id, { onDelete: "restrict" }),
     gstin: text("gstin").notNull(),
     legalName: text("legal_name"),
     tradeName: text("trade_name"),
@@ -1490,8 +1539,8 @@ export const partyGstRegistrations = pgTable(
     taxpayerType: text("taxpayer_type"),
     stateCode: text("state_code").notNull(),
     state: text("state"),
-    effectiveFrom: text("effective_from"),
-    effectiveTo: text("effective_to"),
+    effectiveFrom: date("effective_from"),
+    effectiveTo: date("effective_to"),
     status: text("status").notNull().default("active"),
     isPrimary: boolean("is_primary").notNull().default(false),
     ...timestamps,
@@ -1502,6 +1551,12 @@ export const partyGstRegistrations = pgTable(
     ),
     partyIndex: index("party_gst_registrations_party_id_idx").on(table.partyId),
     gstinIndex: index("party_gst_registrations_gstin_idx").on(table.gstin),
+    businessIdentityUnique: uniqueIndex(
+      "party_gst_registrations_id_business_id_unique"
+    ).on(table.id, table.businessId),
+    partyBusinessIdentityUnique: uniqueIndex(
+      "party_gst_registrations_id_party_business_unique"
+    ).on(table.id, table.partyId, table.businessId),
     partyGstinUnique: uniqueIndex("party_gst_registrations_party_gstin_unique").on(
       table.partyId,
       table.gstin
@@ -1509,6 +1564,11 @@ export const partyGstRegistrations = pgTable(
     businessGstinUnique: uniqueIndex(
       "party_gst_registrations_business_gstin_unique"
     ).on(table.businessId, table.gstin),
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "party_gst_registrations_party_business_fk",
+    }).onDelete("restrict"),
   })
 )
 
@@ -1521,7 +1581,7 @@ export const partyTaxIdentifiers = pgTable(
       .references(() => businesses.id, { onDelete: "cascade" }),
     partyId: uuid("party_id")
       .notNull()
-      .references(() => parties.id, { onDelete: "cascade" }),
+      .references(() => parties.id, { onDelete: "restrict" }),
     identifierType: text("identifier_type").notNull(),
     identifierValue: text("identifier_value").notNull(),
     status: text("status").notNull().default("active"),
@@ -1532,6 +1592,11 @@ export const partyTaxIdentifiers = pgTable(
       table.businessId
     ),
     partyIndex: index("party_tax_identifiers_party_id_idx").on(table.partyId),
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "party_tax_identifiers_party_business_fk",
+    }).onDelete("restrict"),
     partyIdentifierUnique: uniqueIndex("party_tax_identifiers_unique").on(
       table.partyId,
       table.identifierType,
@@ -1549,7 +1614,7 @@ export const partyAddresses = pgTable(
       .references(() => businesses.id, { onDelete: "cascade" }),
     partyId: uuid("party_id")
       .notNull()
-      .references(() => parties.id, { onDelete: "cascade" }),
+      .references(() => parties.id, { onDelete: "restrict" }),
     addressType: text("address_type").notNull().default("billing"),
     label: text("label"),
     addressLine1: text("address_line_1"),
@@ -1568,6 +1633,18 @@ export const partyAddresses = pgTable(
   (table) => ({
     businessIndex: index("party_addresses_business_id_idx").on(table.businessId),
     partyIndex: index("party_addresses_party_id_idx").on(table.partyId),
+    businessIdentityUnique: uniqueIndex("party_addresses_id_business_id_unique").on(
+      table.id,
+      table.businessId
+    ),
+    partyBusinessIdentityUnique: uniqueIndex(
+      "party_addresses_id_party_business_unique"
+    ).on(table.id, table.partyId, table.businessId),
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "party_addresses_party_business_fk",
+    }).onDelete("restrict"),
   })
 )
 
@@ -1580,7 +1657,7 @@ export const partyContacts = pgTable(
       .references(() => businesses.id, { onDelete: "cascade" }),
     partyId: uuid("party_id")
       .notNull()
-      .references(() => parties.id, { onDelete: "cascade" }),
+      .references(() => parties.id, { onDelete: "restrict" }),
     name: text("name").notNull(),
     designation: text("designation"),
     email: text("email"),
@@ -1596,6 +1673,11 @@ export const partyContacts = pgTable(
     partyIndex: index("party_contacts_party_id_idx").on(table.partyId),
     emailIndex: index("party_contacts_email_idx").on(table.email),
     mobileIndex: index("party_contacts_mobile_idx").on(table.mobile),
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "party_contacts_party_business_fk",
+    }).onDelete("restrict"),
   })
 )
 
@@ -1608,7 +1690,7 @@ export const partyBankAccounts = pgTable(
       .references(() => businesses.id, { onDelete: "cascade" }),
     partyId: uuid("party_id")
       .notNull()
-      .references(() => parties.id, { onDelete: "cascade" }),
+      .references(() => parties.id, { onDelete: "restrict" }),
     bankName: text("bank_name").notNull(),
     accountName: text("account_name"),
     accountNumberHash: text("account_number_hash"),
@@ -1623,6 +1705,11 @@ export const partyBankAccounts = pgTable(
   (table) => ({
     businessIndex: index("party_bank_accounts_business_id_idx").on(table.businessId),
     partyIndex: index("party_bank_accounts_party_id_idx").on(table.partyId),
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "party_bank_accounts_party_business_fk",
+    }).onDelete("restrict"),
   })
 )
 
@@ -1631,7 +1718,7 @@ export const partyCustomerProfiles = pgTable(
   {
     partyId: uuid("party_id")
       .primaryKey()
-      .references(() => parties.id, { onDelete: "cascade" }),
+      .references(() => parties.id, { onDelete: "restrict" }),
     businessId: uuid("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade" }),
@@ -1640,7 +1727,10 @@ export const partyCustomerProfiles = pgTable(
       .notNull()
       .default("0"),
     creditDays: integer("credit_days").notNull().default(0),
-    defaultPaymentTerm: text("default_payment_term"),
+    defaultPaymentTermId: uuid("default_payment_term_id").references(
+      () => paymentTerms.id,
+      { onDelete: "set null" }
+    ),
     defaultBillingAddressId: uuid("default_billing_address_id").references(
       () => partyAddresses.id,
       { onDelete: "set null" }
@@ -1668,6 +1758,39 @@ export const partyCustomerProfiles = pgTable(
       table.businessId,
       table.customerCode
     ),
+    businessPartyUnique: uniqueIndex("party_customer_profiles_business_party_unique").on(
+      table.businessId,
+      table.partyId
+    ),
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "party_customer_profiles_party_business_fk",
+    }).onDelete("restrict"),
+    paymentTermBusinessFk: foreignKey({
+      columns: [table.defaultPaymentTermId, table.businessId],
+      foreignColumns: [paymentTerms.id, paymentTerms.businessId],
+      name: "party_customer_profiles_payment_term_business_fk",
+    }),
+    billingAddressPartyBusinessFk: foreignKey({
+      columns: [table.defaultBillingAddressId, table.partyId, table.businessId],
+      foreignColumns: [partyAddresses.id, partyAddresses.partyId, partyAddresses.businessId],
+      name: "party_customer_profiles_billing_address_party_business_fk",
+    }),
+    shippingAddressPartyBusinessFk: foreignKey({
+      columns: [table.defaultShippingAddressId, table.partyId, table.businessId],
+      foreignColumns: [partyAddresses.id, partyAddresses.partyId, partyAddresses.businessId],
+      name: "party_customer_profiles_shipping_address_party_business_fk",
+    }),
+    gstRegistrationPartyBusinessFk: foreignKey({
+      columns: [table.defaultGstRegistrationId, table.partyId, table.businessId],
+      foreignColumns: [
+        partyGstRegistrations.id,
+        partyGstRegistrations.partyId,
+        partyGstRegistrations.businessId,
+      ],
+      name: "party_customer_profiles_gst_registration_party_business_fk",
+    }),
   })
 )
 
@@ -1676,13 +1799,16 @@ export const partySupplierProfiles = pgTable(
   {
     partyId: uuid("party_id")
       .primaryKey()
-      .references(() => parties.id, { onDelete: "cascade" }),
+      .references(() => parties.id, { onDelete: "restrict" }),
     businessId: uuid("business_id")
       .notNull()
       .references(() => businesses.id, { onDelete: "cascade" }),
     supplierCode: text("supplier_code").notNull(),
     creditDays: integer("credit_days").notNull().default(0),
-    defaultPaymentTerm: text("default_payment_term"),
+    defaultPaymentTermId: uuid("default_payment_term_id").references(
+      () => paymentTerms.id,
+      { onDelete: "set null" }
+    ),
     defaultPurchaseAddressId: uuid("default_purchase_address_id").references(
       () => partyAddresses.id,
       { onDelete: "set null" }
@@ -1707,22 +1833,85 @@ export const partySupplierProfiles = pgTable(
       table.businessId,
       table.supplierCode
     ),
+    businessPartyUnique: uniqueIndex("party_supplier_profiles_business_party_unique").on(
+      table.businessId,
+      table.partyId
+    ),
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "party_supplier_profiles_party_business_fk",
+    }).onDelete("restrict"),
+    paymentTermBusinessFk: foreignKey({
+      columns: [table.defaultPaymentTermId, table.businessId],
+      foreignColumns: [paymentTerms.id, paymentTerms.businessId],
+      name: "party_supplier_profiles_payment_term_business_fk",
+    }),
+    purchaseAddressPartyBusinessFk: foreignKey({
+      columns: [table.defaultPurchaseAddressId, table.partyId, table.businessId],
+      foreignColumns: [partyAddresses.id, partyAddresses.partyId, partyAddresses.businessId],
+      name: "party_supplier_profiles_purchase_address_party_business_fk",
+    }),
+    gstRegistrationPartyBusinessFk: foreignKey({
+      columns: [table.defaultGstRegistrationId, table.partyId, table.businessId],
+      foreignColumns: [
+        partyGstRegistrations.id,
+        partyGstRegistrations.partyId,
+        partyGstRegistrations.businessId,
+      ],
+      name: "party_supplier_profiles_gst_registration_party_business_fk",
+    }),
+    preferredWarehouseBusinessFk: foreignKey({
+      columns: [table.preferredWarehouseId, table.businessId],
+      foreignColumns: [warehouses.id, warehouses.businessId],
+      name: "party_supplier_profiles_preferred_warehouse_business_fk",
+    }),
   })
 )
 
-export const partyAccountingProfiles = pgTable("party_accounting_profiles", {
-  partyId: uuid("party_id")
-    .primaryKey()
-    .references(() => parties.id, { onDelete: "cascade" }),
-  businessId: uuid("business_id")
-    .notNull()
-    .references(() => businesses.id, { onDelete: "cascade" }),
-  receivableAccountId: text("receivable_account_id"),
-  payableAccountId: text("payable_account_id"),
-  advanceReceiptAccountId: text("advance_receipt_account_id"),
-  advancePaymentAccountId: text("advance_payment_account_id"),
-  ...timestamps,
-})
+export const partyAccountingProfiles = pgTable(
+  "party_accounting_profiles",
+  {
+    partyId: uuid("party_id")
+      .primaryKey()
+      .references(() => parties.id, { onDelete: "restrict" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    receivableAccountId: uuid("receivable_account_id"),
+    payableAccountId: uuid("payable_account_id"),
+    advanceReceiptAccountId: uuid("advance_receipt_account_id"),
+    advancePaymentAccountId: uuid("advance_payment_account_id"),
+    ...timestamps,
+  },
+  (table) => ({
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "party_accounting_profiles_party_business_fk",
+    }).onDelete("restrict"),
+    receivableAccountBusinessFk: foreignKey({
+      columns: [table.receivableAccountId, table.businessId],
+      foreignColumns: [ledgerAccounts.id, ledgerAccounts.businessId],
+      name: "party_accounting_profiles_receivable_account_business_fk",
+    }),
+    payableAccountBusinessFk: foreignKey({
+      columns: [table.payableAccountId, table.businessId],
+      foreignColumns: [ledgerAccounts.id, ledgerAccounts.businessId],
+      name: "party_accounting_profiles_payable_account_business_fk",
+    }),
+    advanceReceiptAccountBusinessFk: foreignKey({
+      columns: [table.advanceReceiptAccountId, table.businessId],
+      foreignColumns: [ledgerAccounts.id, ledgerAccounts.businessId],
+      name: "party_accounting_profiles_advance_receipt_account_business_fk",
+    }),
+    advancePaymentAccountBusinessFk: foreignKey({
+      columns: [table.advancePaymentAccountId, table.businessId],
+      foreignColumns: [ledgerAccounts.id, ledgerAccounts.businessId],
+      name: "party_accounting_profiles_advance_payment_account_business_fk",
+    }),
+  })
+)
 
 export const partyBranchProfiles = pgTable(
   "party_branch_profiles",
@@ -1733,7 +1922,7 @@ export const partyBranchProfiles = pgTable(
       .references(() => businesses.id, { onDelete: "cascade" }),
     partyId: uuid("party_id")
       .notNull()
-      .references(() => parties.id, { onDelete: "cascade" }),
+      .references(() => parties.id, { onDelete: "restrict" }),
     branchId: uuid("branch_id")
       .notNull()
       .references(() => businessBranches.id, { onDelete: "cascade" }),
@@ -1741,7 +1930,9 @@ export const partyBranchProfiles = pgTable(
       onDelete: "set null",
     }),
     priceGroupId: text("price_group_id"),
-    paymentTerm: text("payment_term"),
+    paymentTermId: uuid("payment_term_id").references(() => paymentTerms.id, {
+      onDelete: "set null",
+    }),
     defaultAddressId: uuid("default_address_id").references(() => partyAddresses.id, {
       onDelete: "set null",
     }),
@@ -1755,6 +1946,26 @@ export const partyBranchProfiles = pgTable(
       table.partyId,
       table.branchId
     ),
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "party_branch_profiles_party_business_fk",
+    }).onDelete("restrict"),
+    branchBusinessFk: foreignKey({
+      columns: [table.branchId, table.businessId],
+      foreignColumns: [businessBranches.id, businessBranches.businessId],
+      name: "party_branch_profiles_branch_business_fk",
+    }).onDelete("cascade"),
+    paymentTermBusinessFk: foreignKey({
+      columns: [table.paymentTermId, table.businessId],
+      foreignColumns: [paymentTerms.id, paymentTerms.businessId],
+      name: "party_branch_profiles_payment_term_business_fk",
+    }),
+    defaultAddressPartyBusinessFk: foreignKey({
+      columns: [table.defaultAddressId, table.partyId, table.businessId],
+      foreignColumns: [partyAddresses.id, partyAddresses.partyId, partyAddresses.businessId],
+      name: "party_branch_profiles_default_address_party_business_fk",
+    }),
   })
 )
 
@@ -2314,6 +2525,7 @@ export type InventoryBatchRecord = typeof inventoryBatches.$inferSelect
 export type InventorySerialNumberRecord = typeof inventorySerialNumbers.$inferSelect
 export type GstEntryRecord = typeof gstEntries.$inferSelect
 export type ReceivablePayableEntryRecord = typeof receivablePayableEntries.$inferSelect
+export type PaymentTermRecord = typeof paymentTerms.$inferSelect
 export type PaymentAllocationRecord = typeof paymentAllocations.$inferSelect
 export type SalesInvoiceRecord = typeof salesInvoices.$inferSelect
 export type SalesInvoiceLineRecord = typeof salesInvoiceLines.$inferSelect

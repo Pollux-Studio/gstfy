@@ -1,6 +1,6 @@
 # GSTFY Implementation Status
 
-Last updated: 2026-08-16
+Last updated: 2026-08-17
 
 This document describes what is currently implemented in the GSTFY codebase across the web frontend and custom backend. It is based on the current repository state, not the older Supabase/NestJS plan.
 
@@ -952,7 +952,54 @@ Implemented:
 - Revoke linked client.
 - Client summary page has placeholder filing snapshot data.
 
-### 9.8 Users Section
+### 9.8 Parties Section
+
+Files:
+
+```text
+apps/web/components/parties/parties-page.tsx
+apps/web/lib/parties/api.ts
+apps/backend/src/modules/parties/parties.routes.ts
+apps/backend/src/modules/parties/parties.schemas.ts
+apps/backend/src/modules/payment-terms/payment-terms.routes.ts
+apps/backend/drizzle/0025_party_master_hardening.sql
+apps/backend/drizzle/0026_pos_party_snapshot_payment_terms.sql
+apps/backend/drizzle/0027_party_payment_term_fk.sql
+apps/backend/drizzle/0028_party_master_integrity_constraints.sql
+apps/backend/drizzle/0029_party_delete_restrict.sql
+```
+
+Implemented:
+
+- Tenant-scoped party master for customers and suppliers.
+- A party can be customer, supplier, or both.
+- Compact table with search, role/status filters, sortable headers, bulk actions, and scroll containment.
+- Add/edit/view/archive flows use dialog UI.
+- Individual parties avoid unnecessary business identity fields.
+- GST registration, primary address, and primary contact are optional.
+- Clearing GST/address/contact during edit archives the existing child record.
+- Removing customer/supplier role access marks the role profile inactive instead of deleting it.
+- Database hardening enforces one active primary GST/address/contact/bank record per party.
+- Party detail includes multi-GSTIN add/edit/archive/set-primary management.
+- Party detail renders receivable/payable outstanding from accounting entries.
+- Duplicate warnings are shown for matching name, PAN, primary GSTIN, phone, and email.
+- POS sales now persist their own `party_snapshot` in addition to the accounting voucher snapshot.
+- Payment terms master foundation is available at `/api/v1/payment-terms`.
+- Customer/supplier profiles now reference payment terms through `default_payment_term_id`.
+- Party child tables now have database-level composite tenant integrity constraints for `(party_id, business_id)`.
+- Party default references are database-hardened against cross-party/cross-business GST, address, payment-term, warehouse, branch, and ledger-account mismatches.
+- Party GST effective dates are stored as `date`, and party accounting account references are UUID FKs to business-owned ledger accounts.
+- Party child records now restrict hard deletion of parties; the supported delete behavior remains soft archive.
+- Party avatars use Dicebear profile image seeds.
+- Archive is soft and transaction-safe for sales/POS/purchase usage.
+
+Detailed frontend/backend flow:
+
+```text
+docs/parties-section-flow.md
+```
+
+### 9.9 Users Section
 
 Files:
 
@@ -981,7 +1028,7 @@ Important current gap:
 
 - Frontend users API expects branch/preset metadata not returned by backend yet.
 
-### 9.9 Purchases
+### 9.10 Purchases
 
 Files:
 
@@ -1001,7 +1048,7 @@ Current data source:
 - Mock frontend data.
 - No PostgreSQL purchase tables or backend purchase APIs yet.
 
-### 9.10 Branch Wizard
+### 9.11 Branch Wizard
 
 Files:
 
@@ -1021,7 +1068,7 @@ Current gap:
 - No backend branch table/API exists yet.
 - Users module references branches conceptually, but backend schema does not yet model branches.
 
-### 9.11 I18n
+### 9.12 I18n
 
 Files:
 

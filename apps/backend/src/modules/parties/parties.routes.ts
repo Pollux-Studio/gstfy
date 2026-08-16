@@ -15,6 +15,8 @@ import {
   parties,
   partySupplierProfiles,
   partyTaxIdentifiers,
+  paymentTerms,
+  receivablePayableEntries,
   warehouses,
   type PartyCustomerProfileRecord,
   type PartyRecord,
@@ -241,13 +243,14 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
 
       if (body.roles.includes("customer") && customerCode) {
         const input = customerProfileSchema.parse(body.customerProfile ?? {})
+        await assertCustomerProfileReferences(access.business.id, insertedParty.id, input)
         await tx.insert(partyCustomerProfiles).values({
           businessId: access.business.id,
           partyId: insertedParty.id,
           customerCode,
           creditLimit: normalizeMoney(input.creditLimit),
           creditDays: input.creditDays,
-          defaultPaymentTerm: input.defaultPaymentTerm ?? null,
+          defaultPaymentTermId: input.defaultPaymentTermId ?? null,
           defaultBillingAddressId: input.defaultBillingAddressId ?? addressId,
           defaultShippingAddressId: input.defaultShippingAddressId ?? addressId,
           defaultGstRegistrationId: input.defaultGstRegistrationId ?? gstRegistrationId,
@@ -259,12 +262,13 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
 
       if (body.roles.includes("supplier") && supplierCode) {
         const input = supplierProfileSchema.parse(body.supplierProfile ?? {})
+        await assertSupplierProfileReferences(access.business.id, insertedParty.id, input)
         await tx.insert(partySupplierProfiles).values({
           businessId: access.business.id,
           partyId: insertedParty.id,
           supplierCode,
           creditDays: input.creditDays,
-          defaultPaymentTerm: input.defaultPaymentTerm ?? null,
+          defaultPaymentTermId: input.defaultPaymentTermId ?? null,
           defaultPurchaseAddressId: input.defaultPurchaseAddressId ?? addressId,
           defaultGstRegistrationId: input.defaultGstRegistrationId ?? gstRegistrationId,
           preferredWarehouseId: input.preferredWarehouseId ?? null,
@@ -383,7 +387,7 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
         customerCode,
         creditLimit: normalizeMoney(body.creditLimit),
         creditDays: body.creditDays,
-        defaultPaymentTerm: body.defaultPaymentTerm ?? null,
+        defaultPaymentTermId: body.defaultPaymentTermId ?? null,
         defaultBillingAddressId: body.defaultBillingAddressId ?? null,
         defaultShippingAddressId: body.defaultShippingAddressId ?? null,
         defaultGstRegistrationId: body.defaultGstRegistrationId ?? null,
@@ -397,7 +401,7 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
           customerCode,
           creditLimit: normalizeMoney(body.creditLimit),
           creditDays: body.creditDays,
-          defaultPaymentTerm: body.defaultPaymentTerm ?? null,
+          defaultPaymentTermId: body.defaultPaymentTermId ?? null,
           defaultBillingAddressId: body.defaultBillingAddressId ?? null,
           defaultShippingAddressId: body.defaultShippingAddressId ?? null,
           defaultGstRegistrationId: body.defaultGstRegistrationId ?? null,
@@ -468,7 +472,7 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
         partyId: id,
         supplierCode,
         creditDays: body.creditDays,
-        defaultPaymentTerm: body.defaultPaymentTerm ?? null,
+        defaultPaymentTermId: body.defaultPaymentTermId ?? null,
         defaultPurchaseAddressId: body.defaultPurchaseAddressId ?? null,
         defaultGstRegistrationId: body.defaultGstRegistrationId ?? null,
         preferredWarehouseId: body.preferredWarehouseId ?? null,
@@ -480,7 +484,7 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
         set: {
           supplierCode,
           creditDays: body.creditDays,
-          defaultPaymentTerm: body.defaultPaymentTerm ?? null,
+          defaultPaymentTermId: body.defaultPaymentTermId ?? null,
           defaultPurchaseAddressId: body.defaultPurchaseAddressId ?? null,
           defaultGstRegistrationId: body.defaultGstRegistrationId ?? null,
           preferredWarehouseId: body.preferredWarehouseId ?? null,
@@ -1052,11 +1056,12 @@ async function getPartyDetail(businessId: string, partyId: string) {
       ),
     }),
   ])
-  const [gstRegistrations, addresses, contacts, bankAccounts] = await Promise.all([
+  const [gstRegistrations, addresses, contacts, bankAccounts, outstandingSummary] = await Promise.all([
     listGstRegistrations(businessId, partyId),
     listAddresses(businessId, partyId),
     listContacts(businessId, partyId),
     listBankAccounts(businessId, partyId),
+    getPartyOutstandingSummary(businessId, partyId),
   ])
 
   return {
@@ -1072,6 +1077,70 @@ async function getPartyDetail(businessId: string, partyId: string) {
     addresses,
     contacts,
     bankAccounts,
+    outstandingSummary,
+  }
+}
+
+async function getPartyOutstandingSummary(businessId: string, partyId: string) {
+  const rows = await db
+    .select({
+      entryType: receivablePayableEntries.entryType,
+      outstandingAmount: receivablePayableEntries.outstandingAmount,
+      dueDate: receivablePayableEntries.dueDate,
+      status: receivablePayableEntries.status,
+    })
+    .from(receivablePayableEntries)
+    .where(
+      and(
+        eq(receivablePayableEntries.businessId, businessId),
+        eq(receivablePayableEntries.partyId, partyId)
+      )
+    )
+
+  const today = new Date().toISOString().slice(0, 10)
+  const summary = {
+    receivable: 0,
+    payable: 0,
+    overdueReceivable: 0,
+    overduePayable: 0,
+    openReceivableCount: 0,
+    openPayableCount: 0,
+  }
+
+  for (const row of rows) {
+    const amount = Number(row.outstandingAmount)
+    const isClosed = ["closed", "settled", "cancelled"].includes(row.status)
+
+    if (!Number.isFinite(amount) || amount <= 0 || isClosed) {
+      continue
+    }
+
+    const isOverdue = Boolean(row.dueDate && row.dueDate < today)
+
+    if (row.entryType === "receivable") {
+      summary.receivable += amount
+      summary.openReceivableCount += 1
+      if (isOverdue) {
+        summary.overdueReceivable += amount
+      }
+    }
+
+    if (row.entryType === "payable") {
+      summary.payable += amount
+      summary.openPayableCount += 1
+      if (isOverdue) {
+        summary.overduePayable += amount
+      }
+    }
+  }
+
+  return {
+    receivable: formatMoney(summary.receivable),
+    payable: formatMoney(summary.payable),
+    overdueReceivable: formatMoney(summary.overdueReceivable),
+    overduePayable: formatMoney(summary.overduePayable),
+    openReceivableCount: summary.openReceivableCount,
+    openPayableCount: summary.openPayableCount,
   }
 }
 
@@ -1140,7 +1209,12 @@ async function findPartyIdsByRole(businessId: string, role: "customer" | "suppli
     const rows = await db
       .select({ partyId: partyCustomerProfiles.partyId })
       .from(partyCustomerProfiles)
-      .where(eq(partyCustomerProfiles.businessId, businessId))
+      .where(
+        and(
+          eq(partyCustomerProfiles.businessId, businessId),
+          inArray(partyCustomerProfiles.status, ["active", "blocked"])
+        )
+      )
 
     return rows.map((row) => row.partyId)
   }
@@ -1148,7 +1222,12 @@ async function findPartyIdsByRole(businessId: string, role: "customer" | "suppli
   const rows = await db
     .select({ partyId: partySupplierProfiles.partyId })
     .from(partySupplierProfiles)
-    .where(eq(partySupplierProfiles.businessId, businessId))
+    .where(
+      and(
+        eq(partySupplierProfiles.businessId, businessId),
+        inArray(partySupplierProfiles.status, ["active", "blocked"])
+      )
+    )
 
   return rows.map((row) => row.partyId)
 }
@@ -1182,7 +1261,7 @@ async function reconcilePartyRoles(
       customerCode: await allocateCustomerCode(access.business.id),
       creditLimit: "0.00",
       creditDays: 0,
-      defaultPaymentTerm: null,
+      defaultPaymentTermId: null,
       defaultBillingAddressId: null,
       defaultShippingAddressId: null,
       defaultGstRegistrationId: null,
@@ -1192,9 +1271,22 @@ async function reconcilePartyRoles(
     })
   }
 
+  if (wantsCustomer && customerProfile && customerProfile.status !== "active") {
+    await db
+      .update(partyCustomerProfiles)
+      .set({ status: "active", updatedAt: new Date() })
+      .where(
+        and(
+          eq(partyCustomerProfiles.businessId, access.business.id),
+          eq(partyCustomerProfiles.partyId, partyId)
+        )
+      )
+  }
+
   if (!wantsCustomer && customerProfile) {
     await db
-      .delete(partyCustomerProfiles)
+      .update(partyCustomerProfiles)
+      .set({ status: "inactive", updatedAt: new Date() })
       .where(
         and(
           eq(partyCustomerProfiles.businessId, access.business.id),
@@ -1209,7 +1301,7 @@ async function reconcilePartyRoles(
       partyId,
       supplierCode: await allocateSupplierCode(access.business.id),
       creditDays: 0,
-      defaultPaymentTerm: null,
+      defaultPaymentTermId: null,
       defaultPurchaseAddressId: null,
       defaultGstRegistrationId: null,
       preferredWarehouseId: null,
@@ -1218,9 +1310,22 @@ async function reconcilePartyRoles(
     })
   }
 
+  if (wantsSupplier && supplierProfile && supplierProfile.status !== "active") {
+    await db
+      .update(partySupplierProfiles)
+      .set({ status: "active", updatedAt: new Date() })
+      .where(
+        and(
+          eq(partySupplierProfiles.businessId, access.business.id),
+          eq(partySupplierProfiles.partyId, partyId)
+        )
+      )
+  }
+
   if (!wantsSupplier && supplierProfile) {
     await db
-      .delete(partySupplierProfiles)
+      .update(partySupplierProfiles)
+      .set({ status: "inactive", updatedAt: new Date() })
       .where(
         and(
           eq(partySupplierProfiles.businessId, access.business.id),
@@ -1545,11 +1650,16 @@ async function assertCustomerProfileReferences(
   businessId: string,
   partyId: string,
   body: {
+    defaultPaymentTermId?: string | null
     defaultBillingAddressId?: string | null
     defaultShippingAddressId?: string | null
     defaultGstRegistrationId?: string | null
   }
 ) {
+  if (body.defaultPaymentTermId) {
+    await requirePaymentTerm(businessId, body.defaultPaymentTermId)
+  }
+
   if (body.defaultBillingAddressId) {
     await requireAddress(businessId, partyId, body.defaultBillingAddressId)
   }
@@ -1567,11 +1677,16 @@ async function assertSupplierProfileReferences(
   businessId: string,
   partyId: string,
   body: {
+    defaultPaymentTermId?: string | null
     defaultPurchaseAddressId?: string | null
     defaultGstRegistrationId?: string | null
     preferredWarehouseId?: string | null
   }
 ) {
+  if (body.defaultPaymentTermId) {
+    await requirePaymentTerm(businessId, body.defaultPaymentTermId)
+  }
+
   if (body.defaultPurchaseAddressId) {
     await requireAddress(businessId, partyId, body.defaultPurchaseAddressId)
   }
@@ -1583,6 +1698,18 @@ async function assertSupplierProfileReferences(
   if (body.preferredWarehouseId) {
     await requireWarehouse(businessId, body.preferredWarehouseId)
   }
+}
+
+async function requirePaymentTerm(businessId: string, paymentTermId: string) {
+  const paymentTerm = await db.query.paymentTerms.findFirst({
+    where: and(eq(paymentTerms.businessId, businessId), eq(paymentTerms.id, paymentTermId)),
+  })
+
+  if (!paymentTerm) {
+    throw new HttpError(404, "Payment term not found.")
+  }
+
+  return paymentTerm
 }
 
 async function requireWarehouse(businessId: string, warehouseId: string) {
@@ -1640,9 +1767,15 @@ function resolveRoles(
   supplierProfile: PartySupplierProfileRecord | null
 ) {
   return [
-    customerProfile ? "customer" : null,
-    supplierProfile ? "supplier" : null,
+    isEnabledRoleProfile(customerProfile) ? "customer" : null,
+    isEnabledRoleProfile(supplierProfile) ? "supplier" : null,
   ].filter((role): role is "customer" | "supplier" => Boolean(role))
+}
+
+function isEnabledRoleProfile(
+  profile: PartyCustomerProfileRecord | PartySupplierProfileRecord | null
+) {
+  return Boolean(profile && !["inactive", "archived"].includes(profile.status))
 }
 
 function selectPrimary<T extends { isPrimary: boolean; createdAt: Date }>(rows: T[]) {
@@ -1740,6 +1873,10 @@ function sanitizeAuditPayload(value: unknown) {
 function normalizeMoney(value: string) {
   const [whole = "0", fraction = ""] = value.trim().split(".")
   return `${Number(whole)}.${fraction.padEnd(2, "0").slice(0, 2)}`
+}
+
+function formatMoney(value: number) {
+  return value.toFixed(2)
 }
 
 function compactObject<T extends Record<string, unknown>>(input: T) {
