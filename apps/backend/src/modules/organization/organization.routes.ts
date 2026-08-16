@@ -667,7 +667,13 @@ async function enrichBranchesWithWarehouses<
     ...branch,
     warehouses: warehouseLinks
       .filter((warehouse) => warehouse.branchId === branch.id)
-      .map(({ branchId, ...warehouse }) => warehouse),
+      .map((warehouse) => ({
+        warehouseId: warehouse.warehouseId,
+        warehouseCode: warehouse.warehouseCode,
+        warehouseName: warehouse.warehouseName,
+        warehouseType: warehouse.warehouseType,
+        isDefault: warehouse.isDefault,
+      })),
   }))
 }
 

@@ -6,11 +6,20 @@ import { getEnv } from "./config/env.js"
 import { sql } from "./db/client.js"
 import { getMigrationStatus } from "./db/migrations.js"
 import { registerAccountRoutes } from "./modules/account/account.routes.js"
+import { registerAccountingRoutes } from "./modules/accounting/accounting.routes.js"
 import { registerAvatarRoutes } from "./modules/avatar/avatar.routes.js"
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js"
 import { registerCaRoutes } from "./modules/ca/ca.routes.js"
+import { registerCoreRoutes } from "./modules/core/core.routes.js"
+import { registerInventoryRoutes } from "./modules/inventory/inventory.routes.js"
 import { registerOrganizationRoutes } from "./modules/organization/organization.routes.js"
+import { registerPartiesRoutes } from "./modules/parties/parties.routes.js"
+import { registerPosRoutes } from "./modules/pos/pos.routes.js"
+import { registerProductsRoutes } from "./modules/products/products.routes.js"
+import { registerPurchasesRoutes } from "./modules/purchases/purchases.routes.js"
+import { registerSalesRoutes } from "./modules/sales/sales.routes.js"
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js"
+import { registerTaxRoutes } from "./modules/tax/tax.routes.js"
 import { registerUsersRoutes } from "./modules/users/users.routes.js"
 import { registerErrorHandler } from "./utils/error-handler.js"
 
@@ -150,4 +159,13 @@ async function registerBackendRoutes(app: Parameters<typeof registerAuthRoutes>[
   await registerSettingsRoutes(app)
   await registerOrganizationRoutes(app)
   await registerUsersRoutes(app)
+  await registerCoreRoutes(app)
+  await registerAccountingRoutes(app)
+  await registerPartiesRoutes(app)
+  await registerProductsRoutes(app)
+  await registerInventoryRoutes(app)
+  await registerTaxRoutes(app)
+  await registerSalesRoutes(app)
+  await registerPurchasesRoutes(app)
+  await registerPosRoutes(app)
 }

@@ -51,6 +51,10 @@ const envSchema = z.object({
     .string()
     .min(32, "JWT_ACCESS_SECRET must be at least 32 characters")
     .default("dev-only-change-before-production-gstfy-secret"),
+  CORE_POSTING_INTERNAL_KEY: z
+    .string()
+    .min(16, "CORE_POSTING_INTERNAL_KEY must be at least 16 characters")
+    .default("dev-core-posting-key"),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
   SMTP_HOST: z.string().optional(),
@@ -74,6 +78,17 @@ const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["JWT_ACCESS_SECRET"],
       message: "JWT_ACCESS_SECRET must be changed in production.",
+    })
+  }
+
+  if (
+    env.NODE_ENV === "production" &&
+    env.CORE_POSTING_INTERNAL_KEY === "dev-core-posting-key"
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["CORE_POSTING_INTERNAL_KEY"],
+      message: "CORE_POSTING_INTERNAL_KEY must be changed in production.",
     })
   }
 })

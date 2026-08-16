@@ -18,6 +18,7 @@ export const MODULE_ACCESS = {
   purchases: ["small", "pro", "ca"],
   inventory: ["small", "pro", "ca"],
   reports: ["small", "pro", "ca"],
+  accounting: ["small", "pro", "ca"],
   pos: ["pro", "ca"],
   multigstin: ["pro", "ca"],
 } as const

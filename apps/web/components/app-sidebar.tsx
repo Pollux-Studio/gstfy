@@ -15,6 +15,8 @@ import {
   LayoutDashboardIcon,
   LifeBuoyIcon,
   MessageSquareMoreIcon,
+  NotebookTextIcon,
+  PackageIcon,
   ReceiptTextIcon,
   Settings2Icon,
   ShieldCheckIcon,
@@ -167,9 +169,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             item.module === "purchases" ? <ShoppingCartIcon /> :
             item.module === "expenses" ? <HandCoinsIcon /> :
             item.module === "gstr" ? <ReceiptTextIcon /> :
+            item.title === "Products" ? <PackageIcon /> :
             item.module === "inventory" ? <WarehouseIcon /> :
             item.module === "parties" ? <UsersIcon /> :
             item.module === "reports" ? <FileChartColumnIcon /> :
+            item.module === "accounting" ? <NotebookTextIcon /> :
             undefined,
         })),
         ...(category.title === "Contacts" ?

@@ -19,6 +19,7 @@ export function registerErrorHandler(app: FastifyInstance) {
       )
       void reply.status(error.statusCode).send({
         message: error.message,
+        ...(error.details ?? {}),
       })
       return
     }

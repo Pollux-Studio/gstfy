@@ -1,5 +1,5 @@
-import { PurchaseListPage } from "@/components/purchases/purchase-list-page"
+import { PurchaseBillsApiPage } from "@/components/purchases/purchase-bills-api-page"
 
 export default function PurchasesPage() {
-  return <PurchaseListPage />
+  return <PurchaseBillsApiPage />
 }

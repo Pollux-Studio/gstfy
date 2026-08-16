@@ -24,8 +24,8 @@ const featureCategories: SidebarFeatureCategory[] = [
   {
     title: "Sales",
     items: [
-      { module: "invoices", title: "Invoices", url: "#" },
-      { module: "pos", title: "POS", url: "#" },
+      { module: "invoices", title: "Invoices", url: "/invoices" },
+      { module: "pos", title: "POS", url: "/pos" },
     ],
   },
   {
@@ -41,15 +41,21 @@ const featureCategories: SidebarFeatureCategory[] = [
   },
   {
     title: "Inventory",
-    items: [{ module: "inventory", title: "Inventory", url: "#" }],
+    items: [
+      { module: "inventory", title: "Inventory", url: "/inventory" },
+      { module: "inventory", title: "Products", url: "/products" },
+    ],
   },
   {
     title: "Contacts",
-    items: [{ module: "parties", title: "Parties", url: "#" }],
+    items: [{ module: "parties", title: "Parties", url: "/parties" }],
   },
   {
     title: "Business",
-    items: [{ module: "reports", title: "Reports", url: "#" }],
+    items: [
+      { module: "reports", title: "Reports", url: "#" },
+      { module: "accounting", title: "Accounting", url: "/accounting" },
+    ],
   },
 ]
 
