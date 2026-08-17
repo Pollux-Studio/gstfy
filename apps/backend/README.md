@@ -73,6 +73,12 @@ Render deployment instructions:
 docs/backend-render-deployment.md
 ```
 
+Production env template:
+
+```text
+apps/backend/.env.production.example
+```
+
 All application API endpoints are versioned under `/api/v1`.
 
 - `POST /api/v1/auth/register`

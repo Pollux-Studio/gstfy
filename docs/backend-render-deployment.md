@@ -153,14 +153,52 @@ SMTP_SECURE=true
 
 Only required if phone OTP verification is enabled in the smoke test:
 
+Option A: Render Secret File, recommended if you already downloaded the Firebase Admin JSON.
+
+1. Open Render service -> Environment.
+2. Scroll to Secret Files.
+3. Click Add Secret File.
+4. Filename:
+
+```text
+gstfy-dev-0e596229c2e4.json
+```
+
+5. Contents: paste the full contents of your local Firebase JSON file:
+
+```text
+F:\gstfy\apps\backend\secrets\gstfy-dev-0e596229c2e4.json
+```
+
+6. Add this environment variable:
+
+```env
+GOOGLE_APPLICATION_CREDENTIALS=/etc/secrets/gstfy-dev-0e596229c2e4.json
+```
+
+The Windows path cannot work on Render. Render mounts uploaded secret files at:
+
+```text
+/etc/secrets/<filename>
+```
+
+Option B: Plain environment variables instead of a secret file.
+
 ```env
 FIREBASE_PROJECT_ID=
 FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=
-GOOGLE_APPLICATION_CREDENTIALS=
 ```
 
-Prefer `GOOGLE_APPLICATION_CREDENTIALS` only when the service account JSON file exists in the deployment environment. For Render, plain env values are usually simpler.
+When using `FIREBASE_PRIVATE_KEY`, keep newline characters escaped as `\n`.
+
+Use either Option A or Option B, not both.
+
+Production env template:
+
+```text
+apps/backend/.env.production.example
+```
 
 ## 5. DNS
 
