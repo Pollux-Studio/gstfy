@@ -3,7 +3,7 @@ services:
     name: gstfy-backend
     runtime: node
     branch: develop
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @gstfy/backend build
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @gstfy/backend build
     startCommand: pnpm --filter @gstfy/backend start
     healthCheckPath: /health/db
     autoDeploy: true
@@ -14,6 +14,8 @@ services:
         value: info
       - key: HOST
         value: 0.0.0.0
+      - key: NODE_VERSION
+        value: "20"
       - key: WEB_ORIGIN
         value: https://gstfy.in
       - key: APP_BASE_DOMAIN

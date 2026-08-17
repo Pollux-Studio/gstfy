@@ -36,7 +36,7 @@ Recommended settings:
 | Runtime | Node |
 | Root directory | repository root |
 | Branch | `develop` |
-| Build command | `corepack enable && pnpm install --frozen-lockfile && pnpm --filter @gstfy/backend build` |
+| Build command | `pnpm install --frozen-lockfile && pnpm --filter @gstfy/backend build` |
 | Start command | `pnpm --filter @gstfy/backend start` |
 | Health check path | `/health/db` |
 | Auto deploy | Enabled for `develop` |
@@ -65,6 +65,7 @@ Set these in Render -> Service -> Environment.
 
 ```env
 NODE_ENV=production
+NODE_VERSION=20
 LOG_LEVEL=info
 HOST=0.0.0.0
 AUTO_RUN_MIGRATIONS=true
