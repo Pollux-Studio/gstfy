@@ -1,0 +1,56 @@
+services:
+  - type: web
+    name: gstfy-backend
+    runtime: node
+    branch: develop
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @gstfy/backend build
+    startCommand: pnpm --filter @gstfy/backend start
+    healthCheckPath: /health/db
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: HOST
+        value: 0.0.0.0
+      - key: WEB_ORIGIN
+        value: https://gstfy.in
+      - key: APP_BASE_DOMAIN
+        value: gstfy.in
+      - key: COOKIE_DOMAIN
+        value: .gstfy.in
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAME_SITE
+        value: lax
+      - key: AUTO_RUN_MIGRATIONS
+        value: "true"
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: CORE_POSTING_INTERNAL_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_AUTH_METHOD
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        sync: false

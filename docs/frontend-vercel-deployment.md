@@ -105,6 +105,12 @@ Do not put backend secrets in Vercel frontend env variables.
 
 The frontend deployment depends on the backend accepting `gstfy.in` origins and setting cross-subdomain cookies correctly.
 
+Backend Render deployment details live in:
+
+```text
+docs/backend-render-deployment.md
+```
+
 Backend env for smoke testing:
 
 ```env

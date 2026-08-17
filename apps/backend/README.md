@@ -65,6 +65,14 @@ Or set `GOOGLE_APPLICATION_CREDENTIALS` to a service-account JSON file path. Whe
 - `GET /health/db`
 - `GET /health/migrations`
 
+## Deployment
+
+Render deployment instructions:
+
+```text
+docs/backend-render-deployment.md
+```
+
 All application API endpoints are versioned under `/api/v1`.
 
 - `POST /api/v1/auth/register`

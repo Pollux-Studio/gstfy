@@ -91,6 +91,59 @@ const envSchema = z.object({
       message: "CORE_POSTING_INTERNAL_KEY must be changed in production.",
     })
   }
+
+  if (
+    env.NODE_ENV === "production" &&
+    env.DATABASE_URL.includes("localhost")
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["DATABASE_URL"],
+      message: "DATABASE_URL must point to the production PostgreSQL database.",
+    })
+  }
+
+  if (
+    env.NODE_ENV === "production" &&
+    env.WEB_ORIGIN.includes("localhost")
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["WEB_ORIGIN"],
+      message: "WEB_ORIGIN must point to the production web origin.",
+    })
+  }
+
+  if (
+    env.NODE_ENV === "production" &&
+    env.APP_BASE_DOMAIN.includes("localhost")
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["APP_BASE_DOMAIN"],
+      message: "APP_BASE_DOMAIN must point to the production base domain.",
+    })
+  }
+
+  if (env.NODE_ENV === "production" && !env.COOKIE_SECURE) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["COOKIE_SECURE"],
+      message: "COOKIE_SECURE must be true in production.",
+    })
+  }
+
+  if (
+    env.NODE_ENV === "production" &&
+    env.COOKIE_SAME_SITE === "none" &&
+    !env.COOKIE_SECURE
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["COOKIE_SAME_SITE"],
+      message: "COOKIE_SAME_SITE=none requires COOKIE_SECURE=true.",
+    })
+  }
 })
 
 export type AppEnv = z.infer<typeof envSchema>
