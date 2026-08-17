@@ -18,8 +18,8 @@ This repository is a Turborepo monorepo with the web app and the custom backend 
 
 ## Requirements
 
-- Node.js 18 or newer.
-- pnpm 9.
+- Node.js 20.x.
+- pnpm 9.15.9.
 - PostgreSQL running locally or reachable through `DATABASE_URL`.
 
 ## Install

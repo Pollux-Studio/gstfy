@@ -61,6 +61,7 @@ Recommended settings:
 |---|---|
 | Git branch for production | `develop` |
 | Framework preset | Next.js |
+| Node.js version | `20.x` |
 | Root directory | `apps/web` |
 | Install command | Vercel default for pnpm, or `pnpm install --frozen-lockfile` |
 | Build command | `pnpm build` |
@@ -70,11 +71,14 @@ If Vercel cannot resolve workspace packages from the monorepo, switch to a root-
 
 | Setting | Value |
 |---|---|
+| Node.js version | `20.x` |
 | Root directory | repository root |
 | Install command | `pnpm install --frozen-lockfile` |
 | Build command | `pnpm --filter web build` |
 
 Use the first setup unless the build fails due workspace package resolution.
+
+If Vercel fails during dependency metadata fetches with `ERR_INVALID_THIS`, confirm the project is using Node `20.x` and the repo-pinned `pnpm@9.15.9`. If Vercel is not honoring `packageManager`, add `ENABLE_EXPERIMENTAL_COREPACK=1` in the Vercel project environment and redeploy.
 
 ## 4. Vercel Environment Variables
 
