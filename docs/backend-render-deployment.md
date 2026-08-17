@@ -36,7 +36,7 @@ Recommended settings:
 | Runtime | Node |
 | Root directory | repository root |
 | Branch | `develop` |
-| Build command | `pnpm install --frozen-lockfile && pnpm --filter @gstfy/backend build` |
+| Build command | `pnpm install --frozen-lockfile --prod=false && pnpm --filter @gstfy/backend build` |
 | Start command | `pnpm --filter @gstfy/backend start` |
 | Health check path | `/health/db` |
 | Auto deploy | Enabled for `develop` |
@@ -46,6 +46,8 @@ Do not set Root Directory to `apps/backend`.
 Reason: the backend depends on workspace packages such as `packages/typescript-config`, and Render excludes files outside the configured root directory from the build context.
 
 The repository must include `pnpm-lock.yaml` because Render uses `pnpm install --frozen-lockfile` for reproducible deploys.
+
+`--prod=false` is required because the Render service sets `NODE_ENV=production`, and pnpm otherwise skips build-time devDependencies such as `typescript` and `@types/node`.
 
 ## 3. Blueprint Deployment
 

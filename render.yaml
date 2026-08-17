@@ -3,7 +3,7 @@ services:
     name: gstfy-backend
     runtime: node
     branch: develop
-    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @gstfy/backend build
+    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm --filter @gstfy/backend build
     startCommand: pnpm --filter @gstfy/backend start
     healthCheckPath: /health/db
     autoDeploy: true
