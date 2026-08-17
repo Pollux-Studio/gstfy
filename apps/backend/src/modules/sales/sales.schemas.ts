@@ -3,8 +3,15 @@ import { z } from "zod"
 import { pricingModes, taxabilities } from "../tax/tax.types.js"
 
 const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/)
-const optionalDateSchema = dateSchema.optional().or(z.literal("")).transform((value) => value || null)
+const optionalDateSchema = z
+  .union([dateSchema, z.literal(""), z.null()])
+  .optional()
+  .transform((value) => value || null)
 const nullableUuidSchema = z.uuid().optional().nullable()
+const optionalTextSchema = z
+  .union([z.string().trim().max(500), z.literal(""), z.null()])
+  .optional()
+  .transform((value) => value || null)
 const moneySchema = z
   .union([z.string(), z.number()])
   .transform((value) => String(value).trim())
@@ -59,7 +66,7 @@ export const createSalesInvoiceSchema = z.object({
   placeOfSupplyStateCode: z.string().trim().regex(/^\d{2}$/).optional().nullable(),
   supplyType: z.enum(["b2b", "b2c"]).default("b2c"),
   invoiceType: z.enum(["tax_invoice", "bill_of_supply"]).default("tax_invoice"),
-  notes: z.string().trim().max(500).optional().or(z.literal("")).transform((value) => value || null),
+  notes: optionalTextSchema,
   lines: z.array(salesInvoiceLineSchema).min(1),
   payments: z.array(salesPaymentSchema).default([]),
 })

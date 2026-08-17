@@ -39,6 +39,22 @@ const pathModuleMap: Array<{
     test: (pathname) => pathname === "/accounting" || pathname.startsWith("/accounting/"),
     module: "accounting",
   },
+  {
+    test: (pathname) =>
+      pathname === "/receipts" ||
+      pathname.startsWith("/receipts/") ||
+      pathname === "/payments" ||
+      pathname.startsWith("/payments/") ||
+      pathname === "/receivables" ||
+      pathname.startsWith("/receivables/") ||
+      pathname === "/payables" ||
+      pathname.startsWith("/payables/") ||
+      pathname === "/payment-reports" ||
+      pathname.startsWith("/payment-reports/") ||
+      pathname === "/bank-reconciliation" ||
+      pathname.startsWith("/bank-reconciliation/"),
+    module: "accounting",
+  },
 ]
 
 export function getActiveBusinessMembership(

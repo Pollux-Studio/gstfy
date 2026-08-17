@@ -12,6 +12,8 @@
     "check-types": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:repair:0034": "tsx src/db/repair-applied-migration.ts 0034_payment_receipt_hardening.sql",
+    "db:repair:0035": "tsx src/db/repair-applied-migration.ts 0035_payment_receipt_production_guards.sql",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {

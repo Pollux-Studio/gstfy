@@ -4,6 +4,10 @@ import { pricingModes, taxabilities } from "../tax/tax.types.js"
 
 const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/)
 const nullableUuidSchema = z.uuid().optional().nullable()
+const optionalTextSchema = z
+  .union([z.string().trim().max(500), z.literal(""), z.null()])
+  .optional()
+  .transform((value) => value || null)
 const moneySchema = z
   .union([z.string(), z.number()])
   .transform((value) => String(value).trim())
@@ -59,7 +63,7 @@ export const createPurchaseBillSchema = z.object({
   warehouseId: nullableUuidSchema,
   placeOfSupplyStateCode: z.string().trim().regex(/^\d{2}$/).optional().nullable(),
   purchaseType: z.enum(["goods", "services", "expense"]).default("goods"),
-  notes: z.string().trim().max(500).optional().or(z.literal("")).transform((value) => value || null),
+  notes: optionalTextSchema,
   lines: z.array(purchaseBillLineSchema).min(1),
   payments: z.array(purchasePaymentSchema).default([]),
 })

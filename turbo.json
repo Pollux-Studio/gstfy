@@ -1,7 +1,14 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
-  "globalEnv": ["PORT", "DATABASE_URL"],
+  "globalEnv": [
+    "PORT",
+    "DATABASE_URL",
+    "RUN_POSTGRES_CONCURRENCY_TEST",
+    "GSTFY_E2E_BASE_URL",
+    "GSTFY_E2E_SKIP_WEB_SERVER",
+    "GSTFY_E2E_AUTH_STATE"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

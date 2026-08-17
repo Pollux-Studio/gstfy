@@ -227,6 +227,8 @@ export async function postVoucher(access: BusinessAccess, input: PostVoucherInpu
       .values({
         businessId: access.business.id,
         voucherId: voucher.id,
+        sourceType: "VOUCHER",
+        sourceId: voucher.id,
         entryDate: input.voucherDate,
         description: input.journal.description ?? `${input.voucherType} ${voucherNumber}`,
         createdBy: access.userId,
@@ -341,9 +343,16 @@ export async function postVoucher(access: BusinessAccess, input: PostVoucherInpu
         input.paymentAllocations.map((allocation) => ({
           businessId: access.business.id,
           paymentVoucherId: voucher.id,
+          allocationKind:
+            allocation.allocationKind ??
+            (input.voucherType === "RECEIPT" ? "receipt" : "payment"),
+          receiptId: allocation.receiptId ?? null,
+          paymentId: allocation.paymentId ?? null,
           documentVoucherId: allocation.documentVoucherId,
           receivablePayableEntryId: allocation.receivablePayableEntryId,
           allocatedAmount: normalizeMoney(allocation.allocatedAmount),
+          status: "active",
+          createdBy: access.userId,
         }))
       )
 
@@ -460,6 +469,7 @@ export async function postVoucher(access: BusinessAccess, input: PostVoucherInpu
         .where(
           and(
             eq(paymentAllocations.businessId, businessId),
+            eq(paymentAllocations.status, "active"),
             inArray(paymentAllocations.receivablePayableEntryId, entryIds)
           )
         )
@@ -525,6 +535,7 @@ export async function postVoucher(access: BusinessAccess, input: PostVoucherInpu
         .where(
           and(
             eq(paymentAllocations.businessId, businessId),
+            eq(paymentAllocations.status, "active"),
             inArray(paymentAllocations.receivablePayableEntryId, entryIds)
           )
         )

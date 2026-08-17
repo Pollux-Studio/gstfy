@@ -14,6 +14,7 @@ import { registerCoreRoutes } from "./modules/core/core.routes.js"
 import { registerInventoryRoutes } from "./modules/inventory/inventory.routes.js"
 import { registerOrganizationRoutes } from "./modules/organization/organization.routes.js"
 import { registerPartiesRoutes } from "./modules/parties/parties.routes.js"
+import { registerPaymentReceiptRoutes } from "./modules/payment-receipt/payment-receipt.routes.js"
 import { registerPaymentTermsRoutes } from "./modules/payment-terms/payment-terms.routes.js"
 import { registerPosRoutes } from "./modules/pos/pos.routes.js"
 import { registerProductsRoutes } from "./modules/products/products.routes.js"
@@ -163,6 +164,7 @@ async function registerBackendRoutes(app: Parameters<typeof registerAuthRoutes>[
   await registerCoreRoutes(app)
   await registerAccountingRoutes(app)
   await registerPaymentTermsRoutes(app)
+  await registerPaymentReceiptRoutes(app)
   await registerPartiesRoutes(app)
   await registerProductsRoutes(app)
   await registerInventoryRoutes(app)

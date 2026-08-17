@@ -5,6 +5,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import {
+  ArrowDownLeftIcon as ArrowDownLeftSidebarIcon,
+  ArrowUpRightIcon as ArrowUpRightSidebarIcon,
   BriefcaseBusinessIcon,
   Building2Icon,
   CreditCardIcon,
@@ -191,6 +193,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               item.module === "pos" ? <Building2Icon /> :
               item.module === "purchases" ? <ShoppingCartIcon /> :
               item.module === "expenses" ? <HandCoinsIcon /> :
+              item.title === "Receipts" ? <ArrowDownLeftSidebarIcon /> :
+              item.title === "Payments" ? <ArrowUpRightSidebarIcon /> :
+              item.title === "Receivables" ? <ReceiptTextIcon /> :
+              item.title === "Payables" ? <HandCoinsIcon /> :
               item.module === "gstr" ? <ReceiptTextIcon /> :
               item.title === "Products" ? <PackageIcon /> :
               item.module === "inventory" ? <WarehouseIcon /> :

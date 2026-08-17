@@ -179,6 +179,10 @@ export const gstRegistrations = pgTable(
       table.businessId,
       table.gstin
     ),
+    businessIdentityUnique: uniqueIndex("gst_registrations_id_business_id_unique").on(
+      table.id,
+      table.businessId
+    ),
   })
 )
 
@@ -408,6 +412,10 @@ export const vouchers = pgTable(
       table.voucherType,
       table.voucherNumber
     ),
+    businessIdentityUnique: uniqueIndex("vouchers_id_business_id_unique").on(
+      table.id,
+      table.businessId
+    ),
   })
 )
 
@@ -433,6 +441,33 @@ export const postingIdempotencyKeys = pgTable(
       table.idempotencyKey
     ),
     businessIndex: index("posting_idempotency_business_id_idx").on(table.businessId),
+  })
+)
+
+export const moneyOperationIdempotencyKeys = pgTable(
+  "money_operation_idempotency_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    operation: text("operation").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull(),
+    status: text("status").notNull().default("in_progress"),
+    responseBody: jsonb("response_body"),
+    ...timestamps,
+  },
+  (table) => ({
+    businessOperationKeyUnique: uniqueIndex(
+      "money_operation_idempotency_business_operation_key_unique"
+    ).on(table.businessId, table.operation, table.idempotencyKey),
+    businessIndex: index("money_operation_idempotency_business_id_idx").on(
+      table.businessId
+    ),
+    operationIndex: index("money_operation_idempotency_operation_idx").on(
+      table.operation
+    ),
   })
 )
 
@@ -876,6 +911,9 @@ export const receivablePayableEntries = pgTable(
       table.voucherId
     ),
     partyIndex: index("receivable_payable_entries_party_id_idx").on(table.partyId),
+    businessIdentityUnique: uniqueIndex(
+      "receivable_payable_entries_id_business_id_unique"
+    ).on(table.id, table.businessId),
   })
 )
 
@@ -919,6 +957,13 @@ export const paymentAllocations = pgTable(
     paymentVoucherId: uuid("payment_voucher_id")
       .notNull()
       .references(() => vouchers.id, { onDelete: "cascade" }),
+    allocationKind: text("allocation_kind").notNull().default("payment"),
+    receiptId: uuid("receipt_id").references(() => receipts.id, {
+      onDelete: "cascade",
+    }),
+    paymentId: uuid("payment_id").references(() => payments.id, {
+      onDelete: "cascade",
+    }),
     documentVoucherId: uuid("document_voucher_id")
       .notNull()
       .references(() => vouchers.id, { onDelete: "cascade" }),
@@ -930,6 +975,12 @@ export const paymentAllocations = pgTable(
     allocatedAt: timestamp("allocated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    status: text("status").notNull().default("active"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    reversedBy: uuid("reversed_by").references(() => users.id, { onDelete: "set null" }),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }),
+    reversalReason: text("reversal_reason"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     businessIndex: index("payment_allocations_business_id_idx").on(table.businessId),
@@ -939,6 +990,329 @@ export const paymentAllocations = pgTable(
     documentVoucherIndex: index("payment_allocations_document_voucher_id_idx").on(
       table.documentVoucherId
     ),
+    receivablePayableEntryIndex: index(
+      "payment_allocations_receivable_payable_entry_id_idx"
+    ).on(table.receivablePayableEntryId),
+    statusIndex: index("payment_allocations_status_idx").on(table.status),
+    kindIndex: index("payment_allocations_allocation_kind_idx").on(table.allocationKind),
+    receiptIndex: index("payment_allocations_receipt_id_idx").on(table.receiptId),
+    paymentIndex: index("payment_allocations_payment_id_idx").on(table.paymentId),
+  })
+)
+
+export const receipts = pgTable(
+  "receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    voucherId: uuid("voucher_id").references(() => vouchers.id, { onDelete: "set null" }),
+    partyId: uuid("party_id")
+      .notNull()
+      .references(() => parties.id, { onDelete: "restrict" }),
+    branchId: uuid("branch_id").references(() => businessBranches.id, {
+      onDelete: "set null",
+    }),
+    gstRegistrationId: uuid("gst_registration_id").references(
+      () => gstRegistrations.id,
+      { onDelete: "set null" }
+    ),
+    cashBankAccountId: uuid("cash_bank_account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "restrict" }),
+    receiptNumber: text("receipt_number").notNull(),
+    receiptDate: date("receipt_date").notNull(),
+    paymentMethod: text("payment_method").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    allocatedAmount: numeric("allocated_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    unallocatedAmount: numeric("unallocated_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    unallocatedTreatment: text("unallocated_treatment").notNull().default("advance"),
+    referenceNumber: text("reference_number"),
+    notes: text("notes"),
+    status: text("status").notNull().default("draft"),
+    partyNameSnapshot: text("party_name_snapshot").notNull(),
+    partySnapshot: jsonb("party_snapshot"),
+    cashBankAccountSnapshot: jsonb("cash_bank_account_snapshot"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    postedBy: uuid("posted_by").references(() => users.id, { onDelete: "set null" }),
+    reversedBy: uuid("reversed_by").references(() => users.id, { onDelete: "set null" }),
+    postedAt: timestamp("posted_at", { withTimezone: true }),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }),
+    reversalReason: text("reversal_reason"),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("receipts_business_id_idx").on(table.businessId),
+    partyIndex: index("receipts_party_id_idx").on(table.partyId),
+    voucherIndex: index("receipts_voucher_id_idx").on(table.voucherId),
+    statusIndex: index("receipts_status_idx").on(table.status),
+    businessNumberUnique: uniqueIndex("receipts_business_number_unique").on(
+      table.businessId,
+      table.receiptNumber
+    ),
+    businessIdentityUnique: uniqueIndex("receipts_id_business_id_unique").on(
+      table.id,
+      table.businessId
+    ),
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "receipts_party_business_fk",
+    }),
+    branchBusinessFk: foreignKey({
+      columns: [table.branchId, table.businessId],
+      foreignColumns: [businessBranches.id, businessBranches.businessId],
+      name: "receipts_branch_business_fk",
+    }),
+    gstRegistrationBusinessFk: foreignKey({
+      columns: [table.gstRegistrationId, table.businessId],
+      foreignColumns: [gstRegistrations.id, gstRegistrations.businessId],
+      name: "receipts_gst_registration_business_fk",
+    }),
+    cashBankAccountBusinessFk: foreignKey({
+      columns: [table.cashBankAccountId, table.businessId],
+      foreignColumns: [ledgerAccounts.id, ledgerAccounts.businessId],
+      name: "receipts_cash_bank_account_business_fk",
+    }),
+  })
+)
+
+export const payments = pgTable(
+  "payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    voucherId: uuid("voucher_id").references(() => vouchers.id, { onDelete: "set null" }),
+    partyId: uuid("party_id")
+      .notNull()
+      .references(() => parties.id, { onDelete: "restrict" }),
+    branchId: uuid("branch_id").references(() => businessBranches.id, {
+      onDelete: "set null",
+    }),
+    gstRegistrationId: uuid("gst_registration_id").references(
+      () => gstRegistrations.id,
+      { onDelete: "set null" }
+    ),
+    cashBankAccountId: uuid("cash_bank_account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "restrict" }),
+    paymentNumber: text("payment_number").notNull(),
+    paymentDate: date("payment_date").notNull(),
+    paymentMethod: text("payment_method").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    allocatedAmount: numeric("allocated_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    unallocatedAmount: numeric("unallocated_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    unallocatedTreatment: text("unallocated_treatment").notNull().default("advance"),
+    referenceNumber: text("reference_number"),
+    notes: text("notes"),
+    status: text("status").notNull().default("draft"),
+    partyNameSnapshot: text("party_name_snapshot").notNull(),
+    partySnapshot: jsonb("party_snapshot"),
+    cashBankAccountSnapshot: jsonb("cash_bank_account_snapshot"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    postedBy: uuid("posted_by").references(() => users.id, { onDelete: "set null" }),
+    reversedBy: uuid("reversed_by").references(() => users.id, { onDelete: "set null" }),
+    postedAt: timestamp("posted_at", { withTimezone: true }),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }),
+    reversalReason: text("reversal_reason"),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("payments_business_id_idx").on(table.businessId),
+    partyIndex: index("payments_party_id_idx").on(table.partyId),
+    voucherIndex: index("payments_voucher_id_idx").on(table.voucherId),
+    statusIndex: index("payments_status_idx").on(table.status),
+    businessNumberUnique: uniqueIndex("payments_business_number_unique").on(
+      table.businessId,
+      table.paymentNumber
+    ),
+    businessIdentityUnique: uniqueIndex("payments_id_business_id_unique").on(
+      table.id,
+      table.businessId
+    ),
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "payments_party_business_fk",
+    }),
+    branchBusinessFk: foreignKey({
+      columns: [table.branchId, table.businessId],
+      foreignColumns: [businessBranches.id, businessBranches.businessId],
+      name: "payments_branch_business_fk",
+    }),
+    gstRegistrationBusinessFk: foreignKey({
+      columns: [table.gstRegistrationId, table.businessId],
+      foreignColumns: [gstRegistrations.id, gstRegistrations.businessId],
+      name: "payments_gst_registration_business_fk",
+    }),
+    cashBankAccountBusinessFk: foreignKey({
+      columns: [table.cashBankAccountId, table.businessId],
+      foreignColumns: [ledgerAccounts.id, ledgerAccounts.businessId],
+      name: "payments_cash_bank_account_business_fk",
+    }),
+  })
+)
+
+export const bankStatementImports = pgTable(
+  "bank_statement_imports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    cashBankAccountId: uuid("cash_bank_account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "restrict" }),
+    fileName: text("file_name").notNull(),
+    statementFrom: date("statement_from"),
+    statementTo: date("statement_to"),
+    importedBy: uuid("imported_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    importedAt: timestamp("imported_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("bank_statement_imports_business_id_idx").on(
+      table.businessId
+    ),
+    accountIndex: index("bank_statement_imports_account_id_idx").on(
+      table.cashBankAccountId
+    ),
+    businessIdentityUnique: uniqueIndex(
+      "bank_statement_imports_id_business_unique"
+    ).on(table.id, table.businessId),
+    accountBusinessFk: foreignKey({
+      columns: [table.cashBankAccountId, table.businessId],
+      foreignColumns: [ledgerAccounts.id, ledgerAccounts.businessId],
+      name: "bank_statement_imports_account_business_fk",
+    }),
+  })
+)
+
+export const bankStatementLines = pgTable(
+  "bank_statement_lines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    importId: uuid("import_id").notNull(),
+    cashBankAccountId: uuid("cash_bank_account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "restrict" }),
+    statementDate: date("statement_date").notNull(),
+    description: text("description").notNull().default(""),
+    bankReference: text("bank_reference"),
+    direction: text("direction").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    matchStatus: text("match_status").notNull().default("unmatched"),
+    matchedReceiptId: uuid("matched_receipt_id").references(() => receipts.id, {
+      onDelete: "set null",
+    }),
+    matchedPaymentId: uuid("matched_payment_id").references(() => payments.id, {
+      onDelete: "set null",
+    }),
+    matchedAt: timestamp("matched_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("bank_statement_lines_business_id_idx").on(table.businessId),
+    importIndex: index("bank_statement_lines_import_id_idx").on(table.importId),
+    accountIndex: index("bank_statement_lines_account_id_idx").on(
+      table.cashBankAccountId
+    ),
+    statusIndex: index("bank_statement_lines_match_status_idx").on(table.matchStatus),
+    businessIdentityUnique: uniqueIndex(
+      "bank_statement_lines_id_business_unique"
+    ).on(table.id, table.businessId),
+    importBusinessFk: foreignKey({
+      columns: [table.importId, table.businessId],
+      foreignColumns: [bankStatementImports.id, bankStatementImports.businessId],
+      name: "bank_statement_lines_import_business_fk",
+    }),
+    accountBusinessFk: foreignKey({
+      columns: [table.cashBankAccountId, table.businessId],
+      foreignColumns: [ledgerAccounts.id, ledgerAccounts.businessId],
+      name: "bank_statement_lines_account_business_fk",
+    }),
+    receiptBusinessFk: foreignKey({
+      columns: [table.matchedReceiptId, table.businessId],
+      foreignColumns: [receipts.id, receipts.businessId],
+      name: "bank_statement_lines_receipt_business_fk",
+    }),
+    paymentBusinessFk: foreignKey({
+      columns: [table.matchedPaymentId, table.businessId],
+      foreignColumns: [payments.id, payments.businessId],
+      name: "bank_statement_lines_payment_business_fk",
+    }),
+  })
+)
+
+export const bankReconciliationMatches = pgTable(
+  "bank_reconciliation_matches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    receiptId: uuid("receipt_id").references(() => receipts.id, {
+      onDelete: "cascade",
+    }),
+    paymentId: uuid("payment_id").references(() => payments.id, {
+      onDelete: "cascade",
+    }),
+    cashBankAccountId: uuid("cash_bank_account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "restrict" }),
+    statementLineId: uuid("statement_line_id").references(() => bankStatementLines.id),
+    statementDate: date("statement_date").notNull(),
+    bankReference: text("bank_reference"),
+    notes: text("notes"),
+    reconciledBy: uuid("reconciled_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reconciledAt: timestamp("reconciled_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("bank_reconciliation_matches_business_id_idx").on(
+      table.businessId
+    ),
+    receiptIndex: index("bank_reconciliation_matches_receipt_id_idx").on(
+      table.receiptId
+    ),
+    paymentIndex: index("bank_reconciliation_matches_payment_id_idx").on(
+      table.paymentId
+    ),
+    accountIndex: index("bank_reconciliation_matches_account_id_idx").on(
+      table.cashBankAccountId
+    ),
+    accountBusinessFk: foreignKey({
+      columns: [table.cashBankAccountId, table.businessId],
+      foreignColumns: [ledgerAccounts.id, ledgerAccounts.businessId],
+      name: "bank_reconciliation_matches_account_business_fk",
+    }),
+    statementLineBusinessFk: foreignKey({
+      columns: [table.statementLineId, table.businessId],
+      foreignColumns: [bankStatementLines.id, bankStatementLines.businessId],
+      name: "bank_reconciliation_matches_statement_line_business_fk",
+    }),
   })
 )
 
@@ -2572,6 +2946,12 @@ export type GstEntryRecord = typeof gstEntries.$inferSelect
 export type ReceivablePayableEntryRecord = typeof receivablePayableEntries.$inferSelect
 export type PaymentTermRecord = typeof paymentTerms.$inferSelect
 export type PaymentAllocationRecord = typeof paymentAllocations.$inferSelect
+export type ReceiptRecord = typeof receipts.$inferSelect
+export type PaymentRecord = typeof payments.$inferSelect
+export type BankStatementImportRecord = typeof bankStatementImports.$inferSelect
+export type BankStatementLineRecord = typeof bankStatementLines.$inferSelect
+export type BankReconciliationMatchRecord =
+  typeof bankReconciliationMatches.$inferSelect
 export type SalesInvoiceRecord = typeof salesInvoices.$inferSelect
 export type SalesInvoiceLineRecord = typeof salesInvoiceLines.$inferSelect
 export type SalesInvoicePaymentRecord = typeof salesInvoicePayments.$inferSelect

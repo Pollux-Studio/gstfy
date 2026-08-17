@@ -36,6 +36,21 @@ const featureCategories: SidebarFeatureCategory[] = [
     ],
   },
   {
+    title: "Money",
+    items: [
+      { module: "accounting", title: "Receipts", url: "/receipts" },
+      { module: "accounting", title: "Payments", url: "/payments" },
+      { module: "accounting", title: "Receivables", url: "/receivables" },
+      { module: "accounting", title: "Payables", url: "/payables" },
+      { module: "accounting", title: "Payment Reports", url: "/payment-reports" },
+      {
+        module: "accounting",
+        title: "Bank Reconciliation",
+        url: "/bank-reconciliation",
+      },
+    ],
+  },
+  {
     title: "Compliance",
     items: [{ module: "gstr", title: "GST Returns", url: "#" }],
   },

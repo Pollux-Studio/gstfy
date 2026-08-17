@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify"
 import { ZodError } from "zod"
 
-import { getEnv } from "../config/env.js"
 import { isHttpError } from "./http-error.js"
 
 export function registerErrorHandler(app: FastifyInstance) {
@@ -52,15 +51,8 @@ export function registerErrorHandler(app: FastifyInstance) {
       "request failed with unexpected error"
     )
 
-    const env = getEnv()
-    const errorMessage =
-      error instanceof Error ? error.message : "Something went wrong. Please try again."
-
     void reply.status(500).send({
-      message:
-        env.NODE_ENV === "development" ?
-          errorMessage
-        : "Something went wrong. Please try again.",
+      message: "Something went wrong. Please try again.",
     })
   })
 }

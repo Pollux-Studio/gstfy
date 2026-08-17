@@ -213,6 +213,9 @@ export const postVoucherSchema = z.object({
   paymentAllocations: z
     .array(
       z.object({
+        allocationKind: z.enum(["receipt", "payment"]).optional(),
+        receiptId: z.uuid().optional(),
+        paymentId: z.uuid().optional(),
         documentVoucherId: z.uuid(),
         receivablePayableEntryId: z.uuid(),
         allocatedAmount: moneySchema,

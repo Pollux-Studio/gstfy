@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "e2e:payments": "playwright test --config playwright.config.mjs e2e/payment-receipt.spec.mjs",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit"
@@ -46,6 +47,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
