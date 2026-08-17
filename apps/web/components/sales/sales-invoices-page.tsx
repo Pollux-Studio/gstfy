@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   EyeIcon,
   FilePlus2Icon,
@@ -33,14 +33,24 @@ import {
 } from "@/lib/sales/api"
 import { cn } from "@/lib/utils"
 
+const tablePageSize = 15
+
 export function SalesInvoicesPage() {
   const queryClient = useQueryClient()
   const accessToken = getStoredAuthSession()?.session.accessToken ?? ""
   const [search, setSearch] = React.useState("")
 
-  const invoicesQuery = useQuery({
+  const invoicesQuery = useInfiniteQuery({
     queryKey: ["sales", "invoices", search],
-    queryFn: () => listSalesInvoices(accessToken, search),
+    queryFn: ({ pageParam }) =>
+      listSalesInvoices(accessToken, {
+        search,
+        page: pageParam,
+        limit: tablePageSize,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
     enabled: accessToken.length > 0,
   })
   const postMutation = useMutation({
@@ -53,7 +63,24 @@ export function SalesInvoicesPage() {
     onError: (error) => toast.error(getErrorMessage(error)),
   })
 
-  const invoices = invoicesQuery.data?.invoices ?? []
+  const invoices =
+    invoicesQuery.data?.pages.flatMap((page) => page.invoices) ?? []
+  const totalInvoicesCount =
+    invoicesQuery.data?.pages[0]?.pagination.total ?? invoices.length
+
+  function handleInvoicesTableScroll(event: React.UIEvent<HTMLDivElement>) {
+    const target = event.currentTarget
+    const remainingScroll =
+      target.scrollHeight - target.scrollTop - target.clientHeight
+
+    if (
+      remainingScroll < 160 &&
+      invoicesQuery.hasNextPage &&
+      !invoicesQuery.isFetchingNextPage
+    ) {
+      void invoicesQuery.fetchNextPage()
+    }
+  }
 
   return (
     <main className="min-w-0 space-y-6 p-4 sm:p-6">
@@ -102,7 +129,10 @@ export function SalesInvoicesPage() {
           <p className="text-sm text-muted-foreground">{invoices.length} invoices</p>
         </div>
 
-        <div className="overflow-x-auto">
+        <div
+          onScroll={handleInvoicesTableScroll}
+          className="app-scrollbar max-h-[35rem] overflow-auto"
+        >
           <Table>
             <TableHeader>
               <TableRow>
@@ -142,6 +172,20 @@ export function SalesInvoicesPage() {
               )}
             </TableBody>
           </Table>
+          {invoicesQuery.isFetchingNextPage ? (
+            <div className="flex items-center justify-center gap-2 border-t border-border px-3 py-3 text-xs text-muted-foreground">
+              <Spinner />
+              Loading more invoices
+            </div>
+          ) : invoicesQuery.hasNextPage ? (
+            <div className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
+              Scroll to load more · {invoices.length} of {totalInvoicesCount}
+            </div>
+          ) : invoices.length > tablePageSize ? (
+            <div className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
+              All {totalInvoicesCount} invoices loaded
+            </div>
+          ) : null}
         </div>
       </section>
     </main>

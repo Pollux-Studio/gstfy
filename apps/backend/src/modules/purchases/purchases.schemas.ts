@@ -71,16 +71,27 @@ export const billIdParamsSchema = z.object({
 export const listPurchaseBillsQuerySchema = z.object({
   status: z.enum(["draft", "posted", "reconciled", "cancelled"]).optional(),
   search: z.string().trim().max(120).optional(),
+  page: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((value) => {
+      if (value === undefined || value === "") {
+        return 1
+      }
+
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? Math.max(Math.floor(parsed), 1) : 1
+    }),
   limit: z
     .union([z.string(), z.number()])
     .optional()
     .transform((value) => {
       if (value === undefined || value === "") {
-        return 50
+        return 15
       }
 
       const parsed = Number(value)
-      return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : 50
+      return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : 15
     }),
 })
 

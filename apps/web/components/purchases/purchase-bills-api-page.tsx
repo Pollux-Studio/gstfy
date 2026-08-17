@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { FilePlus2Icon, ReceiptTextIcon, SearchIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -66,6 +66,7 @@ const initialForm: FormState = {
   amountPaid: "",
   paymentMode: "bank",
 }
+const tablePageSize = 15
 
 export function PurchaseBillsApiPage() {
   const queryClient = useQueryClient()
@@ -73,9 +74,17 @@ export function PurchaseBillsApiPage() {
   const [search, setSearch] = React.useState("")
   const [form, setForm] = React.useState<FormState>(initialForm)
 
-  const billsQuery = useQuery({
+  const billsQuery = useInfiniteQuery({
     queryKey: ["purchase-bills", search],
-    queryFn: () => listPurchaseBills(accessToken, search),
+    queryFn: ({ pageParam }) =>
+      listPurchaseBills(accessToken, {
+        search,
+        page: pageParam,
+        limit: tablePageSize,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
     enabled: accessToken.length > 0,
   })
   const createMutation = useMutation({
@@ -101,8 +110,23 @@ export function PurchaseBillsApiPage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : "Unable to post bill."),
   })
 
-  const bills = billsQuery.data?.bills ?? []
+  const bills = billsQuery.data?.pages.flatMap((page) => page.bills) ?? []
+  const totalBillsCount = billsQuery.data?.pages[0]?.pagination.total ?? bills.length
   const estimated = estimateTotal(form)
+
+  function handleBillsTableScroll(event: React.UIEvent<HTMLDivElement>) {
+    const target = event.currentTarget
+    const remainingScroll =
+      target.scrollHeight - target.scrollTop - target.clientHeight
+
+    if (
+      remainingScroll < 160 &&
+      billsQuery.hasNextPage &&
+      !billsQuery.isFetchingNextPage
+    ) {
+      void billsQuery.fetchNextPage()
+    }
+  }
 
   function submit(status: "draft" | "posted") {
     createMutation.mutate({
@@ -162,7 +186,10 @@ export function PurchaseBillsApiPage() {
             </div>
             <p className="text-sm text-muted-foreground">{bills.length} bills</p>
           </div>
-          <div className="overflow-x-auto">
+          <div
+            onScroll={handleBillsTableScroll}
+            className="app-scrollbar max-h-[35rem] overflow-auto"
+          >
             <Table>
               <TableHeader>
                 <TableRow>
@@ -202,6 +229,20 @@ export function PurchaseBillsApiPage() {
                 )}
               </TableBody>
             </Table>
+            {billsQuery.isFetchingNextPage ? (
+              <div className="flex items-center justify-center gap-2 border-t border-border px-3 py-3 text-xs text-muted-foreground">
+                <Spinner />
+                Loading more bills
+              </div>
+            ) : billsQuery.hasNextPage ? (
+              <div className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
+                Scroll to load more · {bills.length} of {totalBillsCount}
+              </div>
+            ) : bills.length > tablePageSize ? (
+              <div className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
+                All {totalBillsCount} bills loaded
+              </div>
+            ) : null}
           </div>
         </section>
 

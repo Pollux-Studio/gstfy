@@ -26,11 +26,8 @@ const moneySchema = z
   .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/))
 
 const optionalDateSchema = z
-  .string()
-  .trim()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .union([z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal(""), z.null()])
   .optional()
-  .or(z.literal(""))
   .transform((value) => (value === undefined ? undefined : value || null))
 
 export const idParamsSchema = z.object({
@@ -62,22 +59,101 @@ export const partyBankAccountParamsSchema = z.object({
   bankAccountId: z.uuid(),
 })
 
+export const partyDocumentParamsSchema = z.object({
+  id: z.uuid(),
+  documentId: z.uuid(),
+})
+
 export const listPartiesQuerySchema = z.object({
   search: z.string().trim().max(120).optional(),
   role: z.enum(partyRoles).optional(),
   status: z.enum(partyStatuses).optional(),
   sortBy: z.enum(partySortFields).default("createdAt"),
   sortDir: z.enum(["asc", "desc"]).default("desc"),
+  page: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((value) => {
+      if (value === undefined || value === "") {
+        return 1
+      }
+
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? Math.max(Math.floor(parsed), 1) : 1
+    }),
   limit: z
     .union([z.string(), z.number()])
     .optional()
     .transform((value) => {
       if (value === undefined || value === "") {
-        return 50
+        return 15
       }
 
       const parsed = Number(value)
-      return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : 50
+      return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : 15
+    }),
+})
+
+export const partyDuplicateQuerySchema = z.object({
+  displayName: z.string().trim().max(160).optional(),
+  legalName: z.string().trim().max(240).optional(),
+  tradeName: z.string().trim().max(240).optional(),
+  pan: z.string().trim().toUpperCase().max(10).optional(),
+  gstin: z.string().trim().toUpperCase().max(15).optional(),
+  email: z.string().trim().toLowerCase().max(160).optional(),
+  mobile: z.string().trim().max(20).optional(),
+  excludePartyId: z.uuid().optional(),
+  limit: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((value) => {
+      if (value === undefined || value === "") {
+        return 6
+      }
+
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 12) : 6
+    }),
+})
+
+export const partyLedgerQuerySchema = z.object({
+  entryType: z.enum(["all", "receivable", "payable"]).default("all"),
+  status: z.enum(["all", "open", "partially_settled", "settled", "closed", "cancelled"]).default("all"),
+  limit: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((value) => {
+      if (value === undefined || value === "") {
+        return 100
+      }
+
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 200) : 100
+    }),
+})
+
+export const partyAuditQuerySchema = z.object({
+  page: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((value) => {
+      if (value === undefined || value === "") {
+        return 1
+      }
+
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? Math.max(Math.floor(parsed), 1) : 1
+    }),
+  limit: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((value) => {
+      if (value === undefined || value === "") {
+        return 30
+      }
+
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : 30
     }),
 })
 
@@ -119,6 +195,7 @@ const partyGstRegistrationBaseSchema = z.object({
     state: nullableTrimmed,
     effectiveFrom: optionalDateSchema,
     effectiveTo: optionalDateSchema,
+    registeredAddressId: z.uuid().optional().nullable(),
     status: z
       .enum(["active", "inactive", "cancelled", "suspended", "archived"])
       .default("active"),
@@ -198,6 +275,26 @@ export const partyBankAccountSchema = z.object({
   status: z.enum(["active", "inactive", "archived"]).default("active"),
 })
 
+export const partyDocumentSchema = z.object({
+  documentType: z
+    .enum([
+      "gst_certificate",
+      "pan",
+      "bank_proof",
+      "agreement",
+      "vendor_onboarding",
+      "other",
+    ])
+    .default("other"),
+  title: z.string().trim().min(2).max(160),
+  fileReference: z.string().trim().min(3).max(500),
+  fileName: nullableTrimmed,
+  mimeType: nullableTrimmed,
+  fileSizeBytes: z.number().int().min(0).max(50 * 1024 * 1024).optional().nullable(),
+  notes: nullableTrimmed,
+  status: z.enum(["active", "archived"]).default("active"),
+})
+
 export const createPartySchema = z.object({
   partyType: z.enum(partyTypes).default("business"),
   roles: z.array(z.enum(partyRoles)).min(1).default(["customer"]),
@@ -250,5 +347,6 @@ export const updatePartyGstRegistrationSchema = partyGstRegistrationBaseSchema
 export const updatePartyAddressSchema = partyAddressSchema.partial()
 export const updatePartyContactSchema = partyContactSchema.partial()
 export const updatePartyBankAccountSchema = partyBankAccountSchema.partial()
+export const updatePartyDocumentSchema = partyDocumentSchema.partial()
 
 export type CreatePartyInput = z.infer<typeof createPartySchema>

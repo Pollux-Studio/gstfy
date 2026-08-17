@@ -86,7 +86,12 @@ export function PosPage() {
   })
   const salesQuery = useQuery({
     queryKey: ["pos", "sales", receiptSearch],
-    queryFn: () => listPosSales(accessToken, receiptSearch),
+    queryFn: () =>
+      listPosSales(accessToken, {
+        search: receiptSearch,
+        page: 1,
+        limit: 15,
+      }),
     enabled: accessToken.length > 0,
   })
   const checkoutMutation = useMutation({

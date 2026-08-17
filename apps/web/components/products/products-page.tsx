@@ -1,7 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 import {
   ArchiveIcon,
   BarcodeIcon,
@@ -139,6 +144,7 @@ const taxabilityLabels: Record<Taxability, string> = {
 
 const itemTypes: ProductItemType[] = ["GOODS", "SERVICE"]
 const statuses: ProductStatus[] = ["ACTIVE", "INACTIVE", "ARCHIVED"]
+const tablePageSize = 15
 const taxabilities: Taxability[] = [
   "TAXABLE",
   "EXEMPT",
@@ -218,15 +224,19 @@ export function ProductsPage() {
   const [formState, setFormState] = React.useState<ProductFormState>(emptyForm)
   const [formErrors, setFormErrors] = React.useState<ProductFormErrors>({})
 
-  const productsQuery = useQuery({
+  const productsQuery = useInfiniteQuery({
     queryKey: ["products", filters],
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       listProducts(accessToken, {
         search: filters.search.trim() || undefined,
         itemType: filters.itemType === "all" ? undefined : filters.itemType,
         status: filters.status === "all" ? undefined : filters.status,
-        limit: 100,
+        page: pageParam,
+        limit: tablePageSize,
       }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
     enabled: accessToken.length > 0,
     staleTime: 1000 * 60 * 3,
   })
@@ -245,7 +255,10 @@ export function ProductsPage() {
     staleTime: 1000 * 60 * 3,
   })
 
-  const products = productsQuery.data?.products ?? []
+  const products =
+    productsQuery.data?.pages.flatMap((page) => page.products) ?? []
+  const totalProductsCount =
+    productsQuery.data?.pages[0]?.pagination.total ?? products.length
   const detailProduct = detailQuery.data?.product ?? null
   const hsnSacOptions =
     mastersQuery.data?.hsnSacCodes.filter((code) =>
@@ -382,6 +395,20 @@ export function ProductsPage() {
     })
   }
 
+  function handleProductsTableScroll(event: React.UIEvent<HTMLDivElement>) {
+    const target = event.currentTarget
+    const remainingScroll =
+      target.scrollHeight - target.scrollTop - target.clientHeight
+
+    if (
+      remainingScroll < 160 &&
+      productsQuery.hasNextPage &&
+      !productsQuery.isFetchingNextPage
+    ) {
+      void productsQuery.fetchNextPage()
+    }
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6">
       <section className="overflow-hidden rounded-2xl border bg-card">
@@ -494,7 +521,10 @@ export function ProductsPage() {
           </Button>
         </div>
 
-        <div className="overflow-x-auto">
+        <div
+          onScroll={handleProductsTableScroll}
+          className="app-scrollbar max-h-[35rem] overflow-auto"
+        >
           <Table>
             <TableHeader>
               <TableRow>
@@ -621,6 +651,20 @@ export function ProductsPage() {
               }
             </TableBody>
           </Table>
+          {productsQuery.isFetchingNextPage ? (
+            <div className="flex items-center justify-center gap-2 border-t border-border px-3 py-3 text-xs text-muted-foreground">
+              <Spinner />
+              Loading more products
+            </div>
+          ) : productsQuery.hasNextPage ? (
+            <div className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
+              Scroll to load more · {products.length} of {totalProductsCount}
+            </div>
+          ) : products.length > tablePageSize ? (
+            <div className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
+              All {totalProductsCount} products loaded
+            </div>
+          ) : null}
         </div>
       </section>
 

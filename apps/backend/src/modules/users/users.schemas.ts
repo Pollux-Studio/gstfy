@@ -47,6 +47,28 @@ export const listUsersQuerySchema = z.object({
   branchId: z.union([z.uuid(), z.literal("all")]).default("all"),
   sortBy: z.enum(["name", "contact", "designation", "status", "preset", "branch"]).default("name"),
   sortDir: z.enum(["asc", "desc"]).default("asc"),
+  page: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((value) => {
+      if (value === undefined || value === "") {
+        return 1
+      }
+
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? Math.max(Math.floor(parsed), 1) : 1
+    }),
+  limit: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((value) => {
+      if (value === undefined || value === "") {
+        return 15
+      }
+
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : 15
+    }),
 })
 
 export type CreateUserInput = z.infer<typeof createUserSchema>

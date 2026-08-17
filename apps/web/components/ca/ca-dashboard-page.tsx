@@ -30,7 +30,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
-import { getStoredAuthSession } from "@/lib/auth/session"
+import {
+  getStoredAuthSession,
+  subscribeToAuthSessionChange,
+} from "@/lib/auth/session"
 import {
   getCaDashboard,
   type CaClientRecord,
@@ -47,15 +50,13 @@ type FilingQueueItem = {
 const currentFilingPeriod = "Aug 2026"
 
 export function CaDashboardPage() {
-  const [storedSession, setStoredSession] = React.useState<ReturnType<
-    typeof getStoredAuthSession
-  >>(null)
+  const storedSession = React.useSyncExternalStore(
+    subscribeToAuthSessionChange,
+    getStoredAuthSession,
+    () => null
+  )
   const userId = storedSession?.user.id ?? ""
   const accessToken = storedSession?.session.accessToken ?? ""
-
-  React.useEffect(() => {
-    setStoredSession(getStoredAuthSession())
-  }, [])
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["ca", "dashboard", userId],
@@ -82,7 +83,6 @@ export function CaDashboardPage() {
   }
 
   const activeClients = data.clients.filter((client) => client.status === "active")
-  const pendingInvites = data.invites.filter((invite) => invite.status === "pending")
   const filingQueue = buildFilingQueue(activeClients)
   const readyQueue = filingQueue.filter((item) => item.status === "ready")
   const reviewQueue = filingQueue.filter((item) => item.status !== "ready")
@@ -148,7 +148,7 @@ export function CaDashboardPage() {
         <DashboardMetric
           icon={<UsersRoundIcon className="size-4" />}
           label="Active clients"
-          value={activeClients.length}
+          value={data.summary.activeClientsTotal}
           helper="Linked businesses ready for CA access"
         />
         <DashboardMetric
@@ -160,13 +160,13 @@ export function CaDashboardPage() {
         <DashboardMetric
           icon={<CalendarClockIcon className="size-4" />}
           label="Returns due"
-          value={activeClients.length * 2}
+          value={data.summary.activeClientsTotal * 2}
           helper="GSTR-1 and GSTR-3B for this period"
         />
         <DashboardMetric
           icon={<TriangleAlertIcon className="size-4" />}
           label="Needs action"
-          value={reviewQueue.length + pendingInvites.length}
+          value={reviewQueue.length + data.summary.pendingInvitesTotal}
           helper="Review gaps plus pending onboarding"
         />
       </section>
@@ -256,7 +256,7 @@ export function CaDashboardPage() {
             />
             <FocusItem
               label="Client onboarding"
-              value={`${pendingInvites.length} pending`}
+              value={`${data.summary.pendingInvitesTotal} pending`}
               tone="neutral"
               description="Pending referral codes still need business acceptance."
             />

@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, inArray, or, type SQL } from "drizzle-orm"
+import { and, desc, eq, ilike, inArray, or, sql as drizzleSql, type SQL } from "drizzle-orm"
 import type { FastifyInstance } from "fastify"
 
 import { db } from "../../db/client.js"
@@ -106,15 +106,28 @@ export async function registerProductsRoutes(app: FastifyInstance) {
       }
     }
 
+    const offset = (query.page - 1) * query.limit
+    const [countRow] = await db
+      .select({ total: drizzleSql<number>`count(*)::int` })
+      .from(items)
+      .where(and(...conditions))
+    const total = countRow?.total ?? 0
     const rows = await db
       .select()
       .from(items)
       .where(and(...conditions))
       .orderBy(desc(items.createdAt))
       .limit(query.limit)
+      .offset(offset)
 
     return {
       products: await buildProductSummaries(access.business.id, rows),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        hasMore: query.page * query.limit < total,
+      },
     }
   })
 

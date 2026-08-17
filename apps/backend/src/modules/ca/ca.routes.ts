@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto"
 
-import { and, desc, eq, gt } from "drizzle-orm"
+import { and, desc, eq, gt, sql as drizzleSql } from "drizzle-orm"
 import type { FastifyInstance, FastifyRequest } from "fastify"
 import { z } from "zod"
 
@@ -33,6 +33,25 @@ const acceptInviteSchema = z.object({
   referralCode: z.string().trim().min(4).max(40),
 })
 
+const paginationValueSchema = z
+  .union([z.string(), z.number()])
+  .optional()
+  .transform((value) => {
+    if (value === undefined || value === "") {
+      return undefined
+    }
+
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? Math.max(Math.trunc(parsed), 1) : undefined
+  })
+
+const caDashboardQuerySchema = z.object({
+  clientsPage: paginationValueSchema.default(1),
+  clientsLimit: paginationValueSchema.default(15),
+  invitesPage: paginationValueSchema.default(1),
+  invitesLimit: paginationValueSchema.default(15),
+})
+
 const clientParamsSchema = z.object({
   businessId: z.uuid(),
 })
@@ -48,10 +67,18 @@ type InviteEmailDelivery = {
   reason: string | null
 }
 
+type CaDashboardQuery = {
+  clientsPage: number
+  clientsLimit: number
+  invitesPage: number
+  invitesLimit: number
+}
+
 export async function registerCaRoutes(app: FastifyInstance) {
   app.get("/ca/clients", async (request) => {
     const { practice } = await requireCaPracticeAccess(request)
-    return getCaDashboardResponse(practice)
+    const query = caDashboardQuerySchema.parse(request.query)
+    return getCaDashboardResponse(practice, normalizeDashboardQuery(query))
   })
 
   app.post("/ca/clients", async (request) => {
@@ -300,8 +327,26 @@ async function requireCaPracticeAccess(request: FastifyRequest) {
   }
 }
 
-async function getCaDashboardResponse(practice: CaPracticeRecord) {
-  const [clientRows, inviteRows] = await Promise.all([
+async function getCaDashboardResponse(
+  practice: CaPracticeRecord,
+  query: CaDashboardQuery = {
+    clientsPage: 1,
+    clientsLimit: 15,
+    invitesPage: 1,
+    invitesLimit: 15,
+  }
+) {
+  const clientOffset = (query.clientsPage - 1) * query.clientsLimit
+  const inviteOffset = (query.invitesPage - 1) * query.invitesLimit
+  const [
+    clientRows,
+    inviteRows,
+    [{ count: clientsTotal = 0 } = {}],
+    [{ count: activeClientsTotal = 0 } = {}],
+    [{ count: invitesTotal = 0 } = {}],
+    [{ count: pendingInvitesTotal = 0 } = {}],
+    [{ count: acceptedInvitesTotal = 0 } = {}],
+  ] = await Promise.all([
     db
       .select({
         id: caBusinessLinks.id,
@@ -317,7 +362,9 @@ async function getCaDashboardResponse(practice: CaPracticeRecord) {
       .innerJoin(businesses, eq(businesses.id, caBusinessLinks.businessId))
       .leftJoin(businessProfiles, eq(businessProfiles.businessId, businesses.id))
       .where(eq(caBusinessLinks.practiceId, practice.id))
-      .orderBy(desc(caBusinessLinks.acceptedAt)),
+      .orderBy(desc(caBusinessLinks.acceptedAt))
+      .limit(query.clientsLimit)
+      .offset(clientOffset),
     db
       .select({
         id: caClientInvites.id,
@@ -333,7 +380,44 @@ async function getCaDashboardResponse(practice: CaPracticeRecord) {
       })
       .from(caClientInvites)
       .where(eq(caClientInvites.practiceId, practice.id))
-      .orderBy(desc(caClientInvites.createdAt)),
+      .orderBy(desc(caClientInvites.createdAt))
+      .limit(query.invitesLimit)
+      .offset(inviteOffset),
+    db
+      .select({ count: drizzleSql<number>`count(*)::int` })
+      .from(caBusinessLinks)
+      .where(eq(caBusinessLinks.practiceId, practice.id)),
+    db
+      .select({ count: drizzleSql<number>`count(*)::int` })
+      .from(caBusinessLinks)
+      .where(
+        and(
+          eq(caBusinessLinks.practiceId, practice.id),
+          eq(caBusinessLinks.status, "active")
+        )
+      ),
+    db
+      .select({ count: drizzleSql<number>`count(*)::int` })
+      .from(caClientInvites)
+      .where(eq(caClientInvites.practiceId, practice.id)),
+    db
+      .select({ count: drizzleSql<number>`count(*)::int` })
+      .from(caClientInvites)
+      .where(
+        and(
+          eq(caClientInvites.practiceId, practice.id),
+          eq(caClientInvites.status, "pending")
+        )
+      ),
+    db
+      .select({ count: drizzleSql<number>`count(*)::int` })
+      .from(caClientInvites)
+      .where(
+        and(
+          eq(caClientInvites.practiceId, practice.id),
+          eq(caClientInvites.status, "accepted")
+        )
+      ),
   ])
 
   return {
@@ -344,6 +428,23 @@ async function getCaDashboardResponse(practice: CaPracticeRecord) {
       contactPhone: practice.contactPhoneE164,
       status: practice.status,
     },
+    summary: {
+      clientsTotal,
+      activeClientsTotal,
+      invitesTotal,
+      pendingInvitesTotal,
+      acceptedInvitesTotal,
+    },
+    clientsPagination: createPaginationMeta(
+      query.clientsPage,
+      query.clientsLimit,
+      clientsTotal
+    ),
+    invitesPagination: createPaginationMeta(
+      query.invitesPage,
+      query.invitesLimit,
+      invitesTotal
+    ),
     clients: clientRows.map((client) => ({
       id: client.id,
       businessId: client.businessId,
@@ -367,6 +468,29 @@ async function getCaDashboardResponse(practice: CaPracticeRecord) {
       acceptedAt: invite.acceptedAt?.toISOString() ?? null,
       createdAt: invite.createdAt.toISOString(),
     })),
+  }
+}
+
+function normalizeDashboardQuery(query: {
+  clientsPage?: number
+  clientsLimit?: number
+  invitesPage?: number
+  invitesLimit?: number
+}): CaDashboardQuery {
+  return {
+    clientsPage: query.clientsPage ?? 1,
+    clientsLimit: Math.min(Math.max(query.clientsLimit ?? 15, 1), 100),
+    invitesPage: query.invitesPage ?? 1,
+    invitesLimit: Math.min(Math.max(query.invitesLimit ?? 15, 1), 100),
+  }
+}
+
+function createPaginationMeta(page: number, limit: number, total: number) {
+  return {
+    page,
+    limit,
+    total,
+    hasMore: page * limit < total,
   }
 }
 

@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, or, type SQL } from "drizzle-orm"
+import { and, desc, eq, ilike, or, sql as drizzleSql, type SQL } from "drizzle-orm"
 import type { FastifyInstance } from "fastify"
 
 import { db } from "../../db/client.js"
@@ -52,13 +52,28 @@ export async function registerSalesRoutes(app: FastifyInstance) {
       }
     }
 
+    const offset = (query.page - 1) * query.limit
+    const [countRow] = await db
+      .select({ total: drizzleSql<number>`count(*)::int` })
+      .from(salesInvoices)
+      .where(and(...conditions))
+    const total = countRow?.total ?? 0
+    const invoices = await db
+      .select()
+      .from(salesInvoices)
+      .where(and(...conditions))
+      .orderBy(desc(salesInvoices.createdAt))
+      .limit(query.limit)
+      .offset(offset)
+
     return {
-      invoices: await db
-        .select()
-        .from(salesInvoices)
-        .where(and(...conditions))
-        .orderBy(desc(salesInvoices.createdAt))
-        .limit(query.limit),
+      invoices,
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        hasMore: query.page * query.limit < total,
+      },
     }
   })
 

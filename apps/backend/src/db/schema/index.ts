@@ -1541,6 +1541,7 @@ export const partyGstRegistrations = pgTable(
     state: text("state"),
     effectiveFrom: date("effective_from"),
     effectiveTo: date("effective_to"),
+    registeredAddressId: uuid("registered_address_id"),
     status: text("status").notNull().default("active"),
     isPrimary: boolean("is_primary").notNull().default(false),
     ...timestamps,
@@ -1551,6 +1552,9 @@ export const partyGstRegistrations = pgTable(
     ),
     partyIndex: index("party_gst_registrations_party_id_idx").on(table.partyId),
     gstinIndex: index("party_gst_registrations_gstin_idx").on(table.gstin),
+    registeredAddressIndex: index(
+      "party_gst_registrations_registered_address_id_idx"
+    ).on(table.registeredAddressId),
     businessIdentityUnique: uniqueIndex(
       "party_gst_registrations_id_business_id_unique"
     ).on(table.id, table.businessId),
@@ -1709,6 +1713,47 @@ export const partyBankAccounts = pgTable(
       columns: [table.partyId, table.businessId],
       foreignColumns: [parties.id, parties.businessId],
       name: "party_bank_accounts_party_business_fk",
+    }).onDelete("restrict"),
+  })
+)
+
+export const partyDocuments = pgTable(
+  "party_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    partyId: uuid("party_id")
+      .notNull()
+      .references(() => parties.id, { onDelete: "restrict" }),
+    documentType: text("document_type").notNull().default("other"),
+    title: text("title").notNull(),
+    fileReference: text("file_reference").notNull(),
+    fileName: text("file_name"),
+    mimeType: text("mime_type"),
+    fileSizeBytes: integer("file_size_bytes"),
+    notes: text("notes"),
+    status: text("status").notNull().default("active"),
+    uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("party_documents_business_id_idx").on(table.businessId),
+    partyIndex: index("party_documents_party_id_idx").on(table.partyId),
+    statusIndex: index("party_documents_status_idx").on(table.status),
+    businessIdentityUnique: uniqueIndex("party_documents_id_business_id_unique").on(
+      table.id,
+      table.businessId
+    ),
+    partyBusinessIdentityUnique: uniqueIndex(
+      "party_documents_id_party_business_unique"
+    ).on(table.id, table.partyId, table.businessId),
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "party_documents_party_business_fk",
     }).onDelete("restrict"),
   })
 )
@@ -2541,6 +2586,7 @@ export type PartyRecord = typeof parties.$inferSelect
 export type PartyGstRegistrationRecord = typeof partyGstRegistrations.$inferSelect
 export type PartyAddressRecord = typeof partyAddresses.$inferSelect
 export type PartyContactRecord = typeof partyContacts.$inferSelect
+export type PartyDocumentRecord = typeof partyDocuments.$inferSelect
 export type PartyCustomerProfileRecord = typeof partyCustomerProfiles.$inferSelect
 export type PartySupplierProfileRecord = typeof partySupplierProfiles.$inferSelect
 export type HsnSacCodeRecord = typeof hsnSacCodes.$inferSelect

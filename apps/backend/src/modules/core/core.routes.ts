@@ -73,26 +73,34 @@ export async function registerCoreRoutes(app: FastifyInstance) {
   app.get("/core/vouchers", async (request) => {
     const access = await requirePrimaryBusinessAccess(request)
     const query = listVouchersQuerySchema.parse(request.query)
+    const [{ count = 0 } = {}] = await db
+      .select({ count: drizzleSql<number>`count(*)::int` })
+      .from(vouchers)
+      .where(eq(vouchers.businessId, access.business.id))
+    const offset = (query.page - 1) * query.limit
+    const rows = await db
+      .select({
+        id: vouchers.id,
+        voucherType: vouchers.voucherType,
+        voucherNumber: vouchers.voucherNumber,
+        voucherDate: vouchers.voucherDate,
+        status: vouchers.status,
+        gstRegistrationId: vouchers.gstRegistrationId,
+        branchId: vouchers.branchId,
+        warehouseId: vouchers.warehouseId,
+        financialYearId: vouchers.financialYearId,
+        postedAt: vouchers.postedAt,
+        createdAt: vouchers.createdAt,
+      })
+      .from(vouchers)
+      .where(eq(vouchers.businessId, access.business.id))
+      .orderBy(desc(vouchers.createdAt))
+      .limit(query.limit)
+      .offset(offset)
 
     return {
-      vouchers: await db
-        .select({
-          id: vouchers.id,
-          voucherType: vouchers.voucherType,
-          voucherNumber: vouchers.voucherNumber,
-          voucherDate: vouchers.voucherDate,
-          status: vouchers.status,
-          gstRegistrationId: vouchers.gstRegistrationId,
-          branchId: vouchers.branchId,
-          warehouseId: vouchers.warehouseId,
-          financialYearId: vouchers.financialYearId,
-          postedAt: vouchers.postedAt,
-          createdAt: vouchers.createdAt,
-        })
-        .from(vouchers)
-        .where(eq(vouchers.businessId, access.business.id))
-        .orderBy(desc(vouchers.createdAt))
-        .limit(query.limit),
+      vouchers: rows,
+      pagination: createPaginationMeta(query.page, query.limit, count),
     }
   })
 
@@ -118,6 +126,15 @@ export async function registerCoreRoutes(app: FastifyInstance) {
 
     return postVoucher(access, body)
   })
+}
+
+function createPaginationMeta(page: number, limit: number, total: number) {
+  return {
+    page,
+    limit,
+    total,
+    hasMore: page * limit < total,
+  }
 }
 
 export async function postVoucher(access: BusinessAccess, input: PostVoucherInput) {

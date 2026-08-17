@@ -76,6 +76,18 @@ export function getStoredAuthSession(): StoredAuthSession | null {
   }
 }
 
+export function subscribeToAuthSessionChange(callback: () => void) {
+  if (typeof window === "undefined") {
+    return () => {}
+  }
+
+  window.addEventListener(AUTH_SESSION_CHANGE_EVENT, callback)
+
+  return () => {
+    window.removeEventListener(AUTH_SESSION_CHANGE_EVENT, callback)
+  }
+}
+
 export function refreshStoredAuthSession() {
   if (!activeRefreshPromise) {
     activeRefreshPromise = refreshAuthSession().finally(() => {

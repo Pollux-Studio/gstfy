@@ -1,7 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 import {
   ArrowDownIcon,
   ArrowUpDownIcon,
@@ -62,6 +67,7 @@ import { getStoredAuthSession } from "@/lib/auth/session"
 import {
   archiveParty,
   createParty,
+  findPartyDuplicates,
   getParty,
   listParties,
   updateParty,
@@ -92,6 +98,7 @@ import {
   getErrorMessage,
   getInitials,
   getPartyDuplicateWarnings,
+  savePartyChildrenForCreate,
   savePartyChildrenForEdit,
   sortParties,
   validatePartyForm,
@@ -99,6 +106,8 @@ import {
 import { PartyDetailDialog } from "./party-detail-dialog"
 import { PartyFormDialog } from "./party-form-dialog"
 import { PartyStatusBadge } from "./party-status-badge"
+
+const tablePageSize = 15
 
 export function PartiesPage() {
   const storedSession = getStoredAuthSession()
@@ -121,17 +130,21 @@ export function PartiesPage() {
   const [formState, setFormState] = React.useState<PartyFormState>(emptyForm)
   const [formErrors, setFormErrors] = React.useState<PartyFormErrors>({})
 
-  const partiesQuery = useQuery({
+  const partiesQuery = useInfiniteQuery({
     queryKey: ["parties", filters, sortBy, sortDir],
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       listParties(accessToken, {
         search: filters.search.trim() || undefined,
         role: filters.role === "all" ? undefined : filters.role,
         status: filters.status === "all" ? undefined : filters.status,
         sortBy,
         sortDir,
-        limit: 100,
+        page: pageParam,
+        limit: tablePageSize,
       }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
     enabled: accessToken.length > 0,
     staleTime: 1000 * 60 * 3,
   })
@@ -143,8 +156,8 @@ export function PartiesPage() {
     staleTime: 1000 * 60 * 3,
   })
   const rawParties = React.useMemo(
-    () => partiesQuery.data?.parties ?? [],
-    [partiesQuery.data?.parties]
+    () => partiesQuery.data?.pages.flatMap((page) => page.parties) ?? [],
+    [partiesQuery.data?.pages]
   )
   const parties = React.useMemo(
     () => sortParties(rawParties, sortBy, sortDir),
@@ -183,14 +196,60 @@ export function PartiesPage() {
   const gstRegisteredPartiesCount = parties.filter((party) =>
     Boolean(party.primaryGstRegistration)
   ).length
+  const totalPartiesCount = partiesQuery.data?.pages[0]?.pagination.total ?? parties.length
   const duplicateWarnings = React.useMemo(
     () => getPartyDuplicateWarnings(formState, rawParties, selectedPartyId),
     [formState, rawParties, selectedPartyId]
   )
+  const duplicateLookupInput = React.useMemo(
+    () => buildDuplicateLookupInput(formState, selectedPartyId),
+    [formState, selectedPartyId]
+  )
+  const deferredDuplicateLookupInput = React.useDeferredValue(duplicateLookupInput)
+  const duplicateSuggestionsQuery = useQuery({
+    queryKey: ["parties", "duplicates", deferredDuplicateLookupInput],
+    queryFn: () => findPartyDuplicates(accessToken, deferredDuplicateLookupInput),
+    enabled:
+      sheetMode !== null &&
+      accessToken.length > 0 &&
+      hasDuplicateLookupInput(deferredDuplicateLookupInput),
+    staleTime: 1000 * 30,
+  })
+  const duplicateSuggestions = duplicateSuggestionsQuery.data?.suggestions ?? []
 
   function handleDetailPartyChanged(party: PartyDetail) {
     queryClient.setQueryData(["parties", "detail", party.id], { party })
     queryClient.invalidateQueries({ queryKey: ["parties"] })
+  }
+
+  function openPartyDetails(partyId: string) {
+    setSheetMode(null)
+    setSelectedPartyId(null)
+    setPartyPendingArchive(null)
+    setBulkArchiveDialogOpen(false)
+    setDetailPartyId(partyId)
+  }
+
+  function openPartyArchive(party: PartyListItem) {
+    setSheetMode(null)
+    setSelectedPartyId(null)
+    setDetailPartyId(null)
+    setBulkArchiveDialogOpen(false)
+    setPartyPendingArchive(party)
+  }
+
+  function handlePartiesTableScroll(event: React.UIEvent<HTMLDivElement>) {
+    const target = event.currentTarget
+    const remainingScroll =
+      target.scrollHeight - target.scrollTop - target.clientHeight
+
+    if (
+      remainingScroll < 160 &&
+      partiesQuery.hasNextPage &&
+      !partiesQuery.isFetchingNextPage
+    ) {
+      void partiesQuery.fetchNextPage()
+    }
   }
 
   const upsertMutation = useMutation({
@@ -214,7 +273,14 @@ export function PartiesPage() {
         )
       }
 
-      return createParty(buildCreatePayload(payload.form), accessToken)
+      const createdParty = await createParty(buildCreatePayload(payload.form), accessToken)
+
+      return savePartyChildrenForCreate(
+        createdParty.party.id,
+        payload.form,
+        createdParty.party,
+        accessToken
+      )
     },
     onSuccess: (response, payload) => {
       queryClient.invalidateQueries({ queryKey: ["parties"] })
@@ -583,6 +649,7 @@ export function PartiesPage() {
                 </div>
               ) : null}
               <div
+                onScroll={handlePartiesTableScroll}
                 className={cn(
                   "app-scrollbar overflow-y-auto overflow-x-hidden",
                   selectedParties.length > 0 && shouldConstrainPartiesTable ?
@@ -774,7 +841,7 @@ export function PartiesPage() {
                                 <span className="sr-only">Open party actions</span>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" sideOffset={8} className="w-44">
-                                <DropdownMenuItem onClick={() => setDetailPartyId(party.id)}>
+                                <DropdownMenuItem onClick={() => openPartyDetails(party.id)}>
                                   <EyeIcon className="text-muted-foreground" />
                                   <span>View details</span>
                                 </DropdownMenuItem>
@@ -785,7 +852,7 @@ export function PartiesPage() {
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   variant="destructive"
-                                  onClick={() => setPartyPendingArchive(party)}
+                                  onClick={() => openPartyArchive(party)}
                                 >
                                   <Trash2Icon className="text-muted-foreground" />
                                   <span>Archive</span>
@@ -798,6 +865,20 @@ export function PartiesPage() {
                     })}
                   </TableBody>
                 </Table>
+                {partiesQuery.isFetchingNextPage ? (
+                  <div className="flex items-center justify-center gap-2 border-t border-border px-3 py-3 text-xs text-muted-foreground">
+                    <Spinner />
+                    Loading more parties
+                  </div>
+                ) : partiesQuery.hasNextPage ? (
+                  <div className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
+                    Scroll to load more · {parties.length} of {totalPartiesCount}
+                  </div>
+                ) : parties.length > tablePageSize ? (
+                  <div className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
+                    All {totalPartiesCount} parties loaded
+                  </div>
+                ) : null}
               </div>
             </div>
           )}
@@ -809,55 +890,115 @@ export function PartiesPage() {
         form={formState}
         errors={formErrors}
         duplicateWarnings={duplicateWarnings}
+        duplicateSuggestions={duplicateSuggestions}
+        isCheckingDuplicates={duplicateSuggestionsQuery.isFetching}
         isPending={upsertMutation.isPending}
         onChange={updateFormValue}
         onClose={closeSheet}
         onSubmit={handleSubmit}
       />
 
-      <PartyDetailDialog
-        party={detailParty}
-        accessToken={accessToken}
-        isLoading={detailQuery.isLoading}
-        open={detailPartyId !== null}
-        onPartyChanged={handleDetailPartyChanged}
-        onOpenChange={(open) => !open && setDetailPartyId(null)}
-      />
+      {detailPartyId ? (
+        <PartyDetailDialog
+          party={detailParty}
+          accessToken={accessToken}
+          isLoading={detailQuery.isLoading}
+          open
+          onPartyChanged={handleDetailPartyChanged}
+          onOpenChange={(open) => !open && setDetailPartyId(null)}
+        />
+      ) : null}
 
-      <Dialog
-        open={partyPendingArchive !== null}
-        onOpenChange={(open) => !open && setPartyPendingArchive(null)}
-      >
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Archive party</DialogTitle>
-            <DialogDescription>
-              {partyPendingArchive ?
-                `Archive ${partyPendingArchive.displayName}? Existing sales and POS invoices keep their saved party snapshot, but this party cannot be used for new transactions.`
-              : "Archive this party?"}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setPartyPendingArchive(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={archiveMutation.isPending}
-              onClick={() =>
-                partyPendingArchive && archiveMutation.mutate(partyPendingArchive.id)
-              }
-            >
-              {archiveMutation.isPending ? <Spinner /> : "Archive"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {partyPendingArchive ? (
+        <Dialog
+          open
+          onOpenChange={(open) => !open && setPartyPendingArchive(null)}
+        >
+          <DialogContent showCloseButton={false} className="max-w-xl gap-4">
+            <DialogHeader className="text-left">
+              <div className="mb-1 flex size-10 items-center justify-center rounded-2xl bg-destructive/10 text-destructive">
+                <Trash2Icon className="size-5" />
+              </div>
+              <DialogTitle>Archive party</DialogTitle>
+              <DialogDescription>
+                This moves the party out of active use without deleting historical
+                transactions or saved snapshots.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="rounded-2xl border border-border bg-muted/20 p-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <Avatar className="size-10 rounded-xl">
+                  {partyPendingArchive.profileImageSeed ? (
+                    <AvatarImage
+                      src={getProfileAvatarUrl(partyPendingArchive.profileImageSeed)}
+                      alt={`${partyPendingArchive.displayName} avatar`}
+                    />
+                  ) : null}
+                  <AvatarFallback>
+                    {getInitials(partyPendingArchive.displayName)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">
+                    {partyPendingArchive.displayName}
+                  </p>
+                  <p className="truncate font-mono text-xs tracking-[0.12em] text-muted-foreground">
+                    {partyPendingArchive.primaryGstRegistration?.gstin ??
+                      partyPendingArchive.pan ??
+                      "NO GSTIN / PAN"}
+                  </p>
+                </div>
+                <PartyStatusBadge compact status={partyPendingArchive.status} />
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-3">
+              <ArchiveImpactCard
+                icon={<ReceiptTextIcon className="size-3.5" />}
+                label="History"
+                value="Kept"
+                description="Invoices, POS bills, and ledger snapshots remain intact."
+              />
+              <ArchiveImpactCard
+                icon={<ShieldCheckIcon className="size-3.5" />}
+                label="New usage"
+                value="Blocked"
+                description="Archived parties cannot be selected for new transactions."
+              />
+              <ArchiveImpactCard
+                icon={<StoreIcon className="size-3.5" />}
+                label="Roles"
+                value={partyPendingArchive.roles.length || 0}
+                description="Customer/supplier profiles are preserved, not deleted."
+              />
+            </div>
+
+            <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              Archive only if this party should no longer appear in active sales,
+              purchase, POS, or payment selection flows.
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPartyPendingArchive(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={archiveMutation.isPending}
+                onClick={() => archiveMutation.mutate(partyPendingArchive.id)}
+              >
+                {archiveMutation.isPending ? <Spinner /> : "Archive party"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       <Dialog
         open={bulkArchiveDialogOpen}
@@ -939,6 +1080,33 @@ export function PartiesPage() {
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+function ArchiveImpactCard({
+  description,
+  icon,
+  label,
+  value,
+}: {
+  description: string
+  icon: React.ReactNode
+  label: string
+  value: string | number
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex size-6 items-center justify-center text-muted-foreground">
+          {icon}
+        </span>
+        <p className="text-xs font-medium text-foreground">{value}</p>
+      </div>
+      <p className="mt-2 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+    </div>
   )
 }
 
@@ -1045,6 +1213,43 @@ function PartiesTopMetric({
       </div>
       <p className="mt-1 text-xl font-semibold tracking-tight">{value}</p>
     </div>
+  )
+}
+
+function buildDuplicateLookupInput(
+  form: PartyFormState,
+  selectedPartyId: string | null
+) {
+  const gstin =
+    form.gstRegistrations.find((registration) => registration.gstin.trim())?.gstin ||
+    form.gstin
+  const email =
+    form.contacts.find((contact) => contact.email.trim())?.email || form.contactEmail
+  const mobile =
+    form.contacts.find((contact) => contact.mobile.trim())?.mobile || form.contactMobile
+
+  return {
+    displayName: form.displayName.trim(),
+    legalName: form.legalName.trim(),
+    tradeName: form.tradeName.trim(),
+    pan: form.pan.trim(),
+    gstin: gstin.trim(),
+    email: email.trim(),
+    mobile: mobile.trim(),
+    excludePartyId: selectedPartyId,
+    limit: 5,
+  }
+}
+
+function hasDuplicateLookupInput(input: ReturnType<typeof buildDuplicateLookupInput>) {
+  return (
+    input.displayName.length >= 4 ||
+    input.legalName.length >= 4 ||
+    input.tradeName.length >= 4 ||
+    input.pan.length >= 5 ||
+    input.gstin.length >= 4 ||
+    input.email.length >= 5 ||
+    input.mobile.replace(/\D/g, "").length >= 6
   )
 }
 

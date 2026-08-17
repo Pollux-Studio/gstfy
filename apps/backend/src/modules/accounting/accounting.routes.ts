@@ -1,4 +1,4 @@
-import { and, eq, ilike, or, type SQL } from "drizzle-orm"
+import { and, eq, ilike, or, sql as drizzleSql, type SQL } from "drizzle-orm"
 import type { FastifyInstance } from "fastify"
 
 import { db, sql } from "../../db/client.js"
@@ -46,6 +46,7 @@ type LedgerSqlRow = {
   narration: string | null
   debit: string
   credit: string
+  debit_running_balance: string
 }
 
 type DayBookSqlRow = {
@@ -113,12 +114,22 @@ export async function registerAccountingRoutes(app: FastifyInstance) {
       }
     }
 
+    const [{ count = 0 } = {}] = await db
+      .select({ count: drizzleSql<number>`count(*)::int` })
+      .from(ledgerAccounts)
+      .where(and(...conditions))
+    const offset = (query.page - 1) * query.limit
+    const accounts = await db
+      .select()
+      .from(ledgerAccounts)
+      .where(and(...conditions))
+      .orderBy(ledgerAccounts.accountCode)
+      .limit(query.limit)
+      .offset(offset)
+
     return {
-      accounts: await db
-        .select()
-        .from(ledgerAccounts)
-        .where(and(...conditions))
-        .orderBy(ledgerAccounts.accountCode),
+      accounts,
+      pagination: createPaginationMeta(query.page, query.limit, count),
     }
   })
 
@@ -304,16 +315,15 @@ export async function registerAccountingRoutes(app: FastifyInstance) {
     const { id } = accountIdParamsSchema.parse(request.params)
     const query = reportQuerySchema.parse(request.query)
     const account = await requireLedgerAccount(access.business.id, id)
-    const rows = await getLedgerRows(access.business.id, account.id, query)
-    let runningBalance = 0
+    const [rows, total] = await Promise.all([
+      getLedgerRows(access.business.id, account.id, query),
+      countLedgerRows(access.business.id, account.id, query),
+    ])
 
     return {
       account,
       lines: rows.map((row) => {
-        const debit = toCents(row.debit)
-        const credit = toCents(row.credit)
-        runningBalance +=
-          account.normalBalance === "CREDIT" ? credit - debit : debit - credit
+        const runningBalance = toCents(row.debit_running_balance)
 
         return {
           id: row.line_id,
@@ -324,9 +334,12 @@ export async function registerAccountingRoutes(app: FastifyInstance) {
           narration: row.narration,
           debit: row.debit,
           credit: row.credit,
-          runningBalance: formatCents(runningBalance),
+          runningBalance: formatCents(
+            account.normalBalance === "CREDIT" ? -runningBalance : runningBalance
+          ),
         }
       }),
+      pagination: createPaginationMeta(query.page, query.limit, total),
     }
   })
 
@@ -415,11 +428,25 @@ export async function registerAccountingRoutes(app: FastifyInstance) {
     const access = await requirePrimaryBusinessAccess(request)
     await assertCanUseAccounting(access, "view")
     const query = reportQuerySchema.parse(request.query)
+    const [entries, total] = await Promise.all([
+      getDayBookRows(access.business.id, query),
+      countDayBookRows(access.business.id, query),
+    ])
 
     return {
-      entries: await getDayBookRows(access.business.id, query),
+      entries,
+      pagination: createPaginationMeta(query.page, query.limit, total),
     }
   })
+}
+
+function createPaginationMeta(page: number, limit: number, total: number) {
+  return {
+    page,
+    limit,
+    total,
+    hasMore: page * limit < total,
+  }
 }
 
 async function listBusinessAccounts(businessId: string) {
@@ -584,6 +611,7 @@ async function getLedgerRows(
   const branchId = query.branchId ?? null
   const gstRegistrationId = query.gstRegistrationId ?? null
   const warehouseId = query.warehouseId ?? null
+  const offset = (query.page - 1) * query.limit
 
   return sql<LedgerSqlRow[]>`
     select
@@ -594,7 +622,11 @@ async function getLedgerRows(
       voucher.voucher_type,
       line.narration,
       line.debit::text,
-      line.credit::text
+      line.credit::text,
+      coalesce(sum(line.debit - line.credit) over (
+        order by entry.entry_date, entry.created_at, line.created_at, line.id
+        rows between unbounded preceding and current row
+      ), 0)::text as debit_running_balance
     from public.journal_entry_lines line
     inner join public.journal_entries entry
       on entry.id = line.journal_entry_id
@@ -608,7 +640,38 @@ async function getLedgerRows(
       and (${gstRegistrationId}::uuid is null or voucher.gst_registration_id = ${gstRegistrationId}::uuid)
       and (${warehouseId}::uuid is null or voucher.warehouse_id = ${warehouseId}::uuid)
     order by entry.entry_date, entry.created_at, line.created_at, line.id
+    limit ${query.limit}
+    offset ${offset}
   `
+}
+
+async function countLedgerRows(
+  businessId: string,
+  accountId: string,
+  query: ReportQueryInput
+) {
+  const from = query.from ?? null
+  const to = query.to ?? null
+  const branchId = query.branchId ?? null
+  const gstRegistrationId = query.gstRegistrationId ?? null
+  const warehouseId = query.warehouseId ?? null
+  const [row] = await sql<Array<{ count: number }>>`
+    select count(*)::int as count
+    from public.journal_entry_lines line
+    inner join public.journal_entries entry
+      on entry.id = line.journal_entry_id
+    inner join public.vouchers voucher
+      on voucher.id = entry.voucher_id
+    where line.business_id = ${businessId}
+      and line.account_id = ${accountId}
+      and (${from}::text is null or entry.entry_date >= ${from}::text)
+      and (${to}::text is null or entry.entry_date <= ${to}::text)
+      and (${branchId}::uuid is null or voucher.branch_id = ${branchId}::uuid)
+      and (${gstRegistrationId}::uuid is null or voucher.gst_registration_id = ${gstRegistrationId}::uuid)
+      and (${warehouseId}::uuid is null or voucher.warehouse_id = ${warehouseId}::uuid)
+  `
+
+  return row?.count ?? 0
 }
 
 async function getDayBookRows(businessId: string, query: ReportQueryInput) {
@@ -617,6 +680,7 @@ async function getDayBookRows(businessId: string, query: ReportQueryInput) {
   const branchId = query.branchId ?? null
   const gstRegistrationId = query.gstRegistrationId ?? null
   const warehouseId = query.warehouseId ?? null
+  const offset = (query.page - 1) * query.limit
 
   return sql<DayBookSqlRow[]>`
     select
@@ -646,8 +710,29 @@ async function getDayBookRows(businessId: string, query: ReportQueryInput) {
       and (${warehouseId}::uuid is null or voucher.warehouse_id = ${warehouseId}::uuid)
     group by voucher.id
     order by voucher.voucher_date desc, voucher.created_at desc
-    limit 100
+    limit ${query.limit}
+    offset ${offset}
   `
+}
+
+async function countDayBookRows(businessId: string, query: ReportQueryInput) {
+  const from = query.from ?? null
+  const to = query.to ?? null
+  const branchId = query.branchId ?? null
+  const gstRegistrationId = query.gstRegistrationId ?? null
+  const warehouseId = query.warehouseId ?? null
+  const [row] = await sql<Array<{ count: number }>>`
+    select count(*)::int as count
+    from public.vouchers voucher
+    where voucher.business_id = ${businessId}
+      and (${from}::text is null or voucher.voucher_date >= ${from}::text)
+      and (${to}::text is null or voucher.voucher_date <= ${to}::text)
+      and (${branchId}::uuid is null or voucher.branch_id = ${branchId}::uuid)
+      and (${gstRegistrationId}::uuid is null or voucher.gst_registration_id = ${gstRegistrationId}::uuid)
+      and (${warehouseId}::uuid is null or voucher.warehouse_id = ${warehouseId}::uuid)
+  `
+
+  return row?.count ?? 0
 }
 
 function accountSeed(

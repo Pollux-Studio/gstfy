@@ -2,11 +2,10 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   CopyIcon,
   ExternalLinkIcon,
-  MailIcon,
   ShieldCheckIcon,
   UserPlusIcon,
   UsersRoundIcon,
@@ -32,7 +31,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
-import { getStoredAuthSession } from "@/lib/auth/session"
+import {
+  getStoredAuthSession,
+  subscribeToAuthSessionChange,
+} from "@/lib/auth/session"
 import {
   createCaClient,
   getCaInviteCreationToast,
@@ -52,27 +54,40 @@ const initialFormState: ClientFormState = {
   clientEmail: "",
   clientGstin: "",
 }
+const caTablePageSize = 15
 
 export function CaClientsPage() {
   const queryClient = useQueryClient()
-  const [storedSession, setStoredSession] = React.useState<ReturnType<
-    typeof getStoredAuthSession
-  >>(null)
+  const storedSession = React.useSyncExternalStore(
+    subscribeToAuthSessionChange,
+    getStoredAuthSession,
+    () => null
+  )
   const userId = storedSession?.user.id ?? ""
   const accessToken = storedSession?.session.accessToken ?? ""
   const [formState, setFormState] = React.useState<ClientFormState>(initialFormState)
   const [latestInvite, setLatestInvite] = React.useState<CaClientInviteRecord | null>(null)
 
-  React.useEffect(() => {
-    setStoredSession(getStoredAuthSession())
-  }, [])
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["ca", "dashboard", userId],
-    queryFn: () => getCaDashboard(accessToken),
+  const clientsQuery = useInfiniteQuery({
+    queryKey: ["ca", "dashboard", userId, "clients"],
+    queryFn: ({ pageParam }) =>
+      getCaDashboard(accessToken, {
+        clientsPage: pageParam,
+        clientsLimit: caTablePageSize,
+        invitesLimit: 1,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.clientsPagination.hasMore ?
+        lastPage.clientsPagination.page + 1
+      : undefined,
     enabled: accessToken.length > 0 && userId.length > 0,
     staleTime: 1000 * 60 * 3,
   })
+  const data = clientsQuery.data?.pages[0]
+  const clients = clientsQuery.data?.pages.flatMap((page) => page.clients) ?? []
+  const error = clientsQuery.error
+  const totalClientsCount = data?.clientsPagination.total ?? clients.length
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -88,8 +103,8 @@ export function CaClientsPage() {
         },
         accessToken
       ),
-    onSuccess: (nextData) => {
-      queryClient.setQueryData(["ca", "dashboard", userId], nextData)
+    onSuccess: async (nextData) => {
+      await queryClient.invalidateQueries({ queryKey: ["ca", "dashboard"] })
       setLatestInvite(nextData.invites[0] ?? null)
       setFormState(initialFormState)
       const inviteToast = getCaInviteCreationToast(nextData.createdInvite)
@@ -109,8 +124,8 @@ export function CaClientsPage() {
 
   const revokeMutation = useMutation({
     mutationFn: (businessId: string) => revokeCaClient(businessId, accessToken),
-    onSuccess: (nextData) => {
-      queryClient.setQueryData(["ca", "dashboard", userId], nextData)
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["ca", "dashboard"] })
       toast.success("CA access revoked for this client.")
     },
     onError: (mutationError) => {
@@ -130,6 +145,22 @@ export function CaClientsPage() {
     toast.success(`${label} copied.`)
   }
 
+  const handleClientsTableScroll = React.useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      if (!clientsQuery.hasNextPage || clientsQuery.isFetchingNextPage) {
+        return
+      }
+
+      const target = event.currentTarget
+      const remaining = target.scrollHeight - target.scrollTop - target.clientHeight
+
+      if (remaining < 160) {
+        void clientsQuery.fetchNextPage()
+      }
+    },
+    [clientsQuery]
+  )
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -141,7 +172,7 @@ export function CaClientsPage() {
     createMutation.mutate()
   }
 
-  if (!storedSession || isLoading) {
+  if (!storedSession || clientsQuery.isLoading) {
     return <CaClientsSkeleton />
   }
 
@@ -157,8 +188,6 @@ export function CaClientsPage() {
       </div>
     )
   }
-
-  const activeClients = data.clients.filter((client) => client.status === "active")
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
@@ -180,8 +209,8 @@ export function CaClientsPage() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:min-w-56">
-            <MiniMetric label="Active" value={activeClients.length} />
-            <MiniMetric label="Total" value={data.clients.length} />
+            <MiniMetric label="Active" value={data.summary.activeClientsTotal} />
+            <MiniMetric label="Total" value={data.summary.clientsTotal} />
           </div>
         </div>
       </section>
@@ -288,7 +317,10 @@ export function CaClientsPage() {
               </Button>
             </div>
           </div>
-          <div className="app-scrollbar overflow-x-auto">
+          <div
+            className="app-scrollbar max-h-[35rem] overflow-auto"
+            onScroll={handleClientsTableScroll}
+          >
             <Table className="min-w-[820px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -300,8 +332,8 @@ export function CaClientsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.clients.length > 0 ?
-                  data.clients.map((client) => (
+                {clients.length > 0 ?
+                  clients.map((client) => (
                     <TableRow key={client.id}>
                       <TableCell>
                         <div className="space-y-1">
@@ -370,6 +402,22 @@ export function CaClientsPage() {
               </TableBody>
             </Table>
           </div>
+          {clients.length > 0 ? (
+            <div className="flex items-center justify-center border-t px-4 py-3 text-xs text-muted-foreground">
+              {clientsQuery.isFetchingNextPage ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner className="size-3.5" />
+                  Loading more clients
+                </span>
+              ) : clientsQuery.hasNextPage ? (
+                <span>Scroll to load more clients</span>
+              ) : (
+                <span>
+                  Showing {clients.length} of {totalClientsCount} clients
+                </span>
+              )}
+            </div>
+          ) : null}
         </section>
       </section>
     </div>

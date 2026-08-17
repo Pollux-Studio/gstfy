@@ -1,16 +1,25 @@
 "use client"
 
 import * as React from "react"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
+import Link from "next/link"
 import {
   ArchiveIcon,
+  BadgeIndianRupeeIcon,
+  BanknoteIcon,
+  BookOpenTextIcon,
+  BriefcaseBusinessIcon,
+  CalendarClockIcon,
   CheckIcon,
+  ClipboardListIcon,
   ContactRoundIcon,
+  FileTextIcon,
+  HistoryIcon,
   MapPinIcon,
   PlusIcon,
   ReceiptTextIcon,
   StoreIcon,
-  UsersIcon,
+  TrendingUpIcon,
 } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -35,18 +44,29 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/toast"
 import { getProfileAvatarUrl } from "@/lib/avatar"
 import {
+  addPartyDocument,
   addPartyGstRegistration,
+  archivePartyDocument,
   archivePartyGstRegistration,
+  getPartyAudit,
+  getPartyDocuments,
+  getPartyLedger,
   updatePartyGstRegistration,
+  type PartyAuditEntry,
   type PartyDetail,
+  type PartyDocument,
   type PartyGstRegistration,
+  type PartyLedgerEntry,
+  type PartyLedgerTotals,
 } from "@/lib/parties/api"
 import { cn } from "@/lib/utils"
 import {
   emptyGstRegistrationForm,
+  addressTypeOptions,
   gstRegistrationStatusOptions,
   gstRegistrationTypeOptions,
   partyTypeLabels,
@@ -63,6 +83,64 @@ import {
   validateGstRegistrationForm,
 } from "./party-utils"
 import { PartyStatusBadge } from "./party-status-badge"
+
+type PartyWorkspaceTab =
+  | "overview"
+  | "gst"
+  | "addresses"
+  | "contacts"
+  | "bank"
+  | "commercial"
+  | "ledger"
+  | "documents"
+  | "audit"
+  | "more"
+
+const partyWorkspaceTabs: Array<{
+  value: PartyWorkspaceTab
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+}> = [
+  { value: "overview", label: "Overview", icon: ClipboardListIcon },
+  { value: "gst", label: "GST", icon: ReceiptTextIcon },
+  { value: "addresses", label: "Addresses", icon: MapPinIcon },
+  { value: "contacts", label: "Contacts", icon: ContactRoundIcon },
+  { value: "bank", label: "Bank", icon: BanknoteIcon },
+  { value: "commercial", label: "Commercial", icon: BriefcaseBusinessIcon },
+  { value: "ledger", label: "Ledger", icon: BookOpenTextIcon },
+  { value: "documents", label: "Documents", icon: FileTextIcon },
+  { value: "audit", label: "Audit", icon: HistoryIcon },
+  { value: "more", label: "More", icon: FileTextIcon },
+]
+
+type PartyDocumentFormState = {
+  documentType: PartyDocument["documentType"]
+  title: string
+  fileReference: string
+  fileName: string
+  mimeType: string
+  fileSizeBytes: string
+  notes: string
+}
+
+const emptyDocumentForm: PartyDocumentFormState = {
+  documentType: "gst_certificate",
+  title: "",
+  fileReference: "",
+  fileName: "",
+  mimeType: "",
+  fileSizeBytes: "",
+  notes: "",
+}
+
+const documentTypeOptions: Array<{ value: PartyDocument["documentType"]; label: string }> = [
+  { value: "gst_certificate", label: "GST Certificate" },
+  { value: "pan", label: "PAN" },
+  { value: "bank_proof", label: "Bank proof" },
+  { value: "agreement", label: "Agreement" },
+  { value: "vendor_onboarding", label: "Vendor onboarding" },
+  { value: "other", label: "Other" },
+]
 
 export function PartyDetailDialog({
   accessToken,
@@ -85,14 +163,51 @@ export function PartyDetailDialog({
   const [gstForm, setGstForm] =
     React.useState<GstRegistrationFormState>(emptyGstRegistrationForm)
   const [gstErrors, setGstErrors] = React.useState<GstRegistrationFormErrors>({})
+  const [documentForm, setDocumentForm] =
+    React.useState<PartyDocumentFormState>(emptyDocumentForm)
+  const [activeTab, setActiveTab] = React.useState<PartyWorkspaceTab>("overview")
   const activeGstRegistrations =
     party?.gstRegistrations.filter((registration) => registration.status !== "archived") ?? []
+  const activeAddresses = party?.addresses.filter((address) => address.isActive) ?? []
+  const activeContacts =
+    party?.contacts.filter((contact) => contact.status !== "inactive") ?? []
+  const activeBankAccounts =
+    party?.bankAccounts.filter((bankAccount) => bankAccount.status !== "archived") ?? []
+  const primaryGst = selectPrimaryRecord(activeGstRegistrations)
+  const primaryAddress = selectPrimaryRecord(activeAddresses)
+  const primaryContact = selectPrimaryRecord(activeContacts)
+  const primaryBankAccount = selectPrimaryRecord(activeBankAccounts)
 
-  React.useEffect(() => {
-    if (!open) {
-      resetGstForm()
-    }
-  }, [open])
+  const ledgerPreviewQuery = useQuery({
+    queryKey: ["parties", party?.id, "ledger-preview"],
+    queryFn: () =>
+      getPartyLedger(party?.id ?? "", accessToken, {
+        entryType: "all",
+        status: "all",
+        limit: 500,
+      }),
+    enabled: Boolean(
+      open &&
+        party?.id &&
+        accessToken &&
+        (activeTab === "ledger" || activeTab === "overview")
+    ),
+    staleTime: 1000 * 60,
+  })
+
+  const documentsQuery = useQuery({
+    queryKey: ["parties", party?.id, "documents"],
+    queryFn: () => getPartyDocuments(party?.id ?? "", accessToken),
+    enabled: Boolean(open && party?.id && accessToken && activeTab === "documents"),
+    staleTime: 1000 * 30,
+  })
+
+  const auditQuery = useQuery({
+    queryKey: ["parties", party?.id, "audit"],
+    queryFn: () => getPartyAudit(party?.id ?? "", accessToken, { page: 1, limit: 50 }),
+    enabled: Boolean(open && party?.id && accessToken && activeTab === "audit"),
+    staleTime: 1000 * 20,
+  })
 
   const gstMutation = useMutation({
     mutationFn: async () => {
@@ -100,7 +215,7 @@ export function PartyDetailDialog({
         throw new Error("Party not loaded.")
       }
 
-      const errors = validateGstRegistrationForm(gstForm)
+      const errors = validateGstRegistrationForm(gstForm, party.addresses)
       if (Object.keys(errors).length > 0) {
         setGstErrors(errors)
         throw new Error("Fix the GST registration fields.")
@@ -166,6 +281,60 @@ export function PartyDetailDialog({
     onError: (error) => toast.error(getErrorMessage(error)),
   })
 
+  const documentMutation = useMutation({
+    mutationFn: async () => {
+      if (!party) {
+        throw new Error("Party not loaded.")
+      }
+
+      const title = documentForm.title.trim()
+      const fileReference = documentForm.fileReference.trim()
+      if (!title || !fileReference) {
+        throw new Error("Add a document title and secured file reference.")
+      }
+
+      const fileSizeBytes = documentForm.fileSizeBytes.trim()
+
+      return addPartyDocument(
+        party.id,
+        {
+          documentType: documentForm.documentType,
+          title,
+          fileReference,
+          fileName: documentForm.fileName.trim() || null,
+          mimeType: documentForm.mimeType.trim() || null,
+          fileSizeBytes: fileSizeBytes ? Number(fileSizeBytes) : null,
+          notes: documentForm.notes.trim() || null,
+          status: "active",
+        },
+        accessToken
+      )
+    },
+    onSuccess: async (response) => {
+      onPartyChanged(response.party)
+      setDocumentForm(emptyDocumentForm)
+      await Promise.all([documentsQuery.refetch(), auditQuery.refetch()])
+      toast.success("Party document saved.")
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+
+  const documentArchiveMutation = useMutation({
+    mutationFn: async (documentId: string) => {
+      if (!party) {
+        throw new Error("Party not loaded.")
+      }
+
+      return archivePartyDocument(party.id, documentId, accessToken)
+    },
+    onSuccess: async (response) => {
+      onPartyChanged(response.party)
+      await Promise.all([documentsQuery.refetch(), auditQuery.refetch()])
+      toast.success("Party document archived.")
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+
   function updateGstFormValue<K extends keyof GstRegistrationFormState>(
     key: K,
     value: GstRegistrationFormState[K]
@@ -179,6 +348,10 @@ export function PartyDetailDialog({
     setEditingGstRegistrationId(null)
     setGstForm(emptyGstRegistrationForm)
     setGstErrors({})
+  }
+
+  function resetDocumentForm() {
+    setDocumentForm(emptyDocumentForm)
   }
 
   function startCreateGstRegistration() {
@@ -198,9 +371,18 @@ export function PartyDetailDialog({
     setGstErrors({})
   }
 
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen) {
+      resetGstForm()
+      resetDocumentForm()
+      setActiveTab("overview")
+    }
+    onOpenChange(nextOpen)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100vh-2rem)] max-w-2xl gap-0 overflow-hidden p-0">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-h-[calc(100vh-2rem)] max-w-5xl gap-0 overflow-hidden p-0">
         {isLoading ? (
           <div className="flex min-h-64 flex-col overflow-hidden">
             <DialogHeader className="border-b border-border px-4 py-3 text-left">
@@ -243,6 +425,15 @@ export function PartyDetailDialog({
                     </DialogDescription>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
+                    <Button
+                      nativeButton={false}
+                      render={<Link href={`/parties/${party.id}/ledger`} />}
+                      size="xs"
+                      variant="outline"
+                    >
+                      <BookOpenTextIcon className="size-3.5" />
+                      Ledger
+                    </Button>
                     <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
                       {partyTypeLabels[party.partyType]}
                     </Badge>
@@ -267,193 +458,122 @@ export function PartyDetailDialog({
               </div>
             </DialogHeader>
 
-            <div className="app-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-              <div className="grid gap-x-4 gap-y-2 sm:grid-cols-3">
-                <InfoTile label="PAN" value={party.pan ?? "Not added"} mono={Boolean(party.pan)} />
-                <InfoTile
-                  label="Customer terms"
-                  value={
-                    party.customerProfile ?
-                      `${party.customerProfile.creditDays} days · ₹${party.customerProfile.creditLimit}`
-                    : "Not configured"
-                  }
-                />
-                <InfoTile
-                  label="Supplier terms"
-                  value={
-                    party.supplierProfile ?
-                      `${party.supplierProfile.creditDays} days · ${party.supplierProfile.leadTimeDays} lead`
-                    : "Not configured"
-                  }
-                />
-                <InfoTile
-                  label="Receivable"
-                  value={formatCurrencyValue(party.outstandingSummary.receivable)}
-                />
-                <InfoTile
-                  label="Payable"
-                  value={formatCurrencyValue(party.outstandingSummary.payable)}
-                />
-                <InfoTile
-                  label="Overdue"
-                  value={formatCurrencyValue(
-                    Math.max(
-                      Number(party.outstandingSummary.overdueReceivable),
-                      Number(party.outstandingSummary.overduePayable)
+            <Tabs
+              value={activeTab}
+              defaultValue="overview"
+              onValueChange={(value) => setActiveTab(value as PartyWorkspaceTab)}
+              className="min-h-0 flex-1 gap-0 overflow-hidden"
+            >
+              <div className="border-b border-border px-4 py-2">
+                <TabsList className="app-scrollbar flex h-auto max-w-full justify-start gap-1 overflow-x-auto rounded-none border-0 bg-transparent p-0">
+                  {partyWorkspaceTabs.map((tab) => {
+                    const Icon = tab.icon
+                    return (
+                      <TabsTrigger
+                        key={tab.value}
+                        value={tab.value}
+                        className="min-w-fit gap-1.5 rounded-lg px-2.5 py-1.5 text-xs data-[state=active]:bg-muted data-[state=active]:shadow-none"
+                      >
+                        <Icon className="size-3.5" />
+                        {tab.label}
+                      </TabsTrigger>
                     )
-                  )}
-                />
+                  })}
+                </TabsList>
               </div>
 
-              <DetailSection
-                count={
-                  Number(Boolean(party.customerProfile)) +
-                  Number(Boolean(party.supplierProfile))
-                }
-                icon={<UsersIcon className="size-3.5" />}
-                title="Role profiles"
-              >
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {party.customerProfile ? (
-                    <DetailRow
-                      badge={statusLabels[party.customerProfile.status]}
-                      description={`${party.customerProfile.creditDays} days · ₹${party.customerProfile.creditLimit} limit`}
-                      icon={<StoreIcon className="size-3.5" />}
-                      meta={[
-                        party.customerProfile.defaultPaymentTermId ? "Payment term set" : null,
-                        party.customerProfile.priceGroupId ? "Price group" : null,
-                      ]}
-                      title={party.customerProfile.customerCode}
-                    />
-                  ) : null}
-                  {party.supplierProfile ? (
-                    <DetailRow
-                      badge={statusLabels[party.supplierProfile.status]}
-                      description={`${party.supplierProfile.creditDays} days · ${party.supplierProfile.leadTimeDays} lead`}
-                      icon={<ArchiveIcon className="size-3.5" />}
-                      meta={[
-                        party.supplierProfile.defaultPaymentTermId ? "Payment term set" : null,
-                        party.supplierProfile.preferredWarehouseId ? "Warehouse" : null,
-                      ]}
-                      title={party.supplierProfile.supplierCode}
-                    />
-                  ) : null}
-                  {!party.customerProfile && !party.supplierProfile ? (
-                    <EmptyDetailLine text="No customer or supplier profile is attached." />
-                  ) : null}
-                </div>
-              </DetailSection>
+              <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto p-4">
+                <TabsContent value="overview" className="space-y-3">
+                  <PartyOverviewTab
+                    ledgerEntries={ledgerPreviewQuery.data?.entries ?? []}
+                    ledgerLoading={ledgerPreviewQuery.isLoading}
+                    party={party}
+                    primaryAddress={primaryAddress}
+                    primaryBankAccount={primaryBankAccount}
+                    primaryContact={primaryContact}
+                    primaryGst={primaryGst}
+                  />
+                </TabsContent>
 
-              <DetailSection
-                count={activeGstRegistrations.length}
-                icon={<ReceiptTextIcon className="size-3.5" />}
-                title="GST registrations"
-                action={
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="outline"
-                    onClick={startCreateGstRegistration}
-                  >
-                    <PlusIcon className="size-3.5" />
-                    Add GSTIN
-                  </Button>
-                }
-              >
-                <div className="grid gap-2">
-                  {gstFormMode ? (
-                    <GstRegistrationInlineForm
-                      errors={gstErrors}
-                      form={gstForm}
-                      isPending={gstMutation.isPending}
-                      mode={gstFormMode}
-                      onCancel={resetGstForm}
-                      onChange={updateGstFormValue}
-                      onSubmit={() => gstMutation.mutate()}
-                    />
-                  ) : null}
+                <TabsContent value="gst" className="space-y-3">
+                  <GstWorkspaceTab
+                    addresses={party.addresses}
+                    activeGstRegistrations={activeGstRegistrations}
+                    errors={gstErrors}
+                    form={gstForm}
+                    formMode={gstFormMode}
+                    isArchivingOrPrimaryPending={
+                      gstArchiveMutation.isPending || gstPrimaryMutation.isPending
+                    }
+                    isSaving={gstMutation.isPending}
+                    onAdd={startCreateGstRegistration}
+                    onArchive={(registrationId) => gstArchiveMutation.mutate(registrationId)}
+                    onCancel={resetGstForm}
+                    onChange={updateGstFormValue}
+                    onEdit={startEditGstRegistration}
+                    onSave={() => gstMutation.mutate()}
+                    onSetPrimary={(registration) => gstPrimaryMutation.mutate(registration)}
+                  />
+                </TabsContent>
 
-                  {activeGstRegistrations.map((registration) => (
-                    <GstRegistrationDetailRow
-                      key={registration.id}
-                      isMutating={
-                        gstArchiveMutation.isPending || gstPrimaryMutation.isPending
-                      }
-                      registration={registration}
-                      onArchive={() => gstArchiveMutation.mutate(registration.id)}
-                      onEdit={() => startEditGstRegistration(registration)}
-                      onSetPrimary={() => gstPrimaryMutation.mutate(registration)}
-                    />
-                  ))}
-                  {activeGstRegistrations.length === 0 && !gstFormMode ? (
-                    <EmptyDetailLine text="This party is not GST registered." />
-                  ) : null}
-                </div>
-              </DetailSection>
+                <TabsContent value="addresses" className="space-y-3">
+                  <AddressesWorkspaceTab
+                    addresses={party.addresses}
+                    gstRegistrations={activeGstRegistrations}
+                  />
+                </TabsContent>
 
-              <DetailSection
-                count={party.addresses.length}
-                icon={<MapPinIcon className="size-3.5" />}
-                title="Addresses"
-              >
-                <div className="grid gap-2">
-                  {party.addresses.map((address) => (
-                    <DetailRow
-                      key={address.id}
-                      badge={address.isPrimary ? "Primary" : undefined}
-                      description={
-                        [
-                          address.addressLine1,
-                          address.addressLine2,
-                          address.locality,
-                          address.city,
-                          address.district,
-                          address.state,
-                          address.pincode,
-                        ]
-                          .filter(Boolean)
-                          .join(", ") || "No address text"
-                      }
-                      icon={<MapPinIcon className="size-3.5" />}
-                      meta={[
-                        address.label,
-                        capitalizeText(address.addressType),
-                        address.isActive ? "Active" : "Inactive",
-                      ]}
-                      title={address.label || capitalizeText(address.addressType) || "Address"}
-                    />
-                  ))}
-                  {party.addresses.length === 0 ? (
-                    <EmptyDetailLine text="No address records are saved for this party." />
-                  ) : null}
-                </div>
-              </DetailSection>
+                <TabsContent value="contacts" className="space-y-3">
+                  <ContactsWorkspaceTab contacts={party.contacts} />
+                </TabsContent>
 
-              <DetailSection
-                count={party.contacts.length}
-                icon={<ContactRoundIcon className="size-3.5" />}
-                title="Contacts"
-              >
-                <div className="grid gap-2">
-                  {party.contacts.map((contact) => (
-                    <DetailRow
-                      key={contact.id}
-                      badge={contact.isPrimary ? "Primary" : statusLabels[contact.status]}
-                      description={
-                        [contact.mobile, contact.phone, contact.email].filter(Boolean).join(" · ") ||
-                        "No phone/email"
-                      }
-                      icon={<ContactRoundIcon className="size-3.5" />}
-                      meta={[contact.designation, capitalizeText(contact.contactRole)]}
-                      title={contact.name}
-                    />
-                  ))}
-                  {party.contacts.length === 0 ? (
-                    <EmptyDetailLine text="No contact people are saved for this party." />
-                  ) : null}
-                </div>
-              </DetailSection>
-            </div>
+                <TabsContent value="bank" className="space-y-3">
+                  <BankWorkspaceTab bankAccounts={party.bankAccounts} />
+                </TabsContent>
+
+                <TabsContent value="commercial" className="space-y-3">
+                  <CommercialWorkspaceTab party={party} />
+                </TabsContent>
+
+                <TabsContent value="ledger" className="space-y-3">
+                  <LedgerWorkspaceTab
+                    entries={ledgerPreviewQuery.data?.entries ?? []}
+                    isLoading={ledgerPreviewQuery.isLoading}
+                    party={party}
+                    totals={ledgerPreviewQuery.data?.totals}
+                  />
+                </TabsContent>
+
+                <TabsContent value="documents" className="space-y-3">
+                  <DocumentsWorkspaceTab
+                    documents={documentsQuery.data?.documents ?? []}
+                    form={documentForm}
+                    isArchiving={documentArchiveMutation.isPending}
+                    isLoading={documentsQuery.isLoading}
+                    isSaving={documentMutation.isPending}
+                    onArchive={(documentId) => documentArchiveMutation.mutate(documentId)}
+                    onChange={(patch) =>
+                      setDocumentForm((current) => ({ ...current, ...patch }))
+                    }
+                    onReset={resetDocumentForm}
+                    onSave={() => documentMutation.mutate()}
+                    pendingArchiveId={documentArchiveMutation.variables ?? null}
+                  />
+                </TabsContent>
+
+                <TabsContent value="audit" className="space-y-3">
+                  <AuditWorkspaceTab
+                    entries={auditQuery.data?.audit ?? []}
+                    isLoading={auditQuery.isLoading}
+                    pagination={auditQuery.data?.pagination}
+                  />
+                </TabsContent>
+
+                <TabsContent value="more" className="space-y-3">
+                  <MoreWorkspaceTab party={party} />
+                </TabsContent>
+              </div>
+            </Tabs>
             <DialogFooter className="border-t border-border px-4 py-3">
               <Button type="button" onClick={() => onOpenChange(false)}>
                 Close
@@ -472,6 +592,848 @@ export function PartyDetailDialog({
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+function PartyOverviewTab({
+  ledgerEntries,
+  ledgerLoading,
+  party,
+  primaryAddress,
+  primaryBankAccount,
+  primaryContact,
+  primaryGst,
+}: {
+  ledgerEntries: PartyLedgerEntry[]
+  ledgerLoading: boolean
+  party: PartyDetail
+  primaryAddress: PartyDetail["addresses"][number] | null
+  primaryBankAccount: PartyDetail["bankAccounts"][number] | null
+  primaryContact: PartyDetail["contacts"][number] | null
+  primaryGst: PartyGstRegistration | null
+}) {
+  return (
+    <>
+      <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
+        <InfoTile label="PAN" value={party.pan ?? "Not added"} mono={Boolean(party.pan)} />
+        <InfoTile
+          label="Primary GSTIN"
+          value={primaryGst?.gstin ?? "Not GST registered"}
+          mono={Boolean(primaryGst)}
+        />
+        <InfoTile
+          label="Receivable"
+          value={formatCurrencyValue(party.outstandingSummary.receivable)}
+        />
+        <InfoTile
+          label="Payable"
+          value={formatCurrencyValue(party.outstandingSummary.payable)}
+        />
+        <InfoTile
+          label="Open sales"
+          value={`${party.outstandingSummary.openReceivableCount} invoices`}
+        />
+        <InfoTile
+          label="Open purchases"
+          value={`${party.outstandingSummary.openPayableCount} bills`}
+        />
+        <InfoTile
+          label="Overdue receivable"
+          value={formatCurrencyValue(party.outstandingSummary.overdueReceivable)}
+        />
+        <InfoTile
+          label="Overdue payable"
+          value={formatCurrencyValue(party.outstandingSummary.overduePayable)}
+        />
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+        <DetailSection
+          count={4}
+          icon={<ClipboardListIcon className="size-3.5" />}
+          title="Default transaction records"
+        >
+          <div className="grid gap-2">
+            <DetailRow
+              badge={primaryGst?.isPrimary ? "Primary" : undefined}
+              description={
+                primaryGst ?
+                  `${primaryGst.state || `State ${primaryGst.stateCode}`} · ${capitalizeText(primaryGst.registrationType)}`
+                : "New B2C/POS transactions can still use this party without GST."
+              }
+              icon={<ReceiptTextIcon className="size-3.5" />}
+              meta={[primaryGst?.status ? capitalizeText(primaryGst.status) : null]}
+              monoTitle={Boolean(primaryGst)}
+              title={primaryGst?.gstin ?? "No GSTIN selected"}
+            />
+            <DetailRow
+              badge={primaryAddress?.isPrimary ? "Primary" : undefined}
+              description={
+                primaryAddress ? formatAddress(primaryAddress) : "No active address is saved."
+              }
+              icon={<MapPinIcon className="size-3.5" />}
+              meta={[primaryAddress?.label, capitalizeText(primaryAddress?.addressType)]}
+              title={primaryAddress?.label || "Primary address"}
+            />
+            <DetailRow
+              badge={primaryContact?.isPrimary ? "Primary" : undefined}
+              description={
+                primaryContact ?
+                  [primaryContact.mobile, primaryContact.phone, primaryContact.email]
+                    .filter(Boolean)
+                    .join(" · ") || "No phone/email"
+                : "No active contact is saved."
+              }
+              icon={<ContactRoundIcon className="size-3.5" />}
+              meta={[primaryContact?.designation, capitalizeText(primaryContact?.contactRole)]}
+              title={primaryContact?.name ?? "Primary contact"}
+            />
+            <DetailRow
+              badge={primaryBankAccount?.isPrimary ? "Primary" : undefined}
+              description={
+                primaryBankAccount ?
+                  [
+                    primaryBankAccount.accountName,
+                    primaryBankAccount.accountNumberMasked,
+                    primaryBankAccount.ifsc,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "Masked bank account"
+                : "Party bank account is optional and distinct from your business bank."
+              }
+              icon={<BanknoteIcon className="size-3.5" />}
+              meta={[capitalizeText(primaryBankAccount?.accountType), primaryBankAccount?.branch]}
+              title={primaryBankAccount?.bankName ?? "No party bank account"}
+            />
+          </div>
+        </DetailSection>
+
+        <DetailSection
+          count={ledgerEntries.length}
+          icon={<TrendingUpIcon className="size-3.5" />}
+          title="Aging snapshot"
+          action={
+            <Button
+              nativeButton={false}
+              render={<Link href={`/parties/${party.id}/ledger`} />}
+              size="xs"
+              variant="outline"
+            >
+              Open ledger
+            </Button>
+          }
+        >
+          {ledgerLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-10 rounded-xl" />
+              <Skeleton className="h-10 rounded-xl" />
+            </div>
+          ) : (
+            <AgingBucketsView entries={ledgerEntries} />
+          )}
+        </DetailSection>
+      </div>
+    </>
+  )
+}
+
+function GstWorkspaceTab({
+  activeGstRegistrations,
+  addresses,
+  errors,
+  form,
+  formMode,
+  isArchivingOrPrimaryPending,
+  isSaving,
+  onAdd,
+  onArchive,
+  onCancel,
+  onChange,
+  onEdit,
+  onSave,
+  onSetPrimary,
+}: {
+  activeGstRegistrations: PartyGstRegistration[]
+  addresses: PartyDetail["addresses"]
+  errors: GstRegistrationFormErrors
+  form: GstRegistrationFormState
+  formMode: "create" | "edit" | null
+  isArchivingOrPrimaryPending: boolean
+  isSaving: boolean
+  onAdd: () => void
+  onArchive: (registrationId: string) => void
+  onCancel: () => void
+  onChange: <K extends keyof GstRegistrationFormState>(
+    key: K,
+    value: GstRegistrationFormState[K]
+  ) => void
+  onEdit: (registration: PartyGstRegistration) => void
+  onSave: () => void
+  onSetPrimary: (registration: PartyGstRegistration) => void
+}) {
+  return (
+    <DetailSection
+      count={activeGstRegistrations.length}
+      icon={<ReceiptTextIcon className="size-3.5" />}
+      title="GST registrations"
+      action={
+        <Button type="button" size="xs" variant="outline" onClick={onAdd}>
+          <PlusIcon className="size-3.5" />
+          Add GSTIN
+        </Button>
+      }
+    >
+      <div className="grid gap-2">
+        {formMode ? (
+          <GstRegistrationInlineForm
+            addresses={addresses}
+            errors={errors}
+            form={form}
+            isPending={isSaving}
+            mode={formMode}
+            onCancel={onCancel}
+            onChange={onChange}
+            onSubmit={onSave}
+          />
+        ) : null}
+
+        {activeGstRegistrations.map((registration) => (
+          <GstRegistrationDetailRow
+            key={registration.id}
+            isMutating={isArchivingOrPrimaryPending}
+            registration={registration}
+            addresses={addresses}
+            onArchive={() => onArchive(registration.id)}
+            onEdit={() => onEdit(registration)}
+            onSetPrimary={() => onSetPrimary(registration)}
+          />
+        ))}
+        {activeGstRegistrations.length === 0 && !formMode ? (
+          <EmptyDetailLine text="This party is not GST registered." />
+        ) : null}
+      </div>
+    </DetailSection>
+  )
+}
+
+function AddressesWorkspaceTab({
+  addresses,
+  gstRegistrations,
+}: {
+  addresses: PartyDetail["addresses"]
+  gstRegistrations: PartyGstRegistration[]
+}) {
+  return (
+    <DetailSection
+      count={addresses.length}
+      icon={<MapPinIcon className="size-3.5" />}
+      title="Addresses"
+    >
+      <div className="grid gap-2">
+        {addresses.map((address) => {
+          const mappedGstins = gstRegistrations.filter(
+            (registration) => registration.registeredAddressId === address.id
+          )
+          return (
+            <DetailRow
+              key={address.id}
+              badge={address.isPrimary ? "Primary" : undefined}
+              description={formatAddress(address)}
+              icon={<MapPinIcon className="size-3.5" />}
+              meta={[
+                address.label,
+                capitalizeText(address.addressType),
+                address.isActive ? "Active" : "Inactive",
+                ...mappedGstins.map((registration) => `${registration.stateCode} GSTIN`),
+              ]}
+              title={address.label || capitalizeText(address.addressType) || "Address"}
+            />
+          )
+        })}
+        {addresses.length === 0 ? (
+          <EmptyDetailLine text="No address records are saved for this party." />
+        ) : null}
+      </div>
+    </DetailSection>
+  )
+}
+
+function ContactsWorkspaceTab({ contacts }: { contacts: PartyDetail["contacts"] }) {
+  return (
+    <DetailSection
+      count={contacts.length}
+      icon={<ContactRoundIcon className="size-3.5" />}
+      title="Contacts"
+    >
+      <div className="grid gap-2">
+        {contacts.map((contact) => (
+          <DetailRow
+            key={contact.id}
+            badge={contact.isPrimary ? "Primary" : statusLabels[contact.status]}
+            description={
+              [contact.mobile, contact.phone, contact.email].filter(Boolean).join(" · ") ||
+              "No phone/email"
+            }
+            icon={<ContactRoundIcon className="size-3.5" />}
+            meta={[contact.designation, capitalizeText(contact.contactRole)]}
+            title={contact.name}
+          />
+        ))}
+        {contacts.length === 0 ? (
+          <EmptyDetailLine text="No contact people are saved for this party." />
+        ) : null}
+      </div>
+    </DetailSection>
+  )
+}
+
+function BankWorkspaceTab({ bankAccounts }: { bankAccounts: PartyDetail["bankAccounts"] }) {
+  return (
+    <DetailSection
+      count={bankAccounts.length}
+      icon={<BanknoteIcon className="size-3.5" />}
+      title="Party bank accounts"
+    >
+      <div className="grid gap-2">
+        {bankAccounts.map((account) => (
+          <DetailRow
+            key={account.id}
+            badge={account.isPrimary ? "Primary" : capitalizeText(account.status) ?? undefined}
+            description={
+              [account.accountName, account.accountNumberMasked, account.ifsc]
+                .filter(Boolean)
+                .join(" · ") || "Masked account details"
+            }
+            icon={<BanknoteIcon className="size-3.5" />}
+            meta={[
+              capitalizeText(account.accountType),
+              account.branch,
+              account.status === "archived" ? "Archived" : null,
+            ]}
+            title={account.bankName}
+          />
+        ))}
+        {bankAccounts.length === 0 ? (
+          <EmptyDetailLine text="No party bank accounts are saved. This does not affect your business cash/bank ledger accounts." />
+        ) : null}
+      </div>
+    </DetailSection>
+  )
+}
+
+function CommercialWorkspaceTab({ party }: { party: PartyDetail }) {
+  return (
+    <div className="grid gap-3 lg:grid-cols-2">
+      <DetailSection
+        count={party.customerProfile ? 1 : 0}
+        icon={<StoreIcon className="size-3.5" />}
+        title="Customer commercial terms"
+      >
+        {party.customerProfile ? (
+          <div className="grid gap-2">
+            <InfoGridRow label="Customer code" value={party.customerProfile.customerCode} />
+            <InfoGridRow
+              label="Credit limit"
+              value={formatCurrencyValue(party.customerProfile.creditLimit)}
+            />
+            <InfoGridRow label="Credit days" value={`${party.customerProfile.creditDays} days`} />
+            <InfoGridRow
+              label="Payment term"
+              value={party.customerProfile.defaultPaymentTermId ? "Configured" : "Not set"}
+            />
+            <InfoGridRow
+              label="Default billing"
+              value={party.customerProfile.defaultBillingAddressId ? "Configured" : "Not set"}
+            />
+            <InfoGridRow
+              label="Default shipping"
+              value={party.customerProfile.defaultShippingAddressId ? "Configured" : "Not set"}
+            />
+          </div>
+        ) : (
+          <EmptyDetailLine text="Customer role is not active for this party." />
+        )}
+      </DetailSection>
+
+      <DetailSection
+        count={party.supplierProfile ? 1 : 0}
+        icon={<ArchiveIcon className="size-3.5" />}
+        title="Supplier commercial terms"
+      >
+        {party.supplierProfile ? (
+          <div className="grid gap-2">
+            <InfoGridRow label="Supplier code" value={party.supplierProfile.supplierCode} />
+            <InfoGridRow label="Credit days" value={`${party.supplierProfile.creditDays} days`} />
+            <InfoGridRow
+              label="Lead time"
+              value={`${party.supplierProfile.leadTimeDays} days`}
+            />
+            <InfoGridRow
+              label="Payment term"
+              value={party.supplierProfile.defaultPaymentTermId ? "Configured" : "Not set"}
+            />
+            <InfoGridRow
+              label="Purchase address"
+              value={party.supplierProfile.defaultPurchaseAddressId ? "Configured" : "Not set"}
+            />
+            <InfoGridRow
+              label="Warehouse"
+              value={party.supplierProfile.preferredWarehouseId ? "Configured" : "Not set"}
+            />
+          </div>
+        ) : (
+          <EmptyDetailLine text="Supplier role is not active for this party." />
+        )}
+      </DetailSection>
+
+      <DetailSection
+        count={4}
+        icon={<BadgeIndianRupeeIcon className="size-3.5" />}
+        title="Accounting mapping"
+      >
+        <EmptyDetailLine text="Receivable, payable, customer advance, and supplier advance mappings are enforced by backend ledger-account integrity. Editable account mapping UI belongs with Accounting permissions." />
+      </DetailSection>
+
+      <DetailSection
+        count={0}
+        icon={<BriefcaseBusinessIcon className="size-3.5" />}
+        title="Branch preferences"
+      >
+        <EmptyDetailLine text="Party remains business-wide. Branch-specific payment terms, price group, sales rep, or address can be added without duplicating this party." />
+      </DetailSection>
+    </div>
+  )
+}
+
+function LedgerWorkspaceTab({
+  entries,
+  isLoading,
+  party,
+  totals,
+}: {
+  entries: PartyLedgerEntry[]
+  isLoading: boolean
+  party: PartyDetail
+  totals?: PartyLedgerTotals
+}) {
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard
+          label="Receivable"
+          value={formatCurrencyValue(totals?.receivableOutstanding ?? party.outstandingSummary.receivable)}
+          helper={`${party.outstandingSummary.openReceivableCount} open invoices`}
+        />
+        <MetricCard
+          label="Payable"
+          value={formatCurrencyValue(totals?.payableOutstanding ?? party.outstandingSummary.payable)}
+          helper={`${party.outstandingSummary.openPayableCount} open bills`}
+        />
+        <MetricCard
+          label="Overdue receivable"
+          value={formatCurrencyValue(party.outstandingSummary.overdueReceivable)}
+          helper="Derived from due dates"
+        />
+        <MetricCard
+          label="Overdue payable"
+          value={formatCurrencyValue(party.outstandingSummary.overduePayable)}
+          helper="Derived from due dates"
+        />
+      </div>
+
+      <DetailSection
+        count={entries.length}
+        icon={<CalendarClockIcon className="size-3.5" />}
+        title="Aging"
+        action={
+          <Button
+            nativeButton={false}
+            render={<Link href={`/parties/${party.id}/ledger`} />}
+            size="xs"
+            variant="outline"
+          >
+            Full ledger
+          </Button>
+        }
+      >
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-10 rounded-xl" />
+            <Skeleton className="h-10 rounded-xl" />
+          </div>
+        ) : (
+          <AgingBucketsView entries={entries} />
+        )}
+      </DetailSection>
+
+      <DetailSection
+        count={entries.length}
+        icon={<BookOpenTextIcon className="size-3.5" />}
+        title="Recent ledger movement"
+      >
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-12 rounded-xl" />
+            <Skeleton className="h-12 rounded-xl" />
+          </div>
+        ) : entries.length > 0 ? (
+          <div className="grid gap-2">
+            {entries.slice(0, 8).map((entry) => (
+              <LedgerPreviewRow key={entry.id} entry={entry} />
+            ))}
+          </div>
+        ) : (
+          <EmptyDetailLine text="No ledger movement yet. Posted sales, purchases, receipts, and payments will appear here." />
+        )}
+      </DetailSection>
+    </>
+  )
+}
+
+function MoreWorkspaceTab({ party }: { party: PartyDetail }) {
+  return (
+    <div className="grid gap-3">
+      <DetailSection
+        count={0}
+        icon={<ClipboardListIcon className="size-3.5" />}
+        title="Transactions"
+      >
+        <EmptyDetailLine text="Sales invoices, purchase bills, credit/debit notes, returns, receipts, and payments will drill down here as those engines post source documents." />
+      </DetailSection>
+      <p className="text-xs text-muted-foreground">
+        Documents and audit history are available as dedicated tabs for {party.displayName}.
+      </p>
+    </div>
+  )
+}
+
+function DocumentsWorkspaceTab({
+  documents,
+  form,
+  isArchiving,
+  isLoading,
+  isSaving,
+  onArchive,
+  onChange,
+  onReset,
+  onSave,
+  pendingArchiveId,
+}: {
+  documents: PartyDocument[]
+  form: PartyDocumentFormState
+  isArchiving: boolean
+  isLoading: boolean
+  isSaving: boolean
+  onArchive: (documentId: string) => void
+  onChange: (patch: Partial<PartyDocumentFormState>) => void
+  onReset: () => void
+  onSave: () => void
+  pendingArchiveId: string | null
+}) {
+  const activeDocuments = documents.filter((document) => document.status !== "archived")
+  const archivedDocuments = documents.filter((document) => document.status === "archived")
+  const canSave = Boolean(form.title.trim() && form.fileReference.trim() && !isSaving)
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <DetailSection
+        count={activeDocuments.length}
+        icon={<FileTextIcon className="size-3.5" />}
+        title="Save document reference"
+      >
+        <div className="rounded-xl border border-border bg-muted/20 p-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="party-document-type">Document type</FieldLabel>
+              <Select
+                value={form.documentType}
+                onValueChange={(value) =>
+                  onChange({ documentType: value as PartyDocument["documentType"] })
+                }
+              >
+                <SelectTrigger id="party-document-type" className="w-full">
+                  <SelectDisplayValue
+                    value={form.documentType}
+                    options={documentTypeOptions}
+                    placeholder="Choose type"
+                  />
+                </SelectTrigger>
+                <SelectContent align="start" sideOffset={8}>
+                  {documentTypeOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="party-document-title">Title *</FieldLabel>
+              <Input
+                id="party-document-title"
+                value={form.title}
+                onChange={(event) => onChange({ title: event.target.value })}
+                placeholder="GST certificate FY 2026"
+              />
+            </Field>
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="party-document-reference">
+                Secured file reference *
+              </FieldLabel>
+              <Input
+                id="party-document-reference"
+                value={form.fileReference}
+                onChange={(event) => onChange({ fileReference: event.target.value })}
+                placeholder="r2://party-documents/... or https://secure-file-url"
+              />
+              <p className="text-xs text-muted-foreground">
+                Store only the storage key or signed-access reference. Do not paste raw file data.
+              </p>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="party-document-file-name">File name</FieldLabel>
+              <Input
+                id="party-document-file-name"
+                value={form.fileName}
+                onChange={(event) => onChange({ fileName: event.target.value })}
+                placeholder="gst-certificate.pdf"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="party-document-mime">MIME type</FieldLabel>
+              <Input
+                id="party-document-mime"
+                value={form.mimeType}
+                onChange={(event) => onChange({ mimeType: event.target.value })}
+                placeholder="application/pdf"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="party-document-size">Size in bytes</FieldLabel>
+              <Input
+                id="party-document-size"
+                inputMode="numeric"
+                value={form.fileSizeBytes}
+                onChange={(event) =>
+                  onChange({ fileSizeBytes: event.target.value.replace(/\D/g, "") })
+                }
+                placeholder="245760"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="party-document-notes">Notes</FieldLabel>
+              <Input
+                id="party-document-notes"
+                value={form.notes}
+                onChange={(event) => onChange({ notes: event.target.value })}
+                placeholder="Verified during onboarding"
+              />
+            </Field>
+          </div>
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={onReset}>
+              Clear
+            </Button>
+            <Button type="button" disabled={!canSave} onClick={onSave}>
+              {isSaving ? <Spinner /> : "Save document"}
+            </Button>
+          </div>
+        </div>
+      </DetailSection>
+
+      <DetailSection
+        count={documents.length}
+        icon={<ArchiveIcon className="size-3.5" />}
+        title="Document vault"
+      >
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-16 rounded-xl" />
+            <Skeleton className="h-16 rounded-xl" />
+          </div>
+        ) : documents.length > 0 ? (
+          <div className="grid gap-2">
+            {activeDocuments.map((document) => (
+              <PartyDocumentRow
+                key={document.id}
+                document={document}
+                isArchiving={isArchiving && pendingArchiveId === document.id}
+                onArchive={() => onArchive(document.id)}
+              />
+            ))}
+            {archivedDocuments.length > 0 ? (
+              <div className="pt-2">
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  Archived
+                </p>
+                {archivedDocuments.map((document) => (
+                  <PartyDocumentRow
+                    key={document.id}
+                    document={document}
+                    isArchiving={false}
+                    onArchive={() => undefined}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <EmptyDetailLine text="No documents saved yet. Add GST certificates, PAN, bank proof, agreements, and onboarding documents as secured references." />
+        )}
+      </DetailSection>
+    </div>
+  )
+}
+
+function PartyDocumentRow({
+  document,
+  isArchiving,
+  onArchive,
+}: {
+  document: PartyDocument
+  isArchiving: boolean
+  onArchive: () => void
+}) {
+  const isArchived = document.status === "archived"
+  const canOpen = isHttpUrl(document.fileReference)
+
+  return (
+    <div className="flex gap-2 border-t border-border/60 py-2 first:border-t-0">
+      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center text-muted-foreground">
+        <FileTextIcon className="size-3.5" />
+      </span>
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="truncate text-xs font-medium">{document.title}</p>
+            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+              {document.fileName || document.fileReference}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-1">
+            <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-normal">
+              {getDocumentTypeLabel(document.documentType)}
+            </Badge>
+            {isArchived ? (
+              <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                Archived
+              </Badge>
+            ) : null}
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {formatDate(document.createdAt)}
+          {document.fileSizeBytes ? ` · ${formatBytes(document.fileSizeBytes)}` : ""}
+          {document.mimeType ? ` · ${document.mimeType}` : ""}
+        </p>
+        {document.notes ? (
+          <p className="line-clamp-2 text-xs text-muted-foreground">{document.notes}</p>
+        ) : null}
+        <div className="flex flex-wrap gap-1.5">
+          {canOpen ? (
+            <Button
+              nativeButton={false}
+              render={
+                <a
+                  href={document.fileReference}
+                  rel="noreferrer"
+                  target="_blank"
+                />
+              }
+              size="xs"
+              variant="outline"
+            >
+              Open
+            </Button>
+          ) : null}
+          {!isArchived ? (
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              disabled={isArchiving}
+              onClick={onArchive}
+            >
+              {isArchiving ? <Spinner /> : "Archive"}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AuditWorkspaceTab({
+  entries,
+  isLoading,
+  pagination,
+}: {
+  entries: PartyAuditEntry[]
+  isLoading: boolean
+  pagination?: { total: number }
+}) {
+  return (
+    <DetailSection
+      count={pagination?.total ?? entries.length}
+      icon={<HistoryIcon className="size-3.5" />}
+      title="Audit timeline"
+    >
+      {isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-14 rounded-xl" />
+          <Skeleton className="h-14 rounded-xl" />
+          <Skeleton className="h-14 rounded-xl" />
+        </div>
+      ) : entries.length > 0 ? (
+        <div className="relative space-y-0">
+          {entries.map((entry, index) => (
+            <AuditTimelineRow
+              key={entry.id}
+              entry={entry}
+              isLast={index === entries.length - 1}
+            />
+          ))}
+        </div>
+      ) : (
+        <EmptyDetailLine text="No party audit events yet. Changes to identity, roles, GSTIN, addresses, contacts, bank accounts, documents, and archive status will appear here." />
+      )}
+    </DetailSection>
+  )
+}
+
+function AuditTimelineRow({
+  entry,
+  isLast,
+}: {
+  entry: PartyAuditEntry
+  isLast: boolean
+}) {
+  return (
+    <div className="relative flex gap-3 pb-4 last:pb-0">
+      {!isLast ? (
+        <span className="absolute left-[7px] top-4 h-full w-px bg-border" aria-hidden="true" />
+      ) : null}
+      <span className="relative mt-1 flex size-3.5 shrink-0 rounded-full border border-primary/30 bg-primary/15" />
+      <div className="min-w-0 flex-1 rounded-xl border border-border bg-background p-3">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="truncate text-xs font-medium">{formatAuditAction(entry.action)}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {formatDateTime(entry.createdAt)} by {getAuditActorLabel(entry)}
+            </p>
+          </div>
+          <Badge variant="secondary" className="h-5 w-fit px-1.5 text-[10px] font-normal">
+            {entry.entityType}
+          </Badge>
+        </div>
+        {entry.reason ? (
+          <p className="mt-2 text-xs text-muted-foreground">{entry.reason}</p>
+        ) : null}
+        <p className="mt-2 text-xs text-muted-foreground">
+          {getAuditPayloadSummary(entry)}
+        </p>
+      </div>
+    </div>
   )
 }
 
@@ -517,6 +1479,7 @@ function DetailSection({
 }
 
 function GstRegistrationInlineForm({
+  addresses,
   errors,
   form,
   isPending,
@@ -525,6 +1488,7 @@ function GstRegistrationInlineForm({
   onChange,
   onSubmit,
 }: {
+  addresses: PartyDetail["addresses"]
   errors: GstRegistrationFormErrors
   form: GstRegistrationFormState
   isPending: boolean
@@ -536,6 +1500,17 @@ function GstRegistrationInlineForm({
   ) => void
   onSubmit: () => void
 }) {
+  const addressOptions = [
+    { value: "none", label: "No registered address" },
+    ...addresses.map((address, index) => ({
+      value: address.id,
+      label: formatDetailAddressOptionLabel(address, index),
+    })),
+  ]
+  const selectedAddress = addresses.find(
+    (address) => address.id === form.registeredAddressId
+  )
+
   return (
     <div className="rounded-xl border border-border bg-muted/20 p-3">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -674,6 +1649,64 @@ function GstRegistrationInlineForm({
             placeholder="Regular / Composition"
           />
         </Field>
+        <Field>
+          <FieldLabel htmlFor="detail-effective-from">Effective from</FieldLabel>
+          <Input
+            id="detail-effective-from"
+            type="date"
+            value={form.effectiveFrom}
+            onChange={(event) => onChange("effectiveFrom", event.target.value)}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor="detail-effective-to">Effective to</FieldLabel>
+          <Input
+            id="detail-effective-to"
+            type="date"
+            value={form.effectiveTo}
+            onChange={(event) => onChange("effectiveTo", event.target.value)}
+          />
+        </Field>
+        <Field className="sm:col-span-2">
+          <FieldLabel htmlFor="detail-gst-registered-address">
+            Registered address for this GSTIN
+          </FieldLabel>
+          <Select
+            value={form.registeredAddressId || "none"}
+            onValueChange={(value) => {
+              const nextValue = value ?? "none"
+              onChange("registeredAddressId", nextValue === "none" ? "" : nextValue)
+            }}
+          >
+            <SelectTrigger id="detail-gst-registered-address" className="w-full">
+              <SelectDisplayValue
+                value={form.registeredAddressId || "none"}
+                options={addressOptions}
+                placeholder="Choose registered address"
+              />
+            </SelectTrigger>
+            <SelectContent align="start" sideOffset={8}>
+              {addressOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedAddress?.stateCode &&
+          form.stateCode &&
+          selectedAddress.stateCode !== form.stateCode ? (
+            <p className="text-xs text-destructive">
+              Address state code {selectedAddress.stateCode} does not match GSTIN
+              state code {form.stateCode}.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Map this GSTIN to the address printed on its registration certificate.
+            </p>
+          )}
+          <FieldError>{errors.registeredAddressId}</FieldError>
+        </Field>
       </div>
       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <CompactCheckOption
@@ -727,18 +1760,23 @@ function CompactCheckOption({
 }
 
 function GstRegistrationDetailRow({
+  addresses,
   isMutating,
   onArchive,
   onEdit,
   onSetPrimary,
   registration,
 }: {
+  addresses: PartyDetail["addresses"]
   isMutating: boolean
   onArchive: () => void
   onEdit: () => void
   onSetPrimary: () => void
   registration: PartyGstRegistration
 }) {
+  const registeredAddress =
+    addresses.find((address) => address.id === registration.registeredAddressId) ?? null
+
   return (
     <div className="flex gap-2 border-t border-border/60 py-2 first:border-t-0">
       <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center text-muted-foreground">
@@ -782,6 +1820,11 @@ function GstRegistrationDetailRow({
               </Badge>
             ))}
         </div>
+        {registeredAddress ? (
+          <p className="line-clamp-2 text-xs text-muted-foreground">
+            Registered address: {formatCompactAddressLabel(registeredAddress)}
+          </p>
+        ) : null}
         <div className="flex flex-wrap gap-1.5">
           {!registration.isPrimary ? (
             <Button
@@ -873,6 +1916,134 @@ function EmptyDetailLine({ text }: { text: string }) {
   return <p className="py-1 text-xs text-muted-foreground">{text}</p>
 }
 
+function formatDetailAddressOptionLabel(
+  address: PartyDetail["addresses"][number],
+  index: number
+) {
+  const label = address.label?.trim()
+  const typeLabel =
+    addressTypeOptions.find((option) => option.value === address.addressType)?.label ??
+    "Address"
+  const line = address.addressLine1?.trim()
+  const city = address.city?.trim() || address.district?.trim()
+  const stateCode = address.stateCode?.trim()
+
+  return [
+    label || `${typeLabel} ${index + 1}`,
+    line,
+    city,
+    stateCode ? `State ${stateCode}` : null,
+    address.isActive ? null : "Inactive",
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ")
+}
+
+function formatCompactAddressLabel(address: PartyDetail["addresses"][number]) {
+  const label = address.label?.trim()
+  const line = address.addressLine1?.trim()
+  const city = address.city?.trim() || address.district?.trim()
+  const stateCode = address.stateCode?.trim()
+
+  return [label, line, city, stateCode ? `State ${stateCode}` : null]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ")
+}
+
+function AgingBucketsView({ entries }: { entries: PartyLedgerEntry[] }) {
+  const receivableBuckets = calculateAgingBuckets(entries, "receivable")
+  const payableBuckets = calculateAgingBuckets(entries, "payable")
+
+  return (
+    <div className="space-y-3">
+      <AgingBucketRow label="Receivable" buckets={receivableBuckets} />
+      <AgingBucketRow label="Payable" buckets={payableBuckets} />
+    </div>
+  )
+}
+
+function AgingBucketRow({
+  buckets,
+  label,
+}: {
+  buckets: ReturnType<typeof calculateAgingBuckets>
+  label: string
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-background p-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-xs font-medium">{label}</p>
+        <p className="text-xs text-muted-foreground">
+          {formatCurrencyValue(
+            buckets.reduce((total, bucket) => total + bucket.amount, 0)
+          )}
+        </p>
+      </div>
+      <div className="grid grid-cols-5 gap-1.5">
+        {buckets.map((bucket) => (
+          <div key={bucket.label} className="min-w-0 rounded-lg bg-muted/40 px-2 py-1.5">
+            <p className="truncate text-[10px] text-muted-foreground">{bucket.label}</p>
+            <p className="truncate text-[11px] font-medium">
+              {formatCurrencyValue(bucket.amount)}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function LedgerPreviewRow({ entry }: { entry: PartyLedgerEntry }) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-t border-border/60 py-2 first:border-t-0">
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium">
+          {entry.voucherNumber || entry.voucherType || "Ledger entry"}
+        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {formatDate(entry.voucherDate ?? entry.createdAt)} · {capitalizeText(entry.entryType)} ·{" "}
+          {capitalizeText(entry.status)}
+        </p>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="font-mono text-xs font-medium">
+          {formatCurrencyValue(entry.outstandingAmount)}
+        </p>
+        <p className="text-[10px] text-muted-foreground">outstanding</p>
+      </div>
+    </div>
+  )
+}
+
+function MetricCard({
+  helper,
+  label,
+  value,
+}: {
+  helper: string
+  label: string
+  value: string
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-3">
+      <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 font-mono text-base font-semibold">{value}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{helper}</p>
+    </div>
+  )
+}
+
+function InfoGridRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-1 border-t border-border/60 py-2 first:border-t-0 sm:grid-cols-[9rem_minmax(0,1fr)]">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="min-w-0 truncate text-xs font-medium">{value}</p>
+    </div>
+  )
+}
+
 function InfoTile({
   label,
   mono,
@@ -904,4 +2075,169 @@ function capitalizeText(value: string | null | undefined) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ")
+}
+
+function getDocumentTypeLabel(value: PartyDocument["documentType"]) {
+  return documentTypeOptions.find((option) => option.value === value)?.label ?? "Document"
+}
+
+function isHttpUrl(value: string) {
+  return /^https?:\/\//i.test(value)
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B"
+  }
+
+  const units = ["B", "KB", "MB", "GB"]
+  let amount = value
+  let unitIndex = 0
+
+  while (amount >= 1024 && unitIndex < units.length - 1) {
+    amount /= 1024
+    unitIndex += 1
+  }
+
+  return `${amount.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+}
+
+function formatAuditAction(action: string) {
+  const label = action
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+
+  return label || "Party event"
+}
+
+function getAuditActorLabel(entry: PartyAuditEntry) {
+  return entry.actor?.name || entry.actor?.email || "System"
+}
+
+function getAuditPayloadSummary(entry: PartyAuditEntry) {
+  const after = getPlainObject(entry.after)
+  const before = getPlainObject(entry.before)
+
+  if (after) {
+    const fields = Object.keys(after)
+      .filter((field) => !["businessId", "partyId", "updatedAt"].includes(field))
+      .slice(0, 4)
+
+    if (fields.length > 0) {
+      return `Recorded fields: ${fields
+        .map((field) => capitalizeText(field) ?? field)
+        .join(", ")}.`
+    }
+  }
+
+  if (before) {
+    return "Previous state was captured before this change."
+  }
+
+  return "Change recorded for this party."
+}
+
+function getPlainObject(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null
+  }
+
+  return value as Record<string, unknown>
+}
+
+function selectPrimaryRecord<T extends { isPrimary: boolean }>(records: T[]) {
+  return records.find((record) => record.isPrimary) ?? records[0] ?? null
+}
+
+function formatAddress(address: PartyDetail["addresses"][number]) {
+  return (
+    [
+      address.addressLine1,
+      address.addressLine2,
+      address.locality,
+      address.city,
+      address.district,
+      address.state,
+      address.pincode,
+    ]
+      .filter(Boolean)
+      .join(", ") || "No address text"
+  )
+}
+
+function calculateAgingBuckets(
+  entries: PartyLedgerEntry[],
+  entryType: PartyLedgerEntry["entryType"]
+) {
+  const today = startOfDay(new Date())
+  const buckets = [
+    { label: "Current", min: Number.NEGATIVE_INFINITY, max: 0, amount: 0 },
+    { label: "1-30", min: 1, max: 30, amount: 0 },
+    { label: "31-60", min: 31, max: 60, amount: 0 },
+    { label: "61-90", min: 61, max: 90, amount: 0 },
+    { label: "90+", min: 91, max: Number.POSITIVE_INFINITY, amount: 0 },
+  ]
+
+  for (const entry of entries) {
+    if (entry.entryType !== entryType || ["closed", "settled", "cancelled"].includes(entry.status)) {
+      continue
+    }
+
+    const outstanding = Number(entry.outstandingAmount)
+    if (!Number.isFinite(outstanding) || outstanding <= 0) {
+      continue
+    }
+
+    const dueDate = entry.dueDate ? startOfDay(new Date(entry.dueDate)) : today
+    const ageDays = Math.floor((today.getTime() - dueDate.getTime()) / 86_400_000)
+    const bucket = buckets.find((row) => ageDays >= row.min && ageDays <= row.max)
+    if (bucket) {
+      bucket.amount += outstanding
+    }
+  }
+
+  return buckets
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return "No date"
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date)
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return "No date"
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date)
 }

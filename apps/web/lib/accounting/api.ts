@@ -47,6 +47,15 @@ export type AccountingReportQuery = {
   branchId?: string | null
   gstRegistrationId?: string | null
   warehouseId?: string | null
+  page?: number
+  limit?: number
+}
+
+export type PaginationMeta = {
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
 }
 
 export type TrialBalanceAccount = {
@@ -119,14 +128,26 @@ export type DayBookEntry = {
   total_credit: string
 }
 
-export async function listLedgerAccounts(accessToken: string, search = "") {
+export async function listLedgerAccounts(
+  accessToken: string,
+  search = "",
+  filters: { page?: number; limit?: number } = {}
+) {
   const query = new URLSearchParams()
 
   if (search.trim()) {
     query.set("search", search.trim())
   }
 
-  return apiRequest<{ accounts: LedgerAccount[] }>(
+  if (filters.page) {
+    query.set("page", String(filters.page))
+  }
+
+  if (filters.limit) {
+    query.set("limit", String(filters.limit))
+  }
+
+  return apiRequest<{ accounts: LedgerAccount[]; pagination: PaginationMeta }>(
     `/accounting/accounts${query.size ? `?${query.toString()}` : ""}`,
     { method: "GET", accessToken }
   )
@@ -174,7 +195,11 @@ export async function getAccountLedger(
   accountId: string,
   query: AccountingReportQuery = {}
 ) {
-  return apiRequest<{ account: LedgerAccount; lines: LedgerLine[] }>(
+  return apiRequest<{
+    account: LedgerAccount
+    lines: LedgerLine[]
+    pagination: PaginationMeta
+  }>(
     `/accounting/accounts/${accountId}/ledger${toQueryString(query)}`,
     { method: "GET", accessToken }
   )
@@ -208,7 +233,7 @@ export async function getBalanceSheet(
 }
 
 export async function getDayBook(accessToken: string, query: AccountingReportQuery = {}) {
-  return apiRequest<{ entries: DayBookEntry[] }>(
+  return apiRequest<{ entries: DayBookEntry[]; pagination: PaginationMeta }>(
     `/accounting/reports/day-book${toQueryString(query)}`,
     { method: "GET", accessToken }
   )
@@ -219,7 +244,7 @@ function toQueryString(query: AccountingReportQuery) {
 
   for (const [key, value] of Object.entries(query)) {
     if (value) {
-      params.set(key, value)
+      params.set(key, String(value))
     }
   }
 

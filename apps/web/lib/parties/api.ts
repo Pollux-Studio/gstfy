@@ -14,6 +14,13 @@ export type PartySortBy =
   | "updatedAt"
 export type PartySortDir = "asc" | "desc"
 
+export type PaginationMeta = {
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
 export type PartyGstRegistration = {
   id: string
   businessId: string
@@ -27,6 +34,7 @@ export type PartyGstRegistration = {
   state: string | null
   effectiveFrom: string | null
   effectiveTo: string | null
+  registeredAddressId: string | null
   status: "active" | "inactive" | "cancelled" | "suspended" | "archived"
   isPrimary: boolean
 }
@@ -79,6 +87,46 @@ export type PartyBankAccount = {
   status: "active" | "inactive" | "archived"
 }
 
+export type PartyDocument = {
+  id: string
+  businessId: string
+  partyId: string
+  documentType:
+    | "gst_certificate"
+    | "pan"
+    | "bank_proof"
+    | "agreement"
+    | "vendor_onboarding"
+    | "other"
+  title: string
+  fileReference: string
+  fileName: string | null
+  mimeType: string | null
+  fileSizeBytes: number | null
+  notes: string | null
+  status: "active" | "archived"
+  uploadedBy: string | null
+  archivedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type PartyAuditEntry = {
+  id: string
+  entityType: string
+  entityId: string
+  action: string
+  before: unknown
+  after: unknown
+  reason: string | null
+  createdAt: string
+  actor: {
+    id: string
+    name: string | null
+    email: string | null
+  } | null
+}
+
 export type PartyCustomerProfile = {
   partyId: string
   businessId: string
@@ -114,6 +162,41 @@ export type PartyOutstandingSummary = {
   overduePayable: string
   openReceivableCount: number
   openPayableCount: number
+}
+
+export type PartyDuplicateSuggestion = {
+  party: PartyListItem
+  score: number
+  reasons: Array<{
+    field: string
+    label: string
+    confidence: "high" | "medium"
+  }>
+}
+
+export type PartyLedgerEntry = {
+  id: string
+  entryType: "receivable" | "payable"
+  originalAmount: string
+  settledAmount: string
+  outstandingAmount: string
+  dueDate: string | null
+  status: string
+  createdAt: string
+  voucherId: string
+  voucherType: string | null
+  voucherNumber: string | null
+  voucherDate: string | null
+}
+
+export type PartyLedgerTotals = {
+  receivableOriginal: string
+  receivableSettled: string
+  receivableOutstanding: string
+  payableOriginal: string
+  payableSettled: string
+  payableOutstanding: string
+  netOutstanding: string
 }
 
 export type PartyListItem = {
@@ -157,6 +240,7 @@ export type PartyGstRegistrationPayload = {
   state?: string | null
   effectiveFrom?: string | null
   effectiveTo?: string | null
+  registeredAddressId?: string | null
   status?: PartyGstRegistration["status"]
   isPrimary?: boolean
 }
@@ -178,6 +262,14 @@ export type PartyBankAccountPayload = Omit<
   "id" | "businessId" | "partyId" | "accountNumberLast4" | "accountNumberMasked"
 > & {
   accountNumber?: string
+}
+
+export type PartyDocumentPayload = Omit<
+  Partial<PartyDocument>,
+  "id" | "businessId" | "partyId" | "uploadedBy" | "archivedAt" | "createdAt" | "updatedAt"
+> & {
+  title: string
+  fileReference: string
 }
 
 export type PartyCustomerProfilePayload = Partial<
@@ -229,18 +321,19 @@ export function listParties(
     status?: PartyStatus
     sortBy?: PartySortBy
     sortDir?: PartySortDir
+    page?: number
     limit?: number
   } = {}
 ) {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
-    if (value !== undefined && value !== "") {
+    if (value !== undefined) {
       params.set(key, String(value))
     }
   }
 
   const query = params.size > 0 ? `?${params.toString()}` : ""
-  return apiRequest<{ parties: PartyListItem[] }>(`/parties${query}`, {
+  return apiRequest<{ parties: PartyListItem[]; pagination: PaginationMeta }>(`/parties${query}`, {
     method: "GET",
     accessToken,
   })
@@ -248,6 +341,93 @@ export function listParties(
 
 export function getParty(partyId: string, accessToken: string) {
   return apiRequest<{ party: PartyDetail }>(`/parties/${partyId}`, {
+    method: "GET",
+    accessToken,
+  })
+}
+
+export function findPartyDuplicates(
+  accessToken: string,
+  input: {
+    displayName?: string
+    legalName?: string
+    tradeName?: string
+    pan?: string
+    gstin?: string
+    email?: string
+    mobile?: string
+    excludePartyId?: string | null
+    limit?: number
+  }
+) {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== null && value !== "") {
+      params.set(key, String(value))
+    }
+  }
+
+  const query = params.size > 0 ? `?${params.toString()}` : ""
+  return apiRequest<{ suggestions: PartyDuplicateSuggestion[] }>(
+    `/parties/duplicates${query}`,
+    {
+      method: "GET",
+      accessToken,
+    }
+  )
+}
+
+export function getPartyLedger(
+  partyId: string,
+  accessToken: string,
+  filters: {
+    entryType?: "all" | "receivable" | "payable"
+    status?: "all" | "open" | "partially_settled" | "settled" | "closed" | "cancelled"
+    limit?: number
+  } = {}
+) {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined) {
+      params.set(key, String(value))
+    }
+  }
+
+  const query = params.size > 0 ? `?${params.toString()}` : ""
+  return apiRequest<{
+    party: Pick<PartyDetail, "id" | "displayName" | "status">
+    entries: PartyLedgerEntry[]
+    totals: PartyLedgerTotals
+  }>(`/parties/${partyId}/ledger${query}`, {
+    method: "GET",
+    accessToken,
+  })
+}
+
+export function getPartyAudit(
+  partyId: string,
+  accessToken: string,
+  filters: { page?: number; limit?: number } = {}
+) {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined) {
+      params.set(key, String(value))
+    }
+  }
+
+  const query = params.size > 0 ? `?${params.toString()}` : ""
+  return apiRequest<{ audit: PartyAuditEntry[]; pagination: PaginationMeta }>(
+    `/parties/${partyId}/audit${query}`,
+    {
+      method: "GET",
+      accessToken,
+    }
+  )
+}
+
+export function getPartyDocuments(partyId: string, accessToken: string) {
+  return apiRequest<{ documents: PartyDocument[] }>(`/parties/${partyId}/documents`, {
     method: "GET",
     accessToken,
   })
@@ -465,6 +645,51 @@ export function archivePartyBankAccount(
 ) {
   return apiRequest<{ party: PartyDetail }>(
     `/parties/${partyId}/bank-accounts/${bankAccountId}`,
+    {
+      method: "DELETE",
+      accessToken,
+    }
+  )
+}
+
+export function addPartyDocument(
+  partyId: string,
+  payload: PartyDocumentPayload,
+  accessToken: string
+) {
+  return apiRequest<{ document: PartyDocument; party: PartyDetail }>(
+    `/parties/${partyId}/documents`,
+    {
+      method: "POST",
+      body: payload,
+      accessToken,
+    }
+  )
+}
+
+export function updatePartyDocument(
+  partyId: string,
+  documentId: string,
+  payload: Partial<PartyDocumentPayload>,
+  accessToken: string
+) {
+  return apiRequest<{ document: PartyDocument; party: PartyDetail }>(
+    `/parties/${partyId}/documents/${documentId}`,
+    {
+      method: "PATCH",
+      body: payload,
+      accessToken,
+    }
+  )
+}
+
+export function archivePartyDocument(
+  partyId: string,
+  documentId: string,
+  accessToken: string
+) {
+  return apiRequest<{ document: PartyDocument; party: PartyDetail }>(
+    `/parties/${partyId}/documents/${documentId}`,
     {
       method: "DELETE",
       accessToken,

@@ -187,6 +187,13 @@ export type UpdateProductPayload = Partial<
   >
 >
 
+export type PaginationMeta = {
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
 export function listProductMasters(accessToken: string) {
   return apiRequest<{ hsnSacCodes: HsnSacCode[]; uqcCodes: UqcCode[] }>(
     "/products/masters",
@@ -203,6 +210,7 @@ export function listProducts(
     search?: string
     itemType?: ProductItemType
     status?: ProductStatus
+    page?: number
     limit?: number
   } = {}
 ) {
@@ -214,7 +222,7 @@ export function listProducts(
   }
 
   const query = params.size > 0 ? `?${params.toString()}` : ""
-  return apiRequest<{ products: ProductListItem[] }>(`/products${query}`, {
+  return apiRequest<{ products: ProductListItem[]; pagination: PaginationMeta }>(`/products${query}`, {
     method: "GET",
     accessToken,
   })

@@ -28,8 +28,30 @@ export type VoucherListItem = {
   createdAt: string
 }
 
-export function getVouchers(accessToken: string, limit = 50) {
-  return apiRequest<{ vouchers: VoucherListItem[] }>(`/core/vouchers?limit=${limit}`, {
+export type PaginationMeta = {
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
+export function getVouchers(
+  accessToken: string,
+  filters: { page?: number; limit?: number } = {}
+) {
+  const params = new URLSearchParams()
+
+  if (filters.page) {
+    params.set("page", String(filters.page))
+  }
+
+  if (filters.limit) {
+    params.set("limit", String(filters.limit))
+  }
+
+  const query = params.size ? `?${params.toString()}` : ""
+
+  return apiRequest<{ vouchers: VoucherListItem[]; pagination: PaginationMeta }>(`/core/vouchers${query}`, {
     method: "GET",
     accessToken,
   })

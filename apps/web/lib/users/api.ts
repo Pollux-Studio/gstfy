@@ -74,6 +74,13 @@ export type UserProvisioningRecord = {
   }
 }
 
+export type PaginationMeta = {
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
 export type UsersResponse = {
   meta: {
     role: string
@@ -84,6 +91,7 @@ export type UsersResponse = {
   presets: UserPresetRecord[]
   branches: UserBranchRecord[]
   users: UserRecord[]
+  pagination: PaginationMeta
 }
 
 export type UsersMutationResponse = UsersResponse & {
@@ -97,6 +105,8 @@ export type UsersQueryParams = {
   branchId?: string
   sortBy?: "name" | "contact" | "designation" | "status" | "preset" | "branch"
   sortDir?: "asc" | "desc"
+  page?: number
+  limit?: number
 }
 
 export type UpsertUserPayload = {
@@ -135,6 +145,14 @@ export function getUsers(accessToken: string, query?: UsersQueryParams) {
 
   if (query?.sortDir) {
     searchParams.set("sortDir", query.sortDir)
+  }
+
+  if (query?.page) {
+    searchParams.set("page", String(query.page))
+  }
+
+  if (query?.limit) {
+    searchParams.set("limit", String(query.limit))
   }
 
   const queryString = searchParams.toString()

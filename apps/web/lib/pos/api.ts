@@ -66,14 +66,36 @@ export type PosSaleDetail = PosSale & {
   }>
 }
 
-export async function listPosSales(accessToken: string, search = "") {
+export type PaginationMeta = {
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
+export async function listPosSales(
+  accessToken: string,
+  filters: {
+    search?: string
+    page?: number
+    limit?: number
+  } = {}
+) {
   const query = new URLSearchParams()
 
-  if (search.trim()) {
-    query.set("search", search.trim())
+  if (filters.search?.trim()) {
+    query.set("search", filters.search.trim())
   }
 
-  return apiRequest<{ sales: PosSale[] }>(
+  if (filters.page) {
+    query.set("page", String(filters.page))
+  }
+
+  if (filters.limit) {
+    query.set("limit", String(filters.limit))
+  }
+
+  return apiRequest<{ sales: PosSale[]; pagination: PaginationMeta }>(
     `/pos/sales${query.size ? `?${query.toString()}` : ""}`,
     { method: "GET", accessToken }
   )

@@ -2,9 +2,8 @@
 
 import * as React from "react"
 import {
-  keepPreviousData,
+  useInfiniteQuery,
   useMutation,
-  useQuery,
   useQueryClient,
 } from "@tanstack/react-query"
 import {
@@ -196,6 +195,7 @@ const permissionActionLabels: Record<PermissionActionKey, string> = {
   edit: "Edit",
   delete: "Delete",
 }
+const tablePageSize = 15
 
 function getInitials(name: string) {
   return name
@@ -440,14 +440,24 @@ export function UsersPage() {
     [branchFilter, deferredUserSearch, presetFilter, sortBy, sortDir, statusFilter]
   )
 
-  const { data, isLoading, error } = useQuery({
+  const usersQuery = useInfiniteQuery({
     queryKey: ["users", usersQueryParams],
-    queryFn: () => getUsers(accessToken, usersQueryParams),
+    queryFn: ({ pageParam }) =>
+      getUsers(accessToken, {
+        ...usersQueryParams,
+        page: pageParam,
+        limit: tablePageSize,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
     enabled: accessToken.length > 0,
-    placeholderData: keepPreviousData,
     refetchOnMount: "always",
     staleTime: 0,
   })
+  const data = usersQuery.data?.pages[0]
+  const isLoading = usersQuery.isLoading
+  const error = usersQuery.error
 
   const [dialogMode, setDialogMode] = React.useState<UserDialogMode | null>(null)
   const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null)
@@ -468,7 +478,11 @@ export function UsersPage() {
 
   const presets = React.useMemo(() => data?.presets ?? [], [data?.presets])
   const branches = React.useMemo(() => data?.branches ?? [], [data?.branches])
-  const users = React.useMemo(() => data?.users ?? [], [data?.users])
+  const users = React.useMemo(
+    () => usersQuery.data?.pages.flatMap((page) => page.users) ?? [],
+    [usersQuery.data?.pages]
+  )
+  const totalUsersCount = usersQuery.data?.pages[0]?.pagination.total ?? users.length
   const selectableUserIds = React.useMemo(
     () => users.filter((user) => user.canEdit || user.canDelete).map((user) => user.id),
     [users]
@@ -654,6 +668,20 @@ export function UsersPage() {
       toast.error(getErrorMessage(mutationError))
     },
   })
+
+  function handleUsersTableScroll(event: React.UIEvent<HTMLDivElement>) {
+    const target = event.currentTarget
+    const remainingScroll =
+      target.scrollHeight - target.scrollTop - target.clientHeight
+
+    if (
+      remainingScroll < 160 &&
+      usersQuery.hasNextPage &&
+      !usersQuery.isFetchingNextPage
+    ) {
+      void usersQuery.fetchNextPage()
+    }
+  }
 
   function openCreateDialog() {
     if (!data) {
@@ -1121,6 +1149,7 @@ export function UsersPage() {
               </div>
             ) : null}
           <div
+            onScroll={handleUsersTableScroll}
             className={cn(
               "app-scrollbar overflow-y-auto overflow-x-hidden",
               selectedUsers.length > 0 && shouldConstrainUsersTable ?
@@ -1372,6 +1401,20 @@ export function UsersPage() {
                 )}
               </TableBody>
             </Table>
+            {usersQuery.isFetchingNextPage ? (
+              <div className="flex items-center justify-center gap-2 border-t border-border px-3 py-3 text-xs text-muted-foreground">
+                <LoaderCircleIcon className="size-3.5 animate-spin" />
+                Loading more users
+              </div>
+            ) : usersQuery.hasNextPage ? (
+              <div className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
+                Scroll to load more · {users.length} of {totalUsersCount}
+              </div>
+            ) : users.length > tablePageSize ? (
+              <div className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
+                All {totalUsersCount} users loaded
+              </div>
+            ) : null}
           </div>
           </div>
         </section>

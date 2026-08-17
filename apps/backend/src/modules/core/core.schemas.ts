@@ -116,16 +116,27 @@ export const idParamsSchema = z.object({
 })
 
 export const listVouchersQuerySchema = z.object({
+  page: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((value) => {
+      if (value === undefined || value === "") {
+        return 1
+      }
+
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? Math.max(Math.trunc(parsed), 1) : 1
+    }),
   limit: z
     .union([z.string(), z.number()])
     .optional()
     .transform((value) => {
       if (value === undefined || value === "") {
-        return 50
+        return 15
       }
 
       const parsed = Number(value)
-      return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : 50
+      return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : 15
     }),
 })
 

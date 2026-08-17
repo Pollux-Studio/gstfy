@@ -80,14 +80,36 @@ export type SalesInvoiceDetail = SalesInvoice & {
   }>
 }
 
-export async function listSalesInvoices(accessToken: string, search = "") {
+export type PaginationMeta = {
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
+export async function listSalesInvoices(
+  accessToken: string,
+  filters: {
+    search?: string
+    page?: number
+    limit?: number
+  } = {}
+) {
   const query = new URLSearchParams()
 
-  if (search.trim()) {
-    query.set("search", search.trim())
+  if (filters.search?.trim()) {
+    query.set("search", filters.search.trim())
   }
 
-  return apiRequest<{ invoices: SalesInvoice[] }>(
+  if (filters.page) {
+    query.set("page", String(filters.page))
+  }
+
+  if (filters.limit) {
+    query.set("limit", String(filters.limit))
+  }
+
+  return apiRequest<{ invoices: SalesInvoice[]; pagination: PaginationMeta }>(
     `/sales/invoices${query.size ? `?${query.toString()}` : ""}`,
     { method: "GET", accessToken }
   )

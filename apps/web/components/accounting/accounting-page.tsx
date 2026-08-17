@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   BookOpenTextIcon,
   FilePlus2Icon,
@@ -112,6 +112,8 @@ const accountGroups = [
   "UNCATEGORIZED",
 ]
 
+const accountingTablePageSize = 15
+
 export function AccountingPage() {
   const queryClient = useQueryClient()
   const accessToken = getStoredAuthSession()?.session.accessToken ?? ""
@@ -120,9 +122,16 @@ export function AccountingPage() {
   const [form, setForm] = React.useState<AccountFormState>(emptyForm)
   const [selectedAccountId, setSelectedAccountId] = React.useState<string | null>(null)
 
-  const accountsQuery = useQuery({
+  const accountsQuery = useInfiniteQuery({
     queryKey: ["accounting", "accounts", search],
-    queryFn: () => listLedgerAccounts(accessToken, search),
+    queryFn: ({ pageParam }) =>
+      listLedgerAccounts(accessToken, search, {
+        page: pageParam,
+        limit: accountingTablePageSize,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
     enabled: accessToken.length > 0,
   })
   const trialBalanceQuery = useQuery({
@@ -140,14 +149,28 @@ export function AccountingPage() {
     queryFn: () => getBalanceSheet(accessToken),
     enabled: accessToken.length > 0,
   })
-  const dayBookQuery = useQuery({
+  const dayBookQuery = useInfiniteQuery({
     queryKey: ["accounting", "day-book"],
-    queryFn: () => getDayBook(accessToken),
+    queryFn: ({ pageParam }) =>
+      getDayBook(accessToken, {
+        page: pageParam,
+        limit: accountingTablePageSize,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
     enabled: accessToken.length > 0,
   })
-  const ledgerQuery = useQuery({
+  const ledgerQuery = useInfiniteQuery({
     queryKey: ["accounting", "ledger", selectedAccountId],
-    queryFn: () => getAccountLedger(accessToken, selectedAccountId ?? ""),
+    queryFn: ({ pageParam }) =>
+      getAccountLedger(accessToken, selectedAccountId ?? "", {
+        page: pageParam,
+        limit: accountingTablePageSize,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
     enabled: accessToken.length > 0 && Boolean(selectedAccountId),
   })
 
@@ -181,8 +204,20 @@ export function AccountingPage() {
     onError: (error) => toast.error(getErrorMessage(error)),
   })
 
-  const accounts = accountsQuery.data?.accounts ?? []
-  const selectedAccount = accounts.find((account) => account.id === selectedAccountId)
+  const accounts = accountsQuery.data?.pages.flatMap((page) => page.accounts) ?? []
+  const selectedAccount =
+    accounts.find((account) => account.id === selectedAccountId) ??
+    ledgerQuery.data?.pages[0]?.account
+  const accountLedgerLines =
+    ledgerQuery.data?.pages.flatMap((page) => page.lines) ?? []
+  const dayBookEntries =
+    dayBookQuery.data?.pages.flatMap((page) => page.entries) ?? []
+  const totalAccountsCount =
+    accountsQuery.data?.pages[0]?.pagination.total ?? accounts.length
+  const totalLedgerLinesCount =
+    ledgerQuery.data?.pages[0]?.pagination.total ?? accountLedgerLines.length
+  const totalDayBookEntriesCount =
+    dayBookQuery.data?.pages[0]?.pagination.total ?? dayBookEntries.length
 
   function handleCreateSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -276,16 +311,24 @@ export function AccountingPage() {
               <AccountTable
                 accounts={accounts}
                 isLoading={accountsQuery.isLoading}
+                isFetchingNextPage={accountsQuery.isFetchingNextPage}
+                hasNextPage={accountsQuery.hasNextPage}
+                totalAccountsCount={totalAccountsCount}
                 selectedAccountId={selectedAccountId}
                 onSelect={setSelectedAccountId}
+                onLoadMore={() => void accountsQuery.fetchNextPage()}
                 onDeactivate={(account) => deactivateMutation.mutate(account.id)}
                 isDeactivating={deactivateMutation.isPending}
               />
             </div>
             <LedgerPanel
               account={selectedAccount ?? null}
-              lines={ledgerQuery.data?.lines ?? []}
+              lines={accountLedgerLines}
               isLoading={ledgerQuery.isLoading}
+              isFetchingNextPage={ledgerQuery.isFetchingNextPage}
+              hasNextPage={ledgerQuery.hasNextPage}
+              totalLinesCount={totalLedgerLinesCount}
+              onLoadMore={() => void ledgerQuery.fetchNextPage()}
             />
           </section>
         </TabsContent>
@@ -343,7 +386,11 @@ export function AccountingPage() {
           <ReportCard title="Day book" icon={<FilePlus2Icon className="size-4" />}>
             <DayBookTable
               isLoading={dayBookQuery.isLoading}
-              entries={dayBookQuery.data?.entries ?? []}
+              isFetchingNextPage={dayBookQuery.isFetchingNextPage}
+              hasNextPage={dayBookQuery.hasNextPage}
+              totalEntriesCount={totalDayBookEntriesCount}
+              onLoadMore={() => void dayBookQuery.fetchNextPage()}
+              entries={dayBookEntries}
             />
           </ReportCard>
         </TabsContent>
@@ -512,18 +559,42 @@ export function AccountingPage() {
 function AccountTable({
   accounts,
   isLoading,
+  isFetchingNextPage,
+  hasNextPage,
+  totalAccountsCount,
   selectedAccountId,
   isDeactivating,
   onSelect,
+  onLoadMore,
   onDeactivate,
 }: {
   accounts: LedgerAccount[]
   isLoading: boolean
+  isFetchingNextPage: boolean
+  hasNextPage: boolean
+  totalAccountsCount: number
   selectedAccountId: string | null
   isDeactivating: boolean
   onSelect: (accountId: string) => void
+  onLoadMore: () => void
   onDeactivate: (account: LedgerAccount) => void
 }) {
+  const handleScroll = React.useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      if (!hasNextPage || isFetchingNextPage) {
+        return
+      }
+
+      const target = event.currentTarget
+      const remaining = target.scrollHeight - target.scrollTop - target.clientHeight
+
+      if (remaining < 160) {
+        onLoadMore()
+      }
+    },
+    [hasNextPage, isFetchingNextPage, onLoadMore]
+  )
+
   if (isLoading) {
     return <TableSkeleton columns={6} />
   }
@@ -540,65 +611,74 @@ function AccountTable({
   }
 
   return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Code</TableHead>
-            <TableHead>Account</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead>Group</TableHead>
-            <TableHead>Posting</TableHead>
-            <TableHead className="text-right">Action</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {accounts.map((account) => (
-            <TableRow
-              key={account.id}
-              className={cn(
-                "cursor-pointer",
-                selectedAccountId === account.id && "bg-muted/50"
-              )}
-              onClick={() => onSelect(account.id)}
-            >
-              <TableCell className="font-mono text-xs">{account.accountCode}</TableCell>
-              <TableCell>
-                <div className="space-y-1">
-                  <div className="font-medium">{account.accountName}</div>
-                  {account.isSystem ? (
-                    <Badge variant="outline" className="text-[11px]">
-                      System
-                    </Badge>
-                  ) : null}
-                </div>
-              </TableCell>
-              <TableCell>{accountTypeLabels[account.accountType]}</TableCell>
-              <TableCell className="text-muted-foreground">{humanize(account.accountGroup)}</TableCell>
-              <TableCell>
-                <Badge variant={account.allowPosting ? "default" : "outline"}>
-                  {account.allowPosting ? "Allowed" : "Group only"}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-right">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  disabled={account.isSystem || account.status === "inactive" || isDeactivating}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onDeactivate(account)
-                  }}
-                >
-                  Deactivate
-                </Button>
-              </TableCell>
+    <>
+      <div className="app-scrollbar max-h-[35rem] overflow-auto" onScroll={handleScroll}>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Code</TableHead>
+              <TableHead>Account</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Group</TableHead>
+              <TableHead>Posting</TableHead>
+              <TableHead className="text-right">Action</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+          </TableHeader>
+          <TableBody>
+            {accounts.map((account) => (
+              <TableRow
+                key={account.id}
+                className={cn(
+                  "cursor-pointer",
+                  selectedAccountId === account.id && "bg-muted/50"
+                )}
+                onClick={() => onSelect(account.id)}
+              >
+                <TableCell className="font-mono text-xs">{account.accountCode}</TableCell>
+                <TableCell>
+                  <div className="space-y-1">
+                    <div className="font-medium">{account.accountName}</div>
+                    {account.isSystem ? (
+                      <Badge variant="outline" className="text-[11px]">
+                        System
+                      </Badge>
+                    ) : null}
+                  </div>
+                </TableCell>
+                <TableCell>{accountTypeLabels[account.accountType]}</TableCell>
+                <TableCell className="text-muted-foreground">{humanize(account.accountGroup)}</TableCell>
+                <TableCell>
+                  <Badge variant={account.allowPosting ? "default" : "outline"}>
+                    {account.allowPosting ? "Allowed" : "Group only"}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={account.isSystem || account.status === "inactive" || isDeactivating}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onDeactivate(account)
+                    }}
+                  >
+                    Deactivate
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <InfiniteTableFooter
+        isFetchingNextPage={isFetchingNextPage}
+        hasNextPage={hasNextPage}
+        loadedCount={accounts.length}
+        totalCount={totalAccountsCount}
+        noun="accounts"
+      />
+    </>
   )
 }
 
@@ -606,6 +686,10 @@ function LedgerPanel({
   account,
   lines,
   isLoading,
+  isFetchingNextPage,
+  hasNextPage,
+  totalLinesCount,
+  onLoadMore,
 }: {
   account: LedgerAccount | null
   lines: Array<{
@@ -619,7 +703,27 @@ function LedgerPanel({
     runningBalance: string
   }>
   isLoading: boolean
+  isFetchingNextPage: boolean
+  hasNextPage: boolean
+  totalLinesCount: number
+  onLoadMore: () => void
 }) {
+  const handleScroll = React.useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      if (!hasNextPage || isFetchingNextPage) {
+        return
+      }
+
+      const target = event.currentTarget
+      const remaining = target.scrollHeight - target.scrollTop - target.clientHeight
+
+      if (remaining < 160) {
+        onLoadMore()
+      }
+    },
+    [hasNextPage, isFetchingNextPage, onLoadMore]
+  )
+
   return (
     <div className="rounded-2xl border bg-card">
       <div className="border-b p-4">
@@ -641,35 +745,44 @@ function LedgerPanel({
           No posted journal lines for this account.
         </div>
       ) : (
-        <div className="max-h-[520px] overflow-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Voucher</TableHead>
-                <TableHead className="text-right">Debit</TableHead>
-                <TableHead className="text-right">Credit</TableHead>
-                <TableHead className="text-right">Balance</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {lines.map((line) => (
-                <TableRow key={line.id}>
-                  <TableCell>{formatDate(line.date)}</TableCell>
-                  <TableCell>
-                    <div className="space-y-0.5">
-                      <div className="font-mono text-xs">{line.voucherNumber}</div>
-                      <div className="text-xs text-muted-foreground">{line.voucherType}</div>
-                    </div>
-                  </TableCell>
-                  <AmountCell value={line.debit} />
-                  <AmountCell value={line.credit} />
-                  <AmountCell value={line.runningBalance} />
+        <>
+          <div className="app-scrollbar max-h-[520px] overflow-auto" onScroll={handleScroll}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Voucher</TableHead>
+                  <TableHead className="text-right">Debit</TableHead>
+                  <TableHead className="text-right">Credit</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {lines.map((line) => (
+                  <TableRow key={line.id}>
+                    <TableCell>{formatDate(line.date)}</TableCell>
+                    <TableCell>
+                      <div className="space-y-0.5">
+                        <div className="font-mono text-xs">{line.voucherNumber}</div>
+                        <div className="text-xs text-muted-foreground">{line.voucherType}</div>
+                      </div>
+                    </TableCell>
+                    <AmountCell value={line.debit} />
+                    <AmountCell value={line.credit} />
+                    <AmountCell value={line.runningBalance} />
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <InfiniteTableFooter
+            isFetchingNextPage={isFetchingNextPage}
+            hasNextPage={hasNextPage}
+            loadedCount={lines.length}
+            totalCount={totalLinesCount}
+            noun="ledger lines"
+          />
+        </>
       )}
     </div>
   )
@@ -806,6 +919,10 @@ function StatementList({
 function DayBookTable({
   entries,
   isLoading,
+  isFetchingNextPage,
+  hasNextPage,
+  totalEntriesCount,
+  onLoadMore,
 }: {
   entries: Array<{
     voucher_id: string
@@ -817,47 +934,111 @@ function DayBookTable({
     total_credit: string
   }>
   isLoading: boolean
+  isFetchingNextPage: boolean
+  hasNextPage: boolean
+  totalEntriesCount: number
+  onLoadMore: () => void
 }) {
+  const handleScroll = React.useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      if (!hasNextPage || isFetchingNextPage) {
+        return
+      }
+
+      const target = event.currentTarget
+      const remaining = target.scrollHeight - target.scrollTop - target.clientHeight
+
+      if (remaining < 160) {
+        onLoadMore()
+      }
+    },
+    [hasNextPage, isFetchingNextPage, onLoadMore]
+  )
+
   if (isLoading) {
     return <TableSkeleton columns={5} />
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Date</TableHead>
-          <TableHead>Voucher</TableHead>
-          <TableHead>Party</TableHead>
-          <TableHead className="text-right">Debit</TableHead>
-          <TableHead className="text-right">Credit</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {entries.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-              No posted vouchers yet.
-            </TableCell>
-          </TableRow>
-        ) : (
-          entries.map((entry) => (
-            <TableRow key={entry.voucher_id}>
-              <TableCell>{formatDate(entry.voucher_date)}</TableCell>
-              <TableCell>
-                <div className="space-y-0.5">
-                  <div className="font-mono text-xs">{entry.voucher_number}</div>
-                  <div className="text-xs text-muted-foreground">{entry.voucher_type}</div>
-                </div>
-              </TableCell>
-              <TableCell>{entry.party_name ?? "Business transaction"}</TableCell>
-              <AmountCell value={entry.total_debit} />
-              <AmountCell value={entry.total_credit} />
+    <>
+      <div className="app-scrollbar max-h-[35rem] overflow-auto" onScroll={handleScroll}>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date</TableHead>
+              <TableHead>Voucher</TableHead>
+              <TableHead>Party</TableHead>
+              <TableHead className="text-right">Debit</TableHead>
+              <TableHead className="text-right">Credit</TableHead>
             </TableRow>
-          ))
-        )}
-      </TableBody>
-    </Table>
+          </TableHeader>
+          <TableBody>
+            {entries.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                  No posted vouchers yet.
+                </TableCell>
+              </TableRow>
+            ) : (
+              entries.map((entry) => (
+                <TableRow key={entry.voucher_id}>
+                  <TableCell>{formatDate(entry.voucher_date)}</TableCell>
+                  <TableCell>
+                    <div className="space-y-0.5">
+                      <div className="font-mono text-xs">{entry.voucher_number}</div>
+                      <div className="text-xs text-muted-foreground">{entry.voucher_type}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell>{entry.party_name ?? "Business transaction"}</TableCell>
+                  <AmountCell value={entry.total_debit} />
+                  <AmountCell value={entry.total_credit} />
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      {entries.length > 0 ? (
+        <InfiniteTableFooter
+          isFetchingNextPage={isFetchingNextPage}
+          hasNextPage={hasNextPage}
+          loadedCount={entries.length}
+          totalCount={totalEntriesCount}
+          noun="day book entries"
+        />
+      ) : null}
+    </>
+  )
+}
+
+function InfiniteTableFooter({
+  isFetchingNextPage,
+  hasNextPage,
+  loadedCount,
+  totalCount,
+  noun,
+}: {
+  isFetchingNextPage: boolean
+  hasNextPage: boolean
+  loadedCount: number
+  totalCount: number
+  noun: string
+}) {
+  return (
+    <div className="flex items-center justify-center border-t px-4 py-3 text-xs text-muted-foreground">
+      {isFetchingNextPage ? (
+        <span className="inline-flex items-center gap-2">
+          <Spinner className="size-3.5" />
+          Loading more {noun}
+        </span>
+      ) : hasNextPage ? (
+        <span>Scroll to load more {noun}</span>
+      ) : (
+        <span>
+          Showing {loadedCount} of {totalCount} {noun}
+        </span>
+      )}
+    </div>
   )
 }
 

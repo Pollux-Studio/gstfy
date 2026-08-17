@@ -47,8 +47,24 @@ export type CaCreatedInvite = {
   emailDelivery: CaInviteEmailDelivery
 }
 
+export type PaginationMeta = {
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
 export type CaDashboardResponse = {
   practice: CaPracticeRecord
+  summary: {
+    clientsTotal: number
+    activeClientsTotal: number
+    invitesTotal: number
+    pendingInvitesTotal: number
+    acceptedInvitesTotal: number
+  }
+  clientsPagination: PaginationMeta
+  invitesPagination: PaginationMeta
   clients: CaClientRecord[]
   invites: CaClientInviteRecord[]
   createdInvite?: CaCreatedInvite
@@ -98,8 +114,26 @@ export type CaClientSummaryResponse = {
   }
 }
 
-export function getCaDashboard(accessToken: string) {
-  return apiRequest<RawCaDashboardResponse>("/ca/clients", {
+export function getCaDashboard(
+  accessToken: string,
+  filters: {
+    clientsPage?: number
+    clientsLimit?: number
+    invitesPage?: number
+    invitesLimit?: number
+  } = {}
+) {
+  const params = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) {
+      params.set(key, String(value))
+    }
+  }
+
+  const query = params.size ? `?${params.toString()}` : ""
+
+  return apiRequest<RawCaDashboardResponse>(`/ca/clients${query}`, {
     method: "GET",
     accessToken,
   }).then(normalizeCaDashboardResponse)

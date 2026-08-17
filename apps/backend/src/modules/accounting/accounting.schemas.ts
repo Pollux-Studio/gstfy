@@ -6,6 +6,28 @@ export const accountStatuses = ["active", "inactive"] as const
 
 const dateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/)
 const nullableUuidSchema = z.uuid().optional().nullable()
+const pageSchema = z
+  .union([z.string(), z.number()])
+  .optional()
+  .transform((value) => {
+    if (value === undefined || value === "") {
+      return 1
+    }
+
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? Math.max(Math.trunc(parsed), 1) : 1
+  })
+const limitSchema = z
+  .union([z.string(), z.number()])
+  .optional()
+  .transform((value) => {
+    if (value === undefined || value === "") {
+      return 15
+    }
+
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : 15
+  })
 
 export const accountIdParamsSchema = z.object({
   id: z.uuid(),
@@ -15,6 +37,8 @@ export const listAccountsQuerySchema = z.object({
   status: z.enum(accountStatuses).optional(),
   accountType: z.enum(accountTypes).optional(),
   search: z.string().trim().max(80).optional(),
+  page: pageSchema,
+  limit: limitSchema,
 })
 
 export const createLedgerAccountSchema = z.object({
@@ -49,6 +73,8 @@ export const reportQuerySchema = z.object({
   branchId: nullableUuidSchema,
   gstRegistrationId: nullableUuidSchema,
   warehouseId: nullableUuidSchema,
+  page: pageSchema,
+  limit: limitSchema,
 })
 
 export type AccountType = (typeof accountTypes)[number]

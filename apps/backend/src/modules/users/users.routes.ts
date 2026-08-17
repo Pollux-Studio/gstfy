@@ -278,7 +278,7 @@ async function buildUsersResponse(
   query?: ListUsersQueryInput
 ) {
   const branches = await listBranches(businessId)
-  const usersList = await listBusinessUsers(businessId, branches, query)
+  const { users, pagination } = await listBusinessUsers(businessId, branches, query)
 
   return {
     meta: {
@@ -289,7 +289,8 @@ async function buildUsersResponse(
     },
     presets: userPresets,
     branches,
-    users: usersList,
+    users,
+    pagination,
   }
 }
 
@@ -404,7 +405,13 @@ async function listBusinessUsers(
     }
   })
 
-  return applyUserListQuery(usersList, query)
+  const filteredUsers = applyUserListQuery(usersList, query)
+  const { items, pagination } = paginateArray(filteredUsers, query.page, query.limit)
+
+  return {
+    users: items,
+    pagination,
+  }
 }
 
 function applyUserListQuery<
@@ -462,6 +469,21 @@ function applyUserListQuery<
 
     return query.sortDir === "asc" ? comparison : -comparison
   })
+}
+
+function paginateArray<T>(rows: T[], page: number, limit: number) {
+  const offset = (page - 1) * limit
+  const items = rows.slice(offset, offset + limit)
+
+  return {
+    items,
+    pagination: {
+      page,
+      limit,
+      total: rows.length,
+      hasMore: page * limit < rows.length,
+    },
+  }
 }
 
 function getUserSortValue(

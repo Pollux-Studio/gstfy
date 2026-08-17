@@ -342,15 +342,22 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
       conditions.push(eq(stockTransfers.status, query.status))
     }
 
+    const [{ count = 0 } = {}] = await db
+      .select({ count: drizzleSql<number>`count(*)::int` })
+      .from(stockTransfers)
+      .where(and(...conditions))
+    const offset = (query.page - 1) * query.limit
     const transfers = await db
       .select()
       .from(stockTransfers)
       .where(and(...conditions))
       .orderBy(desc(stockTransfers.createdAt))
       .limit(query.limit)
+      .offset(offset)
 
     return {
       transfers: await attachTransferLines(access.business.id, transfers),
+      pagination: createPaginationMeta(query.page, query.limit, count),
     }
   })
 
@@ -1134,6 +1141,15 @@ async function writeAuditTx(
     before,
     after,
   })
+}
+
+function createPaginationMeta(page: number, limit: number, total: number) {
+  return {
+    page,
+    limit,
+    total,
+    hasMore: page * limit < total,
+  }
 }
 
 function calculateLedgerBalance(transactions: InventoryTransactionRecord[]) {

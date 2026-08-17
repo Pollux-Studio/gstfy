@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   CheckCircle2Icon,
   CopyIcon,
@@ -11,7 +11,6 @@ import {
   MailIcon,
   PlusIcon,
   TimerIcon,
-  UsersRoundIcon,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -34,7 +33,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { toast } from "@/components/ui/toast"
-import { getStoredAuthSession } from "@/lib/auth/session"
+import {
+  getStoredAuthSession,
+  subscribeToAuthSessionChange,
+} from "@/lib/auth/session"
 import {
   createCaClient,
   getCaInviteCreationToast,
@@ -53,28 +55,41 @@ const initialFormState: ReferralFormState = {
   clientEmail: "",
   clientGstin: "",
 }
+const caTablePageSize = 15
 
 export function CaReferralCodesPage() {
   const queryClient = useQueryClient()
-  const [storedSession, setStoredSession] = React.useState<ReturnType<
-    typeof getStoredAuthSession
-  >>(null)
+  const storedSession = React.useSyncExternalStore(
+    subscribeToAuthSessionChange,
+    getStoredAuthSession,
+    () => null
+  )
   const userId = storedSession?.user.id ?? ""
   const accessToken = storedSession?.session.accessToken ?? ""
   const [formState, setFormState] =
     React.useState<ReferralFormState>(initialFormState)
   const [latestInvite, setLatestInvite] = React.useState<CaClientInviteRecord | null>(null)
 
-  React.useEffect(() => {
-    setStoredSession(getStoredAuthSession())
-  }, [])
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["ca", "dashboard", userId],
-    queryFn: () => getCaDashboard(accessToken),
+  const invitesQuery = useInfiniteQuery({
+    queryKey: ["ca", "dashboard", userId, "invites"],
+    queryFn: ({ pageParam }) =>
+      getCaDashboard(accessToken, {
+        clientsLimit: 1,
+        invitesPage: pageParam,
+        invitesLimit: caTablePageSize,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.invitesPagination.hasMore ?
+        lastPage.invitesPagination.page + 1
+      : undefined,
     enabled: accessToken.length > 0 && userId.length > 0,
     staleTime: 1000 * 60 * 3,
   })
+  const data = invitesQuery.data?.pages[0]
+  const invites = invitesQuery.data?.pages.flatMap((page) => page.invites) ?? []
+  const error = invitesQuery.error
+  const totalInvitesCount = data?.invitesPagination.total ?? invites.length
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -90,8 +105,8 @@ export function CaReferralCodesPage() {
         },
         accessToken
       ),
-    onSuccess: (nextData) => {
-      queryClient.setQueryData(["ca", "dashboard", userId], nextData)
+    onSuccess: async (nextData) => {
+      await queryClient.invalidateQueries({ queryKey: ["ca", "dashboard"] })
       setLatestInvite(nextData.invites[0] ?? null)
       setFormState(initialFormState)
       const inviteToast = getCaInviteCreationToast(nextData.createdInvite)
@@ -121,6 +136,22 @@ export function CaReferralCodesPage() {
     toast.success(`${label} copied.`)
   }
 
+  const handleInvitesTableScroll = React.useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      if (!invitesQuery.hasNextPage || invitesQuery.isFetchingNextPage) {
+        return
+      }
+
+      const target = event.currentTarget
+      const remaining = target.scrollHeight - target.scrollTop - target.clientHeight
+
+      if (remaining < 160) {
+        void invitesQuery.fetchNextPage()
+      }
+    },
+    [invitesQuery]
+  )
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -132,7 +163,7 @@ export function CaReferralCodesPage() {
     createMutation.mutate()
   }
 
-  if (!storedSession || isLoading) {
+  if (!storedSession || invitesQuery.isLoading) {
     return <CaReferralCodesSkeleton />
   }
 
@@ -148,9 +179,6 @@ export function CaReferralCodesPage() {
       </div>
     )
   }
-
-  const pendingInvites = data.invites.filter((invite) => invite.status === "pending")
-  const acceptedInvites = data.invites.filter((invite) => invite.status === "accepted")
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
@@ -172,8 +200,8 @@ export function CaReferralCodesPage() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:min-w-56">
-            <MiniMetric label="Pending" value={pendingInvites.length} />
-            <MiniMetric label="Accepted" value={acceptedInvites.length} />
+            <MiniMetric label="Pending" value={data.summary.pendingInvitesTotal} />
+            <MiniMetric label="Accepted" value={data.summary.acceptedInvitesTotal} />
           </div>
         </div>
       </section>
@@ -278,7 +306,10 @@ export function CaReferralCodesPage() {
               </Button>
             </div>
           </div>
-          <div className="app-scrollbar overflow-x-auto">
+          <div
+            className="app-scrollbar max-h-[35rem] overflow-auto"
+            onScroll={handleInvitesTableScroll}
+          >
             <Table className="min-w-[900px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -291,8 +322,8 @@ export function CaReferralCodesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.invites.length > 0 ?
-                  data.invites.map((invite) => (
+                {invites.length > 0 ?
+                  invites.map((invite) => (
                     <TableRow key={invite.id}>
                       <TableCell>
                         <div className="space-y-1">
@@ -359,6 +390,22 @@ export function CaReferralCodesPage() {
               </TableBody>
             </Table>
           </div>
+          {invites.length > 0 ? (
+            <div className="flex items-center justify-center border-t px-4 py-3 text-xs text-muted-foreground">
+              {invitesQuery.isFetchingNextPage ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner className="size-3.5" />
+                  Loading more referral codes
+                </span>
+              ) : invitesQuery.hasNextPage ? (
+                <span>Scroll to load more referral codes</span>
+              ) : (
+                <span>
+                  Showing {invites.length} of {totalInvitesCount} referral codes
+                </span>
+              )}
+            </div>
+          ) : null}
         </section>
       </section>
     </div>

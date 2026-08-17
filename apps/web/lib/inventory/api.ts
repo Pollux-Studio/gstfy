@@ -34,6 +34,13 @@ export type LowStockItem = {
   status: "OUT_OF_STOCK" | "LOW_STOCK" | "OK"
 }
 
+export type PaginationMeta = {
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
 export type WarehouseStockRow = {
   id: string
   businessId: string
@@ -242,8 +249,27 @@ export function postInventoryAdjustment(
   })
 }
 
-export function listInventoryTransfers(accessToken: string) {
-  return apiRequest<{ transfers: InventoryTransfer[] }>("/inventory/transfers", {
+export function listInventoryTransfers(
+  accessToken: string,
+  filters: { status?: InventoryTransferStatus; page?: number; limit?: number } = {}
+) {
+  const params = new URLSearchParams()
+
+  if (filters.status) {
+    params.set("status", filters.status)
+  }
+
+  if (filters.page) {
+    params.set("page", String(filters.page))
+  }
+
+  if (filters.limit) {
+    params.set("limit", String(filters.limit))
+  }
+
+  const query = params.size > 0 ? `?${params.toString()}` : ""
+
+  return apiRequest<{ transfers: InventoryTransfer[]; pagination: PaginationMeta }>(`/inventory/transfers${query}`, {
     method: "GET",
     accessToken,
   })

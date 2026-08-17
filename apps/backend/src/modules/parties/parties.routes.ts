@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 
-import { and, asc, desc, eq, ilike, inArray, or, sql as drizzleSql, type SQL } from "drizzle-orm"
+import { and, desc, eq, ilike, inArray, or, sql as drizzleSql, type SQL } from "drizzle-orm"
 import type { FastifyInstance } from "fastify"
 
 import { db } from "../../db/client.js"
@@ -11,12 +11,15 @@ import {
   partyBankAccounts,
   partyContacts,
   partyCustomerProfiles,
+  partyDocuments,
   partyGstRegistrations,
   parties,
   partySupplierProfiles,
   partyTaxIdentifiers,
   paymentTerms,
   receivablePayableEntries,
+  users,
+  vouchers,
   warehouses,
   type PartyCustomerProfileRecord,
   type PartyRecord,
@@ -29,12 +32,17 @@ import {
   customerProfileSchema,
   idParamsSchema,
   listPartiesQuerySchema,
+  partyAuditQuerySchema,
+  partyDuplicateQuerySchema,
+  partyLedgerQuerySchema,
   partyAddressParamsSchema,
   partyAddressSchema,
   partyBankAccountParamsSchema,
   partyBankAccountSchema,
   partyContactParamsSchema,
   partyContactSchema,
+  partyDocumentParamsSchema,
+  partyDocumentSchema,
   partyGstRegistrationParamsSchema,
   partyGstRegistrationSchema,
   supplierProfileSchema,
@@ -42,6 +50,7 @@ import {
   updatePartyAddressSchema,
   updatePartyBankAccountSchema,
   updatePartyContactSchema,
+  updatePartyDocumentSchema,
   updatePartyGstRegistrationSchema,
   updatePartySchema,
   updateSupplierProfileSchema,
@@ -61,7 +70,10 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
       query.role ? await findPartyIdsByRole(access.business.id, query.role) : null
 
     if (rolePartyIds && rolePartyIds.length === 0) {
-      return { parties: [] }
+      return {
+        parties: [],
+        pagination: createPaginationMeta(query.page, query.limit, 0),
+      }
     }
 
     const conditions: SQL[] = [eq(parties.businessId, access.business.id)]
@@ -95,16 +107,32 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
       }
     }
 
-    const orderBy = query.sortDir === "asc" ? asc : desc
     const rows = await db
       .select()
       .from(parties)
       .where(and(...conditions))
-      .orderBy(orderBy(getPartySortColumn(query.sortBy)))
-      .limit(query.limit)
+      .orderBy(desc(parties.updatedAt))
+
+    const summaries = sortPartySummaries(
+      await buildPartySummaries(access.business.id, rows),
+      query.sortBy,
+      query.sortDir
+    )
+    const { items, pagination } = paginateArray(summaries, query.page, query.limit)
 
     return {
-      parties: await buildPartySummaries(access.business.id, rows),
+      parties: items,
+      pagination,
+    }
+  })
+
+  app.get("/parties/duplicates", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    await assertCanUseParties(access, "view")
+    const query = partyDuplicateQuerySchema.parse(request.query)
+
+    return {
+      suggestions: await findPartyDuplicateSuggestions(access.business.id, query),
     }
   })
 
@@ -160,30 +188,6 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
         })
       }
 
-      let gstRegistrationId: string | null = null
-      if (body.gstRegistration) {
-        const [registration] = await tx
-          .insert(partyGstRegistrations)
-          .values({
-            businessId: access.business.id,
-            partyId: insertedParty.id,
-            gstin: body.gstRegistration.gstin,
-            legalName: body.gstRegistration.legalName ?? null,
-            tradeName: body.gstRegistration.tradeName ?? null,
-            registrationType: body.gstRegistration.registrationType,
-            taxpayerType: body.gstRegistration.taxpayerType ?? null,
-            stateCode: body.gstRegistration.stateCode,
-            state: body.gstRegistration.state ?? null,
-            effectiveFrom: body.gstRegistration.effectiveFrom ?? null,
-            effectiveTo: body.gstRegistration.effectiveTo ?? null,
-            status: body.gstRegistration.status,
-            isPrimary: true,
-          })
-          .returning()
-
-        gstRegistrationId = registration?.id ?? null
-      }
-
       let addressId: string | null = null
       if (body.address) {
         const [address] = await tx
@@ -208,6 +212,55 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
           .returning()
 
         addressId = address?.id ?? null
+      }
+
+      let gstRegistrationId: string | null = null
+      if (body.gstRegistration) {
+        const registeredAddressId =
+          body.gstRegistration.registeredAddressId !== undefined ?
+            body.gstRegistration.registeredAddressId
+          :
+          (addressId && body.address?.stateCode === body.gstRegistration.stateCode ?
+            addressId
+          : null)
+
+        if (registeredAddressId) {
+          if (registeredAddressId === addressId) {
+            assertAddressStateMatchesGst(
+              body.address?.stateCode ?? null,
+              body.gstRegistration.stateCode
+            )
+          } else {
+            await assertRegisteredAddressForGst(
+              access.business.id,
+              insertedParty.id,
+              body.gstRegistration.stateCode,
+              registeredAddressId
+            )
+          }
+        }
+
+        const [registration] = await tx
+          .insert(partyGstRegistrations)
+          .values({
+            businessId: access.business.id,
+            partyId: insertedParty.id,
+            gstin: body.gstRegistration.gstin,
+            legalName: body.gstRegistration.legalName ?? null,
+            tradeName: body.gstRegistration.tradeName ?? null,
+            registrationType: body.gstRegistration.registrationType,
+            taxpayerType: body.gstRegistration.taxpayerType ?? null,
+            stateCode: body.gstRegistration.stateCode,
+            state: body.gstRegistration.state ?? null,
+            effectiveFrom: body.gstRegistration.effectiveFrom ?? null,
+            effectiveTo: body.gstRegistration.effectiveTo ?? null,
+            registeredAddressId,
+            status: body.gstRegistration.status,
+            isPrimary: true,
+          })
+          .returning()
+
+        gstRegistrationId = registration?.id ?? null
       }
 
       let contactId: string | null = null
@@ -310,6 +363,33 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
     return {
       party: await getPartyDetail(access.business.id, id),
     }
+  })
+
+  app.get("/parties/:id/ledger", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    await assertCanUseParties(access, "view")
+    const { id } = idParamsSchema.parse(request.params)
+    const query = partyLedgerQuerySchema.parse(request.query)
+    const party = await requireParty(access.business.id, id)
+
+    return {
+      party: {
+        id: party.id,
+        displayName: party.displayName,
+        status: party.status,
+      },
+      ...(await getPartyLedger(access.business.id, id, query)),
+    }
+  })
+
+  app.get("/parties/:id/audit", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    await assertCanUseParties(access, "view")
+    const { id } = idParamsSchema.parse(request.params)
+    const query = partyAuditQuerySchema.parse(request.query)
+    await requireParty(access.business.id, id)
+
+    return getPartyAuditTimeline(access.business.id, id, query)
   })
 
   app.patch("/parties/:id", async (request) => {
@@ -553,6 +633,14 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
     await requireParty(access.business.id, id)
     const body = partyGstRegistrationSchema.parse(request.body)
     await assertGstinAvailable(access.business.id, body.gstin)
+    if (body.registeredAddressId) {
+      await assertRegisteredAddressForGst(
+        access.business.id,
+        id,
+        body.stateCode,
+        body.registeredAddressId
+      )
+    }
     const isPrimary = body.isPrimary || (await listGstRegistrations(access.business.id, id)).length === 0
 
     const [registration] = await db.transaction(async (tx) => {
@@ -577,6 +665,7 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
           state: body.state ?? null,
           effectiveFrom: body.effectiveFrom ?? null,
           effectiveTo: body.effectiveTo ?? null,
+          registeredAddressId: body.registeredAddressId ?? null,
           status: body.status,
           isPrimary,
         })
@@ -605,6 +694,18 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
     }
     if (body.gstin) {
       await assertGstinAvailable(access.business.id, body.gstin, registrationId)
+    }
+    const nextRegisteredAddressId =
+      body.registeredAddressId === undefined ?
+        before.registeredAddressId
+      : body.registeredAddressId
+    if (nextRegisteredAddressId) {
+      await assertRegisteredAddressForGst(
+        access.business.id,
+        id,
+        nextStateCode,
+        nextRegisteredAddressId
+      )
     }
 
     const [registration] = await db.transaction(async (tx) => {
@@ -1038,6 +1139,118 @@ export async function registerPartiesRoutes(app: FastifyInstance) {
       party: await getPartyDetail(access.business.id, id),
     }
   })
+
+  app.get("/parties/:id/documents", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    await assertCanUseParties(access, "view")
+    const { id } = idParamsSchema.parse(request.params)
+    await requireParty(access.business.id, id)
+
+    return {
+      documents: await listDocuments(access.business.id, id),
+    }
+  })
+
+  app.post("/parties/:id/documents", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    await assertCanUseParties(access, "edit")
+    const { id } = idParamsSchema.parse(request.params)
+    await requireParty(access.business.id, id)
+    const body = partyDocumentSchema.parse(request.body)
+
+    const [document] = await db
+      .insert(partyDocuments)
+      .values({
+        businessId: access.business.id,
+        partyId: id,
+        documentType: body.documentType,
+        title: body.title,
+        fileReference: body.fileReference,
+        fileName: body.fileName ?? null,
+        mimeType: body.mimeType ?? null,
+        fileSizeBytes: body.fileSizeBytes ?? null,
+        notes: body.notes ?? null,
+        status: body.status,
+        uploadedBy: access.userId,
+      })
+      .returning()
+
+    if (!document) {
+      throw new HttpError(500, "Unable to save party document.")
+    }
+
+    await writeAudit(access, "party", id, "DOCUMENT_ADDED", null, document)
+
+    return {
+      document,
+      party: await getPartyDetail(access.business.id, id),
+    }
+  })
+
+  app.patch("/parties/:id/documents/:documentId", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    await assertCanUseParties(access, "edit")
+    const { id, documentId } = partyDocumentParamsSchema.parse(request.params)
+    const before = await requireDocument(access.business.id, id, documentId)
+    const body = compactObject(updatePartyDocumentSchema.parse(request.body))
+
+    const [document] = await db
+      .update(partyDocuments)
+      .set({
+        ...body,
+        archivedAt: body.status === "archived" ? new Date() : undefined,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(partyDocuments.id, documentId),
+          eq(partyDocuments.businessId, access.business.id),
+          eq(partyDocuments.partyId, id)
+        )
+      )
+      .returning()
+
+    if (!document) {
+      throw new HttpError(500, "Unable to update party document.")
+    }
+
+    await writeAudit(access, "party", id, "DOCUMENT_UPDATED", before, document)
+
+    return {
+      document,
+      party: await getPartyDetail(access.business.id, id),
+    }
+  })
+
+  app.delete("/parties/:id/documents/:documentId", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    await assertCanUseParties(access, "edit")
+    const { id, documentId } = partyDocumentParamsSchema.parse(request.params)
+    const before = await requireDocument(access.business.id, id, documentId)
+
+    const [document] = await db
+      .update(partyDocuments)
+      .set({
+        status: "archived",
+        archivedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(partyDocuments.id, documentId),
+          eq(partyDocuments.businessId, access.business.id),
+          eq(partyDocuments.partyId, id)
+        )
+      )
+      .returning()
+
+    await writeAudit(access, "party", id, "DOCUMENT_ARCHIVED", before, document)
+
+    return {
+      document,
+      party: await getPartyDetail(access.business.id, id),
+    }
+  })
 }
 
 async function getPartyDetail(businessId: string, partyId: string) {
@@ -1142,6 +1355,326 @@ async function getPartyOutstandingSummary(businessId: string, partyId: string) {
     openReceivableCount: summary.openReceivableCount,
     openPayableCount: summary.openPayableCount,
   }
+}
+
+async function getPartyLedger(
+  businessId: string,
+  partyId: string,
+  query: {
+    entryType: "all" | "receivable" | "payable"
+    status: "all" | "open" | "partially_settled" | "settled" | "closed" | "cancelled"
+    limit: number
+  }
+) {
+  const conditions: SQL[] = [
+    eq(receivablePayableEntries.businessId, businessId),
+    eq(receivablePayableEntries.partyId, partyId),
+  ]
+
+  if (query.entryType !== "all") {
+    conditions.push(eq(receivablePayableEntries.entryType, query.entryType))
+  }
+
+  if (query.status !== "all") {
+    conditions.push(eq(receivablePayableEntries.status, query.status))
+  }
+
+  const rows = await db
+    .select({
+      id: receivablePayableEntries.id,
+      entryType: receivablePayableEntries.entryType,
+      originalAmount: receivablePayableEntries.originalAmount,
+      settledAmount: receivablePayableEntries.settledAmount,
+      outstandingAmount: receivablePayableEntries.outstandingAmount,
+      dueDate: receivablePayableEntries.dueDate,
+      status: receivablePayableEntries.status,
+      createdAt: receivablePayableEntries.createdAt,
+      voucherId: receivablePayableEntries.voucherId,
+      voucherType: vouchers.voucherType,
+      voucherNumber: vouchers.voucherNumber,
+      voucherDate: vouchers.voucherDate,
+    })
+    .from(receivablePayableEntries)
+    .leftJoin(
+      vouchers,
+      and(
+        eq(vouchers.id, receivablePayableEntries.voucherId),
+        eq(vouchers.businessId, businessId)
+      )
+    )
+    .where(and(...conditions))
+    .orderBy(desc(receivablePayableEntries.createdAt))
+    .limit(query.limit)
+
+  const totalRows = await db
+    .select({
+      entryType: receivablePayableEntries.entryType,
+      originalAmount: receivablePayableEntries.originalAmount,
+      settledAmount: receivablePayableEntries.settledAmount,
+      outstandingAmount: receivablePayableEntries.outstandingAmount,
+    })
+    .from(receivablePayableEntries)
+    .where(and(...conditions))
+
+  const totals = {
+    receivableOriginal: 0,
+    receivableSettled: 0,
+    receivableOutstanding: 0,
+    payableOriginal: 0,
+    payableSettled: 0,
+    payableOutstanding: 0,
+  }
+
+  for (const row of totalRows) {
+    const originalAmount = Number(row.originalAmount)
+    const settledAmount = Number(row.settledAmount)
+    const outstandingAmount = Number(row.outstandingAmount)
+    const isReceivable = row.entryType === "receivable"
+
+    if (isReceivable) {
+      totals.receivableOriginal += originalAmount
+      totals.receivableSettled += settledAmount
+      totals.receivableOutstanding += outstandingAmount
+    } else {
+      totals.payableOriginal += originalAmount
+      totals.payableSettled += settledAmount
+      totals.payableOutstanding += outstandingAmount
+    }
+  }
+
+  const entries = rows.map((row) => {
+    return {
+      id: row.id,
+      entryType: row.entryType,
+      originalAmount: row.originalAmount,
+      settledAmount: row.settledAmount,
+      outstandingAmount: row.outstandingAmount,
+      dueDate: row.dueDate,
+      status: row.status,
+      createdAt: row.createdAt,
+      voucherId: row.voucherId,
+      voucherType: row.voucherType,
+      voucherNumber: row.voucherNumber,
+      voucherDate: row.voucherDate,
+    }
+  })
+
+  return {
+    entries,
+    totals: {
+      receivableOriginal: formatMoney(totals.receivableOriginal),
+      receivableSettled: formatMoney(totals.receivableSettled),
+      receivableOutstanding: formatMoney(totals.receivableOutstanding),
+      payableOriginal: formatMoney(totals.payableOriginal),
+      payableSettled: formatMoney(totals.payableSettled),
+      payableOutstanding: formatMoney(totals.payableOutstanding),
+      netOutstanding: formatMoney(
+        totals.receivableOutstanding - totals.payableOutstanding
+      ),
+    },
+  }
+}
+
+async function getPartyAuditTimeline(
+  businessId: string,
+  partyId: string,
+  query: { page: number; limit: number }
+) {
+  const where = and(
+    eq(auditLogs.businessId, businessId),
+    eq(auditLogs.entityType, "party"),
+    eq(auditLogs.entityId, partyId)
+  )
+  const offset = (query.page - 1) * query.limit
+  const [countRow] = await db
+    .select({ count: drizzleSql<number>`count(*)::int` })
+    .from(auditLogs)
+    .where(where)
+
+  const rows = await db
+    .select({
+      id: auditLogs.id,
+      entityType: auditLogs.entityType,
+      entityId: auditLogs.entityId,
+      action: auditLogs.action,
+      before: auditLogs.before,
+      after: auditLogs.after,
+      reason: auditLogs.reason,
+      createdAt: auditLogs.createdAt,
+      actorId: users.id,
+      actorName: users.fullName,
+      actorEmail: users.email,
+    })
+    .from(auditLogs)
+    .leftJoin(users, eq(users.id, auditLogs.userId))
+    .where(where)
+    .orderBy(desc(auditLogs.createdAt))
+    .limit(query.limit)
+    .offset(offset)
+
+  return {
+    audit: rows.map((row) => ({
+      id: row.id,
+      entityType: row.entityType,
+      entityId: row.entityId,
+      action: row.action,
+      before: row.before,
+      after: row.after,
+      reason: row.reason,
+      createdAt: row.createdAt,
+      actor: row.actorId
+        ? {
+            id: row.actorId,
+            name: row.actorName,
+            email: row.actorEmail,
+          }
+        : null,
+    })),
+    pagination: createPaginationMeta(query.page, query.limit, Number(countRow?.count ?? 0)),
+  }
+}
+
+async function findPartyDuplicateSuggestions(
+  businessId: string,
+  query: {
+    displayName?: string
+    legalName?: string
+    tradeName?: string
+    pan?: string
+    gstin?: string
+    email?: string
+    mobile?: string
+    excludePartyId?: string
+    limit: number
+  }
+) {
+  const input = {
+    names: [query.displayName, query.legalName, query.tradeName]
+      .map((value) => normalizeNameForMatch(value ?? ""))
+      .filter(Boolean),
+    pan: normalizeComparable(query.pan ?? ""),
+    gstin: normalizeComparable(query.gstin ?? ""),
+    email: normalizeEmail(query.email ?? ""),
+    mobile: normalizeDigits(query.mobile ?? ""),
+  }
+
+  if (
+    input.names.length === 0 &&
+    !input.pan &&
+    !input.gstin &&
+    !input.email &&
+    !input.mobile
+  ) {
+    return []
+  }
+
+  const partyRows = (
+    await db
+      .select()
+      .from(parties)
+      .where(eq(parties.businessId, businessId))
+      .orderBy(desc(parties.updatedAt))
+      .limit(500)
+  ).filter((party) => party.id !== query.excludePartyId)
+
+  if (partyRows.length === 0) {
+    return []
+  }
+
+  const partyIds = partyRows.map((party) => party.id)
+  const [gstRows, contactRows, summaries] = await Promise.all([
+    db
+      .select()
+      .from(partyGstRegistrations)
+      .where(
+        and(
+          eq(partyGstRegistrations.businessId, businessId),
+          inArray(partyGstRegistrations.partyId, partyIds)
+        )
+      ),
+    db
+      .select()
+      .from(partyContacts)
+      .where(
+        and(eq(partyContacts.businessId, businessId), inArray(partyContacts.partyId, partyIds))
+      ),
+    buildPartySummaries(businessId, partyRows),
+  ])
+
+  return partyRows
+    .map((party) => {
+      const reasons: Array<{
+        field: string
+        label: string
+        confidence: "high" | "medium"
+      }> = []
+      const partyGstins = gstRows
+        .filter((row) => row.partyId === party.id)
+        .map((row) => normalizeComparable(row.gstin))
+      const partyContacts = contactRows.filter((row) => row.partyId === party.id)
+      const partyEmails = partyContacts.map((row) => normalizeEmail(row.email ?? ""))
+      const partyMobiles = partyContacts.map((row) => normalizeDigits(row.mobile ?? ""))
+      const partyNames = [party.displayName, party.legalName, party.tradeName, party.shortName]
+        .map((value) => normalizeNameForMatch(value ?? ""))
+        .filter(Boolean)
+
+      let score = 0
+
+      if (input.gstin && partyGstins.includes(input.gstin)) {
+        score = Math.max(score, 100)
+        reasons.push({
+          field: "gstin",
+          label: "Same GSTIN",
+          confidence: "high",
+        })
+      }
+
+      if (input.pan && normalizeComparable(party.pan ?? "") === input.pan) {
+        score = Math.max(score, 95)
+        reasons.push({
+          field: "pan",
+          label: "Same PAN",
+          confidence: "high",
+        })
+      }
+
+      if (input.email && partyEmails.includes(input.email)) {
+        score = Math.max(score, 90)
+        reasons.push({
+          field: "email",
+          label: "Same email",
+          confidence: "high",
+        })
+      }
+
+      if (input.mobile && partyMobiles.includes(input.mobile)) {
+        score = Math.max(score, 90)
+        reasons.push({
+          field: "mobile",
+          label: "Same mobile",
+          confidence: "high",
+        })
+      }
+
+      const nameScore = getBestNameMatchScore(input.names, partyNames)
+      if (nameScore >= 70) {
+        score = Math.max(score, nameScore)
+        reasons.push({
+          field: "name",
+          label: nameScore >= 85 ? "Very similar name" : "Similar name",
+          confidence: nameScore >= 85 ? "high" : "medium",
+        })
+      }
+
+      return {
+        party: summaries.find((summary) => summary.id === party.id) ?? null,
+        score,
+        reasons,
+      }
+    })
+    .filter((suggestion) => suggestion.party && suggestion.score >= 70)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, query.limit)
 }
 
 async function buildPartySummaries(businessId: string, partyRows: PartyRecord[]) {
@@ -1469,6 +2002,30 @@ async function requireAddress(businessId: string, partyId: string, addressId: st
   return address
 }
 
+async function assertRegisteredAddressForGst(
+  businessId: string,
+  partyId: string,
+  gstStateCode: string,
+  addressId: string
+) {
+  const address = await requireAddress(businessId, partyId, addressId)
+
+  if (!address.isActive) {
+    throw new HttpError(400, "Selected registered address is inactive.")
+  }
+
+  assertAddressStateMatchesGst(address.stateCode, gstStateCode)
+}
+
+function assertAddressStateMatchesGst(
+  addressStateCode: string | null,
+  gstStateCode: string
+) {
+  if (addressStateCode && addressStateCode !== gstStateCode) {
+    throw new HttpError(400, "Registered address state must match the GSTIN state code.")
+  }
+}
+
 async function requireContact(businessId: string, partyId: string, contactId: string) {
   const contact = await db.query.partyContacts.findFirst({
     where: and(
@@ -1503,6 +2060,22 @@ async function requireBankAccount(
   }
 
   return bankAccount
+}
+
+async function requireDocument(businessId: string, partyId: string, documentId: string) {
+  const document = await db.query.partyDocuments.findFirst({
+    where: and(
+      eq(partyDocuments.businessId, businessId),
+      eq(partyDocuments.partyId, partyId),
+      eq(partyDocuments.id, documentId)
+    ),
+  })
+
+  if (!document) {
+    throw new HttpError(404, "Party document not found.")
+  }
+
+  return document
 }
 
 async function listGstRegistrations(businessId: string, partyId: string) {
@@ -1551,6 +2124,14 @@ async function listBankAccounts(businessId: string, partyId: string) {
     .orderBy(desc(partyBankAccounts.isPrimary), desc(partyBankAccounts.createdAt))
 
   return rows.map(maskBankAccount)
+}
+
+async function listDocuments(businessId: string, partyId: string) {
+  return db
+    .select()
+    .from(partyDocuments)
+    .where(and(eq(partyDocuments.businessId, businessId), eq(partyDocuments.partyId, partyId)))
+    .orderBy(desc(partyDocuments.createdAt))
 }
 
 async function assertCanUseParties(access: BusinessAccess, action: PartyAction) {
@@ -1870,6 +2451,124 @@ function sanitizeAuditPayload(value: unknown) {
   return value
 }
 
+function normalizeComparable(value: string) {
+  return value.trim().toUpperCase()
+}
+
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase()
+}
+
+function normalizeDigits(value: string) {
+  return value.replace(/\D/g, "")
+}
+
+function normalizeNameForMatch(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\b(private|limited|pvt|ltd|llp|company|co|the)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function getBestNameMatchScore(inputNames: string[], partyNames: string[]) {
+  let bestScore = 0
+
+  for (const inputName of inputNames) {
+    for (const partyName of partyNames) {
+      bestScore = Math.max(bestScore, getNameMatchScore(inputName, partyName))
+    }
+  }
+
+  return bestScore
+}
+
+function getNameMatchScore(left: string, right: string) {
+  if (!left || !right) {
+    return 0
+  }
+
+  if (left === right) {
+    return 95
+  }
+
+  if (left.length >= 5 && right.length >= 5 && (left.includes(right) || right.includes(left))) {
+    return 82
+  }
+
+  const tokenScore = getTokenOverlapScore(left, right)
+  const editScore = getEditSimilarityScore(left, right)
+
+  return Math.max(tokenScore, editScore)
+}
+
+function getTokenOverlapScore(left: string, right: string) {
+  const leftTokens = new Set(left.split(" ").filter((token) => token.length >= 2))
+  const rightTokens = new Set(right.split(" ").filter((token) => token.length >= 2))
+
+  if (leftTokens.size === 0 || rightTokens.size === 0) {
+    return 0
+  }
+
+  const overlap = [...leftTokens].filter((token) => rightTokens.has(token)).length
+  const ratio = overlap / Math.max(leftTokens.size, rightTokens.size)
+
+  if (ratio >= 0.8) {
+    return 88
+  }
+
+  if (ratio >= 0.6) {
+    return 76
+  }
+
+  return 0
+}
+
+function getEditSimilarityScore(left: string, right: string) {
+  const maxLength = Math.max(left.length, right.length)
+
+  if (maxLength < 6) {
+    return 0
+  }
+
+  const distance = getLevenshteinDistance(left, right)
+  const similarity = 1 - distance / maxLength
+
+  if (similarity >= 0.88) {
+    return 86
+  }
+
+  if (similarity >= 0.78) {
+    return 72
+  }
+
+  return 0
+}
+
+function getLevenshteinDistance(left: string, right: string) {
+  const previous = Array.from({ length: right.length + 1 }, (_value, index) => index)
+
+  for (let leftIndex = 0; leftIndex < left.length; leftIndex += 1) {
+    const current = [leftIndex + 1]
+
+    for (let rightIndex = 0; rightIndex < right.length; rightIndex += 1) {
+      const cost = left[leftIndex] === right[rightIndex] ? 0 : 1
+      current[rightIndex + 1] = Math.min(
+        (current[rightIndex] ?? 0) + 1,
+        (previous[rightIndex + 1] ?? 0) + 1,
+        (previous[rightIndex] ?? 0) + cost
+      )
+    }
+
+    previous.splice(0, previous.length, ...current)
+  }
+
+  return previous[right.length] ?? 0
+}
+
 function normalizeMoney(value: string) {
   const [whole = "0", fraction = ""] = value.trim().split(".")
   return `${Number(whole)}.${fraction.padEnd(2, "0").slice(0, 2)}`
@@ -1885,23 +2584,76 @@ function compactObject<T extends Record<string, unknown>>(input: T) {
   ) as T
 }
 
-function getPartySortColumn(sortBy: string) {
+function escapeLikeTerm(value: string) {
+  return value.replace(/[\\%_]/g, "\\$&")
+}
+
+type PartySummary = Awaited<ReturnType<typeof buildPartySummaries>>[number]
+
+function sortPartySummaries(
+  partySummaries: PartySummary[],
+  sortBy: string,
+  sortDir: "asc" | "desc"
+) {
+  const direction = sortDir === "asc" ? 1 : -1
+
+  return [...partySummaries].sort((firstParty, secondParty) => {
+    const firstValue = getPartySummarySortValue(firstParty, sortBy)
+    const secondValue = getPartySummarySortValue(secondParty, sortBy)
+
+    return (
+      firstValue.localeCompare(secondValue, "en", {
+        numeric: true,
+        sensitivity: "base",
+      }) * direction
+    )
+  })
+}
+
+function getPartySummarySortValue(party: PartySummary, sortBy: string) {
   switch (sortBy) {
     case "name":
-      return parties.displayName
+      return party.displayName
+    case "role":
+      return party.roles.join(", ")
+    case "gstin":
+      return party.primaryGstRegistration?.gstin ?? ""
     case "pan":
-      return parties.pan
+      return party.pan ?? ""
+    case "contact":
+      return [
+        party.primaryContact?.name,
+        party.primaryContact?.mobile,
+        party.primaryContact?.email,
+      ]
+        .filter(Boolean)
+        .join(" ")
     case "status":
-      return parties.status
+      return party.status
     case "createdAt":
-      return parties.createdAt
+      return party.createdAt.toISOString()
     case "updatedAt":
-      return parties.updatedAt
+      return party.updatedAt.toISOString()
     default:
-      return parties.updatedAt
+      return party.updatedAt.toISOString()
   }
 }
 
-function escapeLikeTerm(value: string) {
-  return value.replace(/[\\%_]/g, "\\$&")
+function paginateArray<T>(rows: T[], page: number, limit: number) {
+  const offset = (page - 1) * limit
+  const items = rows.slice(offset, offset + limit)
+
+  return {
+    items,
+    pagination: createPaginationMeta(page, limit, rows.length),
+  }
+}
+
+function createPaginationMeta(page: number, limit: number, total: number) {
+  return {
+    page,
+    limit,
+    total,
+    hasMore: page * limit < total,
+  }
 }

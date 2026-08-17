@@ -286,7 +286,7 @@ export function AddBranchPage() {
   })
   const usersQuery = useQuery({
     queryKey: ["users"],
-    queryFn: () => getUsers(accessToken),
+    queryFn: () => getUsers(accessToken, { limit: 100 }),
     enabled: accessToken.length > 0,
   })
 

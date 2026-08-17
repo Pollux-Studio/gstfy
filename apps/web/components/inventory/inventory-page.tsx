@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowDownUpIcon,
   ArrowRightLeftIcon,
@@ -92,6 +92,7 @@ type TransferFormState = {
 }
 
 const today = new Date().toISOString().slice(0, 10)
+const inventoryTablePageSize = 15
 
 const initialStockForm: StockFormState = {
   itemId: "",
@@ -193,11 +194,22 @@ export function InventoryPage() {
       }),
     enabled: accessToken.length > 0 && activeItemId.length > 0,
   })
-  const transfersQuery = useQuery({
+  const transfersQuery = useInfiniteQuery({
     queryKey: ["inventory", "transfers"],
-    queryFn: () => listInventoryTransfers(accessToken),
+    queryFn: ({ pageParam }) =>
+      listInventoryTransfers(accessToken, {
+        page: pageParam,
+        limit: inventoryTablePageSize,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
     enabled: accessToken.length > 0,
   })
+  const transfers =
+    transfersQuery.data?.pages.flatMap((page) => page.transfers) ?? []
+  const totalTransfersCount =
+    transfersQuery.data?.pages[0]?.pagination.total ?? transfers.length
 
   const refreshInventory = React.useCallback(async () => {
     await Promise.all([
@@ -498,9 +510,13 @@ export function InventoryPage() {
             onSubmit={submitTransfer}
           />
           <TransfersPanel
-            transfers={transfersQuery.data?.transfers ?? []}
+            transfers={transfers}
             warehouses={warehouses}
             isLoading={transfersQuery.isLoading}
+            isFetchingNextPage={transfersQuery.isFetchingNextPage}
+            hasNextPage={transfersQuery.hasNextPage}
+            totalTransfersCount={totalTransfersCount}
+            onLoadMore={() => void transfersQuery.fetchNextPage()}
             isActionPending={transferActionMutation.isPending}
             onAction={(id, action) => transferActionMutation.mutate({ id, action })}
           />
@@ -1084,18 +1100,41 @@ function TransfersPanel({
   transfers,
   warehouses,
   isLoading,
+  isFetchingNextPage,
+  hasNextPage,
+  totalTransfersCount,
+  onLoadMore,
   isActionPending,
   onAction,
 }: {
   transfers: InventoryTransfer[]
   warehouses: WarehouseRecord[]
   isLoading: boolean
+  isFetchingNextPage: boolean
+  hasNextPage: boolean
+  totalTransfersCount: number
+  onLoadMore: () => void
   isActionPending: boolean
   onAction: (id: string, action: "dispatch" | "receive" | "cancel") => void
 }) {
   const warehouseName = React.useCallback(
     (id: string) => warehouses.find((warehouse) => warehouse.id === id)?.name ?? id,
     [warehouses]
+  )
+  const handleScroll = React.useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      if (!hasNextPage || isFetchingNextPage) {
+        return
+      }
+
+      const target = event.currentTarget
+      const remaining = target.scrollHeight - target.scrollTop - target.clientHeight
+
+      if (remaining < 160) {
+        onLoadMore()
+      }
+    },
+    [hasNextPage, isFetchingNextPage, onLoadMore]
   )
 
   return (
@@ -1106,7 +1145,7 @@ function TransfersPanel({
           Draft, dispatch, receive or cancel internal warehouse transfers.
         </p>
       </div>
-      <div className="overflow-x-auto">
+      <div className="app-scrollbar max-h-[35rem] overflow-auto" onScroll={handleScroll}>
         <Table>
           <TableHeader>
             <TableRow>
@@ -1149,6 +1188,22 @@ function TransfersPanel({
           </TableBody>
         </Table>
       </div>
+      {!isLoading && transfers.length > 0 ? (
+        <div className="flex items-center justify-center border-t px-4 py-3 text-xs text-muted-foreground">
+          {isFetchingNextPage ? (
+            <span className="inline-flex items-center gap-2">
+              <Spinner className="size-3.5" />
+              Loading more transfers
+            </span>
+          ) : hasNextPage ? (
+            <span>Scroll to load more transfers</span>
+          ) : (
+            <span>
+              Showing {transfers.length} of {totalTransfersCount} transfers
+            </span>
+          )}
+        </div>
+      ) : null}
     </section>
   )
 }
