@@ -12,11 +12,23 @@ const pathModuleMap: Array<{
     module: "overview",
   },
   {
-    test: (pathname) => pathname === "/invoices" || pathname.startsWith("/invoices/"),
+    test: (pathname) =>
+      pathname === "/invoices" ||
+      pathname.startsWith("/invoices/") ||
+      pathname === "/sales-returns" ||
+      pathname.startsWith("/sales-returns/") ||
+      pathname === "/credit-notes" ||
+      pathname.startsWith("/credit-notes/"),
     module: "invoices",
   },
   {
-    test: (pathname) => pathname === "/purchases" || pathname.startsWith("/purchases/"),
+    test: (pathname) =>
+      pathname === "/purchases" ||
+      pathname.startsWith("/purchases/") ||
+      pathname === "/purchase-returns" ||
+      pathname.startsWith("/purchase-returns/") ||
+      pathname === "/debit-notes" ||
+      pathname.startsWith("/debit-notes/"),
     module: "purchases",
   },
   {

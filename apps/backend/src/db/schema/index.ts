@@ -1650,6 +1650,215 @@ export const purchaseBillPayments = pgTable(
   })
 )
 
+export const adjustmentDocuments = pgTable(
+  "adjustment_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    voucherId: uuid("voucher_id").references(() => vouchers.id, {
+      onDelete: "set null",
+    }),
+    adjustmentNumber: text("adjustment_number").notNull(),
+    adjustmentType: text("adjustment_type").notNull(),
+    originalVoucherId: uuid("original_voucher_id")
+      .notNull()
+      .references(() => vouchers.id, { onDelete: "restrict" }),
+    sourceDocumentId: uuid("source_document_id"),
+    sourceDocumentType: text("source_document_type").notNull(),
+    partyId: uuid("party_id").references(() => parties.id, { onDelete: "set null" }),
+    branchId: uuid("branch_id").references(() => businessBranches.id, {
+      onDelete: "set null",
+    }),
+    gstRegistrationId: uuid("gst_registration_id").references(
+      () => gstRegistrations.id,
+      { onDelete: "set null" }
+    ),
+    adjustmentDate: date("adjustment_date").notNull(),
+    reasonCode: text("reason_code"),
+    reason: text("reason"),
+    status: text("status").notNull().default("draft"),
+    issuerType: text("issuer_type").notNull().default("GSTFY_BUSINESS"),
+    documentDirection: text("document_direction").notNull().default("outgoing"),
+    sourcePartyRole: text("source_party_role"),
+    adjustmentContext: text("adjustment_context").notNull().default("goods_related"),
+    subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
+    discountTotal: numeric("discount_total", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    taxableTotal: numeric("taxable_total", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    cgstTotal: numeric("cgst_total", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    sgstTotal: numeric("sgst_total", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    igstTotal: numeric("igst_total", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    cessTotal: numeric("cess_total", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    roundOff: numeric("round_off", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    grandTotal: numeric("grand_total", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    partySnapshot: jsonb("party_snapshot"),
+    sourceSnapshot: jsonb("source_snapshot"),
+    taxSnapshot: jsonb("tax_snapshot"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    postedBy: uuid("posted_by").references(() => users.id, { onDelete: "set null" }),
+    reversedBy: uuid("reversed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    postedAt: timestamp("posted_at", { withTimezone: true }),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }),
+    reversalReason: text("reversal_reason"),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("adjustment_documents_business_id_idx").on(
+      table.businessId
+    ),
+    typeStatusIndex: index("adjustment_documents_type_status_idx").on(
+      table.businessId,
+      table.adjustmentType,
+      table.status
+    ),
+    originalVoucherIndex: index("adjustment_documents_original_voucher_idx").on(
+      table.businessId,
+      table.originalVoucherId
+    ),
+    businessNumberUnique: uniqueIndex(
+      "adjustment_documents_business_number_unique"
+    ).on(table.businessId, table.adjustmentNumber),
+    businessIdentityUnique: uniqueIndex(
+      "adjustment_documents_id_business_id_unique"
+    ).on(table.id, table.businessId),
+    voucherBusinessFk: foreignKey({
+      columns: [table.voucherId, table.businessId],
+      foreignColumns: [vouchers.id, vouchers.businessId],
+      name: "adjustment_documents_voucher_business_fk",
+    }),
+    originalVoucherBusinessFk: foreignKey({
+      columns: [table.originalVoucherId, table.businessId],
+      foreignColumns: [vouchers.id, vouchers.businessId],
+      name: "adjustment_documents_original_voucher_business_fk",
+    }),
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "adjustment_documents_party_business_fk",
+    }),
+    branchBusinessFk: foreignKey({
+      columns: [table.branchId, table.businessId],
+      foreignColumns: [businessBranches.id, businessBranches.businessId],
+      name: "adjustment_documents_branch_business_fk",
+    }),
+    gstRegistrationBusinessFk: foreignKey({
+      columns: [table.gstRegistrationId, table.businessId],
+      foreignColumns: [gstRegistrations.id, gstRegistrations.businessId],
+      name: "adjustment_documents_gst_registration_business_fk",
+    }),
+  })
+)
+
+export const adjustmentDocumentLines = pgTable(
+  "adjustment_document_lines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    adjustmentDocumentId: uuid("adjustment_document_id")
+      .notNull()
+      .references(() => adjustmentDocuments.id, { onDelete: "cascade" }),
+    originalLineId: uuid("original_line_id"),
+    originalLineType: text("original_line_type"),
+    itemId: uuid("item_id").references(() => items.id, { onDelete: "set null" }),
+    descriptionSnapshot: text("description_snapshot").notNull(),
+    skuSnapshot: text("sku_snapshot"),
+    hsnSacSnapshot: text("hsn_sac_snapshot"),
+    uqcSnapshot: text("uqc_snapshot"),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull().default("0"),
+    unit: text("unit").notNull().default("PCS"),
+    rate: numeric("rate", { precision: 14, scale: 2 }).notNull().default("0"),
+    discount: numeric("discount", { precision: 14, scale: 2 }).notNull().default("0"),
+    taxableValue: numeric("taxable_value", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    taxProfileSnapshot: jsonb("tax_profile_snapshot"),
+    gstRateSnapshot: numeric("gst_rate_snapshot", { precision: 5, scale: 2 })
+      .notNull()
+      .default("0"),
+    cgstRate: numeric("cgst_rate", { precision: 5, scale: 2 })
+      .notNull()
+      .default("0"),
+    sgstRate: numeric("sgst_rate", { precision: 5, scale: 2 })
+      .notNull()
+      .default("0"),
+    igstRate: numeric("igst_rate", { precision: 5, scale: 2 })
+      .notNull()
+      .default("0"),
+    cessRuleSnapshot: jsonb("cess_rule_snapshot"),
+    cgstAmount: numeric("cgst_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    sgstAmount: numeric("sgst_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    igstAmount: numeric("igst_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    cessAmount: numeric("cess_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    lineTotal: numeric("line_total", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    inventoryEffect: text("inventory_effect").notNull().default("NONE"),
+    inventoryWarehouseId: uuid("inventory_warehouse_id").references(
+      () => warehouses.id,
+      { onDelete: "set null" }
+    ),
+    batchId: text("batch_id"),
+    serialId: text("serial_id"),
+    reason: text("reason"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    documentIndex: index("adjustment_document_lines_document_id_idx").on(
+      table.adjustmentDocumentId
+    ),
+    originalLineIndex: index("adjustment_document_lines_original_line_idx").on(
+      table.businessId,
+      table.originalLineId,
+      table.originalLineType
+    ),
+    documentBusinessFk: foreignKey({
+      columns: [table.adjustmentDocumentId, table.businessId],
+      foreignColumns: [adjustmentDocuments.id, adjustmentDocuments.businessId],
+      name: "adjustment_document_lines_document_business_fk",
+    }),
+    itemBusinessFk: foreignKey({
+      columns: [table.itemId, table.businessId],
+      foreignColumns: [items.id, items.businessId],
+      name: "adjustment_document_lines_item_business_fk",
+    }),
+    warehouseBusinessFk: foreignKey({
+      columns: [table.inventoryWarehouseId, table.businessId],
+      foreignColumns: [warehouses.id, warehouses.businessId],
+      name: "adjustment_document_lines_warehouse_business_fk",
+    }),
+  })
+)
+
 export const posSales = pgTable(
   "pos_sales",
   {
@@ -2443,6 +2652,10 @@ export const items = pgTable(
   (table) => ({
     businessIndex: index("items_business_id_idx").on(table.businessId),
     nameIndex: index("items_name_idx").on(table.name),
+    businessIdentityUnique: uniqueIndex("items_id_business_id_unique").on(
+      table.id,
+      table.businessId
+    ),
     businessSkuUnique: uniqueIndex("items_business_sku_unique").on(
       table.businessId,
       table.sku
@@ -2958,6 +3171,8 @@ export type SalesInvoicePaymentRecord = typeof salesInvoicePayments.$inferSelect
 export type PurchaseBillRecord = typeof purchaseBills.$inferSelect
 export type PurchaseBillLineRecord = typeof purchaseBillLines.$inferSelect
 export type PurchaseBillPaymentRecord = typeof purchaseBillPayments.$inferSelect
+export type AdjustmentDocumentRecord = typeof adjustmentDocuments.$inferSelect
+export type AdjustmentDocumentLineRecord = typeof adjustmentDocumentLines.$inferSelect
 export type PosSaleRecord = typeof posSales.$inferSelect
 export type PosSaleLineRecord = typeof posSaleLines.$inferSelect
 export type PosSalePaymentRecord = typeof posSalePayments.$inferSelect

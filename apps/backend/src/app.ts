@@ -7,6 +7,7 @@ import { sql } from "./db/client.js"
 import { getMigrationStatus } from "./db/migrations.js"
 import { registerAccountRoutes } from "./modules/account/account.routes.js"
 import { registerAccountingRoutes } from "./modules/accounting/accounting.routes.js"
+import { registerAdjustmentRoutes } from "./modules/adjustments/adjustments.routes.js"
 import { registerAvatarRoutes } from "./modules/avatar/avatar.routes.js"
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js"
 import { registerCaRoutes } from "./modules/ca/ca.routes.js"
@@ -165,6 +166,7 @@ async function registerBackendRoutes(app: Parameters<typeof registerAuthRoutes>[
   await registerAccountingRoutes(app)
   await registerPaymentTermsRoutes(app)
   await registerPaymentReceiptRoutes(app)
+  await registerAdjustmentRoutes(app)
   await registerPartiesRoutes(app)
   await registerProductsRoutes(app)
   await registerInventoryRoutes(app)

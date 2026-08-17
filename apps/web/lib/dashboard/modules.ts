@@ -25,6 +25,8 @@ const featureCategories: SidebarFeatureCategory[] = [
     title: "Sales",
     items: [
       { module: "invoices", title: "Invoices", url: "/invoices" },
+      { module: "invoices", title: "Sales Returns", url: "/sales-returns" },
+      { module: "invoices", title: "Credit Notes", url: "/credit-notes" },
       { module: "pos", title: "POS", url: "/pos" },
     ],
   },
@@ -32,6 +34,8 @@ const featureCategories: SidebarFeatureCategory[] = [
     title: "Purchases",
     items: [
       { module: "purchases", title: "Purchases", url: "/purchases" },
+      { module: "purchases", title: "Purchase Returns", url: "/purchase-returns" },
+      { module: "purchases", title: "Debit Notes", url: "/debit-notes" },
       { module: "expenses", title: "Expenses", url: "#" },
     ],
   },
