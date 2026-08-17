@@ -97,3 +97,4 @@ create unique index if not exists "party_bank_accounts_one_active_primary"
   on "public"."party_bank_accounts" ("business_id", "party_id")
   where "is_primary" = true
     and "status" <> 'archived';
+
