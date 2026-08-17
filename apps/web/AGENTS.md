@@ -33,7 +33,7 @@ This app is still early-stage. The current homepage is starter content and much 
 - `app/layout.tsx` defines the root layout, app metadata, theme provider, and tooltip provider.
 - `app/page.tsx` redirects to the auth entry route.
 - `app/globals.css` defines theme tokens and shared Tailwind-driven styling.
-- App-wide fonts use local system stacks defined in `app/globals.css`; do not add build-time Google font fetching for deployment builds.
+- App-wide fonts are loaded via `next/font/google`: Geist for UI text and Geist Mono for numeric/mono usage.
 - Auth routes currently live at `app/login`, `app/register`, and `app/forgot-password`.
 - `app/ui` is the internal design-system route, built from the official shadcn dashboard block shell, and should stay non-production.
 - `components/ui/` is the real UI layer for the web app today.

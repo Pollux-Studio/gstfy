@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { Geist, Geist_Mono } from "next/font/google"
 
 import { Toaster } from "@/components/ui/toast"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -8,6 +9,16 @@ import { StoreProvider } from "@/providers/store-provider"
 import { ThemeProvider } from "@/providers/theme-provider"
 
 import "./globals.css"
+
+const geistSans = Geist({
+  variable: "--font-sans",
+  subsets: ["latin"],
+})
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+})
 
 export const metadata: Metadata = {
   title: "GSTFY",
@@ -23,7 +34,7 @@ export default async function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className="h-full antialiased"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body suppressHydrationWarning className="min-h-full flex flex-col">
         <StoreProvider>

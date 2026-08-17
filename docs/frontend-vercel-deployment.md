@@ -51,6 +51,18 @@ Important:
 - Vercel wildcard domains require the nameserver method.
 - `api.gstfy.in` should not point to the frontend project. It must point to the backend host or reverse proxy.
 
+DNS status to verify before launch:
+
+| Host | Vercel project domain? | DNS record |
+|---|---:|---|
+| `gstfy.in` | Yes | Apex `A` record to Vercel |
+| `www.gstfy.in` | Yes | `www` CNAME to the exact Vercel value shown in Project -> Domains |
+| `auth.gstfy.in` | Yes | `auth` CNAME to the exact Vercel value shown in Project -> Domains |
+| `ca.gstfy.in` | Yes | `ca` CNAME to the exact Vercel value shown in Project -> Domains |
+| `*.gstfy.in` | Yes, for tenant workspaces | Use Vercel nameserver verification for wildcard domains |
+
+Do not put the full hostname in the DNS record name field. For `auth.gstfy.in`, the DNS name is `auth`; for `ca.gstfy.in`, the DNS name is `ca`.
+
 ## 3. Vercel Project Setup
 
 Create one Vercel project for the frontend.
