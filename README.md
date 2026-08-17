@@ -18,7 +18,7 @@ This repository is a Turborepo monorepo with the web app and the custom backend 
 
 ## Requirements
 
-- Node.js 20.x.
+- Node.js 20.x through 24.x. Production deploys are currently pinned to Node 20.
 - pnpm 9.15.9.
 - PostgreSQL running locally or reachable through `DATABASE_URL`.
 
