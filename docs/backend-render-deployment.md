@@ -45,6 +45,8 @@ Do not set Root Directory to `apps/backend`.
 
 Reason: the backend depends on workspace packages such as `packages/typescript-config`, and Render excludes files outside the configured root directory from the build context.
 
+The repository must include `pnpm-lock.yaml` because Render uses `pnpm install --frozen-lockfile` for reproducible deploys.
+
 ## 3. Blueprint Deployment
 
 The repository includes:
