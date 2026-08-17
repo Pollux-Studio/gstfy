@@ -18,19 +18,15 @@ import { getStoredAuthSession } from "@/lib/auth/session"
 import { getCaClientSummary } from "@/lib/ca/api"
 
 export function CaClientSummaryPage({ businessId }: { businessId: string }) {
-  const [storedSession, setStoredSession] = React.useState<ReturnType<
+  const [storedSession] = React.useState<ReturnType<
     typeof getStoredAuthSession
-  >>(null)
+  >>(() => getStoredAuthSession())
   const accessToken = storedSession?.session.accessToken ?? ""
   const { data, isLoading, error } = useQuery({
     queryKey: ["ca", "client-summary", businessId],
     queryFn: () => getCaClientSummary(businessId, accessToken),
     enabled: accessToken.length > 0,
   })
-
-  React.useEffect(() => {
-    setStoredSession(getStoredAuthSession())
-  }, [])
 
   if (!storedSession || isLoading) {
     return (

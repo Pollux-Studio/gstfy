@@ -193,7 +193,7 @@ export function SignupForm({
     () => createWorkspaceSlugPreview(company.tradeName || company.legalName),
     [company.legalName, company.tradeName]
   )
-  const [workspaceUrlPreview, setWorkspaceUrlPreview] = useState("")
+  const workspaceUrlPreview = getWorkspaceUrlPreview(workspaceSlugPreview)
 
   const [companyErrors, setCompanyErrors] = useState<FieldErrors<keyof CompanyFormValues>>(
     {}
@@ -220,10 +220,6 @@ export function SignupForm({
   const verifyCaReferralMutation = useMutation({
     mutationFn: verifyCaReferral,
   })
-
-  useEffect(() => {
-    setWorkspaceUrlPreview(getWorkspaceUrlPreview(workspaceSlugPreview))
-  }, [workspaceSlugPreview])
 
   useEffect(() => {
     const referralCode = normalizeCaReferralCodeInput(account.caReferralCode)

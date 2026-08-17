@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GSTFY Web
 
-## Getting Started
+Next.js web frontend for GSTFY.
 
-First, run the development server:
+## Local Development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm --filter web dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+For local API/auth subdomain development, create `apps/web/.env.local`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```env
+NEXT_PUBLIC_API_URL=http://api.localhost:4000
+NEXT_PUBLIC_APP_BASE_DOMAIN=localhost:3000
+NEXT_PUBLIC_APP_PROTOCOL=http
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Then open:
 
-## Learn More
+```text
+http://auth.localhost:3000/auth/login
+http://ca.localhost:3000/dashboard
+http://<tenant>.localhost:3000/dashboard
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Production Defaults
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+If env variables are not provided, the app defaults to:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```text
+https://api.gstfy.in
+gstfy.in
+https
+```
 
-## Deploy on Vercel
+This is intentional for the Vercel smoke-test deployment branch.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Checks
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+pnpm --filter web lint
+pnpm --filter web typecheck
+pnpm --filter web build
+```
+
+## Deployment
+
+See:
+
+```text
+docs/frontend-vercel-deployment.md
+```

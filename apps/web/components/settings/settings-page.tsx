@@ -44,6 +44,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { APP_BASE_DOMAIN, RESERVED_APP_SUBDOMAINS } from "@/lib/api/config"
 import { getStoredAuthSession, setStoredAuthSession } from "@/lib/auth/session"
 import { getAllGstStates } from "@/lib/gst-state"
 import {
@@ -62,16 +63,7 @@ const phonePattern = /^\d{10}$/
 const pincodePattern = /^\d{6}$/
 const invoicePrefixPattern = /^[A-Z0-9-]{2,10}$/
 const tenantSlugPattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/
-const reservedTenantSlugs = new Set([
-  "api",
-  "app",
-  "auth",
-  "admin",
-  "www",
-  "mail",
-  "support",
-  "gstfy",
-])
+const reservedTenantSlugs = RESERVED_APP_SUBDOMAINS
 
 const businessDetailsSchema = z.object({
   businessEmail: z.union([z.literal(""), z.string().trim().email("Enter a valid email address.")]),
@@ -259,8 +251,10 @@ export function SettingsPage() {
       return
     }
 
-    setTenantSlugInput(data.business.tenantSlug ?? "")
-    setTenantSlugError(null)
+    React.startTransition(() => {
+      setTenantSlugInput(data.business.tenantSlug ?? "")
+      setTenantSlugError(null)
+    })
     businessForm.reset({
       businessEmail: data.business.businessEmail ?? "",
       businessMobile: data.business.businessMobile ?? "",
@@ -490,7 +484,7 @@ export function SettingsPage() {
   const hasWorkspaceUrl = currentTenantSlug.length > 0
   const tenantDisplayUrl =
     data.business.tenantUrl ||
-    (currentTenantSlug ? `${currentTenantSlug}.gstfy.in` : "Not set")
+    (currentTenantSlug ? `${currentTenantSlug}.${APP_BASE_DOMAIN}` : "Not set")
 
   return (
     <Tabs defaultValue="business" className="contents">
@@ -625,7 +619,7 @@ export function SettingsPage() {
                                 placeholder={createTenantSlugSuggestion(data.business.tradeName)}
                               />
                               <span className="shrink-0 border-l border-border px-2 text-xs text-muted-foreground">
-                                .gstfy.in
+                                .{APP_BASE_DOMAIN}
                               </span>
                             </div>
                             <p

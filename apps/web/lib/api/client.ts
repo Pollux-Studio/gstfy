@@ -4,7 +4,11 @@ import {
   refreshStoredAuthSession,
   shouldRefreshAuthSession,
 } from "@/lib/auth/session"
-import { API_BASE_PATH, API_BASE_URL } from "@/lib/api/config"
+import {
+  API_BASE_PATH,
+  API_BASE_URL,
+  getTenantSlugFromHostname,
+} from "@/lib/api/config"
 
 export class ApiError extends Error {
   constructor(
@@ -101,36 +105,7 @@ function getTenantSlugFromLocation() {
     return null
   }
 
-  const hostname = window.location.hostname.toLowerCase()
-
-  if (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1"
-  ) {
-    return null
-  }
-
-  const [subdomain, ...domainParts] = hostname.split(".")
-
-  if (!subdomain) {
-    return null
-  }
-
-  const parentDomain = domainParts.join(".")
-
-  if (parentDomain !== "localhost" && domainParts.length < 2) {
-    return null
-  }
-
-  if (["api", "app", "auth", "ca", "www"].includes(subdomain)) {
-    return null
-  }
-
-  if (!/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?$/.test(subdomain)) {
-    return null
-  }
-
-  return subdomain
+  return getTenantSlugFromHostname(window.location.hostname)
 }
 
 async function getRequestAccessToken(accessToken: string | undefined) {

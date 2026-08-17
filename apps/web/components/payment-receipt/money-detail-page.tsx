@@ -6,7 +6,6 @@ import { useQuery } from "@tanstack/react-query"
 import {
   ArrowLeftIcon,
   BadgeIndianRupeeIcon,
-  CalendarIcon,
   LandmarkIcon,
   ReceiptTextIcon,
 } from "lucide-react"

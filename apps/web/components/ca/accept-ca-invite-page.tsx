@@ -23,17 +23,13 @@ export function AcceptCaInvitePage() {
   const initialCode = searchParams.get("code") ?? ""
   const [referralCode, setReferralCode] = React.useState(initialCode)
   const [accepted, setAccepted] = React.useState(false)
-  const [storedSession, setStoredSession] = React.useState<ReturnType<
+  const [storedSession] = React.useState<ReturnType<
     typeof getStoredAuthSession
-  >>(null)
+  >>(() => getStoredAuthSession())
   const accessToken = storedSession?.session.accessToken ?? ""
   const loginHref = `/auth/login?next=${encodeURIComponent(
     `/ca/accept?code=${encodeURIComponent(referralCode.trim())}`
   )}`
-
-  React.useEffect(() => {
-    setStoredSession(getStoredAuthSession())
-  }, [])
 
   const acceptMutation = useMutation({
     mutationFn: () => acceptCaInvite(referralCode.trim(), accessToken),

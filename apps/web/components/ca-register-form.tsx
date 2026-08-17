@@ -13,7 +13,7 @@ import {
   MailIcon,
   UserRoundIcon,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
 
@@ -53,7 +53,7 @@ export function CaRegisterForm({
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [submitError, setSubmitError] = useState("")
-  const [caLoginHref, setCaLoginHref] = useState("/auth/ca/login")
+  const caLoginHref = getAuthSubdomainUrl("/auth/ca/login")
 
   const schema = useMemo(
     () =>
@@ -101,10 +101,6 @@ export function CaRegisterForm({
   const registerMutation = useMutation({
     mutationFn: caRegister,
   })
-
-  useEffect(() => {
-    setCaLoginHref(getAuthSubdomainUrl("/auth/ca/login"))
-  }, [])
 
   async function handleSubmit(formValues: CaRegisterValues) {
     setSubmitError("")

@@ -5,7 +5,6 @@ import Link from "next/link"
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowDownLeftIcon,
-  ArrowLeftRightIcon,
   ArrowUpRightIcon,
   BanIcon,
   DownloadIcon,
@@ -593,10 +592,6 @@ function AdjustmentCreateDialog({
     onError: (error) => toast.error(getErrorMessage(error)),
   })
 
-  React.useEffect(() => {
-    setLineValues({})
-  }, [sourceDocumentId])
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
@@ -635,7 +630,10 @@ function AdjustmentCreateDialog({
                         "border-blue-500 bg-blue-500/5"
                       : "hover:bg-muted/50")
                     }
-                    onClick={() => setSourceDocumentId(source.id)}
+                    onClick={() => {
+                      setSourceDocumentId(source.id)
+                      setLineValues({})
+                    }}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-mono text-xs">{source.number}</span>

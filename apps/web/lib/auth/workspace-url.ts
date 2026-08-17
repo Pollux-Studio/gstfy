@@ -1,14 +1,7 @@
-const reservedWorkspaceSlugs = new Set([
-  "api",
-  "app",
-  "auth",
-  "ca",
-  "admin",
-  "www",
-  "mail",
-  "support",
-  "gstfy",
-])
+import {
+  RESERVED_APP_SUBDOMAINS,
+  getPublicSubdomainUrl,
+} from "@/lib/api/config"
 
 export function createWorkspaceSlugPreview(input: string) {
   const slug = input
@@ -20,7 +13,9 @@ export function createWorkspaceSlugPreview(input: string) {
     .slice(0, 48)
 
   const normalized = slug.length >= 3 ? slug : "business"
-  return reservedWorkspaceSlugs.has(normalized) ? `${normalized}-business` : normalized
+  return RESERVED_APP_SUBDOMAINS.has(normalized)
+    ? `${normalized}-business`
+    : normalized
 }
 
 export function getWorkspaceUrlPreview(workspaceSlug: string) {
@@ -43,34 +38,5 @@ export function appendPathToUrl(baseUrl: string, path: string) {
 }
 
 function buildSubdomainUrl(subdomain: string, path = "") {
-  if (typeof window === "undefined") {
-    return path || ""
-  }
-
-  const { protocol, hostname, port } = window.location
-  const normalizedPath = path.startsWith("/") || path.length === 0 ? path : `/${path}`
-  const baseHost = getBaseHost(hostname)
-  const portSuffix = port ? `:${port}` : ""
-
-  return `${protocol}//${subdomain}.${baseHost}${portSuffix}${normalizedPath}`
-}
-
-function getBaseHost(hostname: string) {
-  const normalizedHostname = hostname.toLowerCase()
-
-  if (
-    normalizedHostname === "localhost" ||
-    normalizedHostname === "127.0.0.1" ||
-    normalizedHostname.endsWith(".localhost")
-  ) {
-    return "localhost"
-  }
-
-  const labels = normalizedHostname.split(".").filter(Boolean)
-
-  if (labels.length <= 2) {
-    return normalizedHostname
-  }
-
-  return labels.slice(-2).join(".")
+  return getPublicSubdomainUrl(subdomain, path)
 }

@@ -11,7 +11,7 @@ import {
   LockKeyholeIcon,
   MailIcon,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
 
@@ -50,7 +50,7 @@ export function CaLoginForm({
   const registered = searchParams.get("registered") === "1"
   const [showPassword, setShowPassword] = useState(false)
   const [authError, setAuthError] = useState("")
-  const [caRegisterHref, setCaRegisterHref] = useState("/auth/ca/register")
+  const caRegisterHref = getAuthSubdomainUrl("/auth/ca/register")
 
   const schema = useMemo(
     () =>
@@ -84,10 +84,6 @@ export function CaLoginForm({
   const loginMutation = useMutation({
     mutationFn: caLogin,
   })
-
-  useEffect(() => {
-    setCaRegisterHref(getAuthSubdomainUrl("/auth/ca/register"))
-  }, [])
 
   async function handleSubmit(values: CaLoginValues) {
     setAuthError("")
