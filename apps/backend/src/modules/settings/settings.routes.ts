@@ -1,5 +1,5 @@
 import argon2 from "argon2"
-import { and, desc, eq, gt, ne } from "drizzle-orm"
+import { and, desc, eq, gt, inArray, ne } from "drizzle-orm"
 import type { FastifyInstance, FastifyRequest } from "fastify"
 
 import { db } from "../../db/client.js"
@@ -11,6 +11,7 @@ import {
   caBusinessLinks,
   caClientInvites,
   caPractices,
+  cessRules,
   gstRegistrations,
   sessions,
   users,
@@ -35,6 +36,55 @@ import {
   verifyCaReferralSchema,
   verifyUserPhoneSchema,
 } from "./settings.schemas.js"
+
+const cessPresetVersion = "GSTFY_CESS_PRESET_V1"
+const cessPresetCodes = [
+  "TOBACCO_CESS",
+  "PAN_MASALA_CESS",
+  "COAL_CESS",
+  "AERATED_DRINK_CESS",
+  "MOTOR_VEHICLE_CESS",
+] as const
+
+type CessPresetCode = (typeof cessPresetCodes)[number]
+
+const cessPresetDefinitions: Array<{
+  code: CessPresetCode
+  label: string
+  description: string
+  calculationMethod: string
+}> = [
+  {
+    code: "TOBACCO_CESS",
+    label: "Tobacco products",
+    description: "Use when this business sells tobacco or tobacco-derived goods.",
+    calculationMethod: "ad_valorem",
+  },
+  {
+    code: "PAN_MASALA_CESS",
+    label: "Pan masala",
+    description: "Use when this business sells pan masala products.",
+    calculationMethod: "ad_valorem",
+  },
+  {
+    code: "COAL_CESS",
+    label: "Coal",
+    description: "Use when this business sells coal or coal-linked goods.",
+    calculationMethod: "specific",
+  },
+  {
+    code: "AERATED_DRINK_CESS",
+    label: "Aerated drinks",
+    description: "Use when this business sells aerated or carbonated drinks.",
+    calculationMethod: "ad_valorem",
+  },
+  {
+    code: "MOTOR_VEHICLE_CESS",
+    label: "Motor vehicles",
+    description: "Use when this business sells motor vehicles covered by cess.",
+    calculationMethod: "ad_valorem",
+  },
+]
 
 export async function registerSettingsRoutes(app: FastifyInstance) {
   app.get("/settings", async (request) => {
@@ -335,6 +385,14 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       .set(gstPatch)
       .where(eq(businessPreferences.businessId, access.business.id))
 
+    if (body.enabledCessPresetCodes) {
+      await syncBusinessCessPresets(
+        access.business.id,
+        access.user.id,
+        body.enabledCessPresetCodes
+      )
+    }
+
     return getSettingsResponse(access)
   }
 
@@ -379,10 +437,116 @@ async function getSettings(businessId: string) {
   }
 }
 
+async function getCessPresetSettings(businessId: string) {
+  const rows = await db
+    .select()
+    .from(cessRules)
+    .where(
+      and(
+        eq(cessRules.businessId, businessId),
+        eq(cessRules.version, cessPresetVersion),
+        inArray(cessRules.ruleCode, [...cessPresetCodes])
+      )
+    )
+
+  const rowByCode = new Map(rows.map((row) => [row.ruleCode, row]))
+
+  return {
+    presets: cessPresetDefinitions.map((preset) => {
+      const row = rowByCode.get(preset.code)
+
+      return {
+        code: preset.code,
+        label: preset.label,
+        description: preset.description,
+        enabled: row?.status === "active",
+        cessRuleId: row?.id ?? null,
+        calculationMethod: row?.calculationMethod ?? preset.calculationMethod,
+        ratePercent: row?.ratePercent ?? null,
+        amountPerUnit: row?.amountPerUnit ?? null,
+        requiresRateConfiguration: true,
+      }
+    }),
+  }
+}
+
+async function syncBusinessCessPresets(
+  businessId: string,
+  userId: string,
+  enabledCodes: CessPresetCode[]
+) {
+  const enabledCodeSet = new Set(enabledCodes)
+  const disabledCodes = cessPresetDefinitions
+    .map((preset) => preset.code)
+    .filter((code) => !enabledCodeSet.has(code))
+  const now = new Date()
+
+  await db.transaction(async (tx) => {
+    if (disabledCodes.length > 0) {
+      await tx
+        .update(cessRules)
+        .set({
+          status: "inactive",
+          updatedBy: userId,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(cessRules.businessId, businessId),
+            eq(cessRules.version, cessPresetVersion),
+            inArray(cessRules.ruleCode, disabledCodes)
+          )
+        )
+    }
+
+    for (const preset of cessPresetDefinitions) {
+      if (!enabledCodeSet.has(preset.code)) {
+        continue
+      }
+
+      await tx
+        .insert(cessRules)
+        .values({
+          businessId,
+          ruleCode: preset.code,
+          description: preset.label,
+          calculationMethod: preset.calculationMethod,
+          conditions: {
+            gstfySystemPreset: true,
+            cessCategory: preset.code,
+            requiresRateConfiguration: true,
+          },
+          effectiveFrom: "2017-07-01",
+          status: "active",
+          version: cessPresetVersion,
+          createdBy: userId,
+          updatedBy: userId,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [cessRules.businessId, cessRules.ruleCode, cessRules.version],
+          set: {
+            description: preset.label,
+            calculationMethod: preset.calculationMethod,
+            conditions: {
+              gstfySystemPreset: true,
+              cessCategory: preset.code,
+              requiresRateConfiguration: true,
+            },
+            status: "active",
+            updatedBy: userId,
+            updatedAt: now,
+          },
+        })
+    }
+  })
+}
+
 async function getSettingsResponse(
   access: Awaited<ReturnType<typeof requirePrimaryBusinessAccess>>
 ) {
   const settings = await getSettings(access.business.id)
+  const cessPresetSettings = await getCessPresetSettings(access.business.id)
   const caReferral = await getCaReferralState(access.business.id)
   const recentSessions = await db
     .select({
@@ -453,6 +617,7 @@ async function getSettingsResponse(
     },
     gstRateSettings: {
       enabledGstSlabs: parseEnabledGstSlabs(preferences?.enabledGstSlabs),
+      cessPresets: cessPresetSettings.presets,
     },
     printerSettings: {
       paperSize: toUiPaperSize(preferences?.printerPaperSize),

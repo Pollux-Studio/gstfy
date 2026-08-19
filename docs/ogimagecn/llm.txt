@@ -1,0 +1,54 @@
+# ogimagecn
+
+> A collection of beautifully designed and customizable Open Graph image components. Built on Satori. Works with shadcn/ui. Use this index to discover the available documentation pages, markdown mirrors, and registry resources before browsing.
+
+## Docs
+
+- Get Started
+  - [Introduction](https://www.ogimagecn.com/docs.md): ogimagecn is a shadcn registry of beautiful Open Graph image components built on Satori.
+  - [Installation](https://www.ogimagecn.com/docs/installation.md): Install an ogimagecn component and render it as an Open Graph image.
+  - [MCP](https://www.ogimagecn.com/docs/mcp.md): Learn how to use the shadcn MCP (Model Context Protocol) server with ogimagecn.
+  - [Registry](https://www.ogimagecn.com/docs/registry.md): Learn how to use the ogimagecn registry with the shadcn CLI.
+  - Changelog
+    - [Changelog](https://www.ogimagecn.com/docs/changelog.md): Latest updates and announcements for ogimagecn.
+- Components
+  - [Components](https://www.ogimagecn.com/docs/components.md): Here you can find all the Open Graph image components available in the library.
+  - Brand
+    - [Brand](https://www.ogimagecn.com/docs/components/brand.md): Open Graph images for brands, profiles, portfolios, and personal sites.
+    - [Owner](https://www.ogimagecn.com/docs/components/brand/owner.md): A clean Open Graph image with a light background, eyebrow text, bold headline, and three rounded photos at the bottom.
+    - [Shiori](https://www.ogimagecn.com/docs/components/brand/shiori.md): A clean, minimal Open Graph image with a light cream background, a circular logo, and a bold brand beside a muted title.
+  - Content
+    - [Content](https://www.ogimagecn.com/docs/components/content.md): Open Graph images for articles, editorials, photography, quotes, technical content, and data.
+    - [Blog](https://www.ogimagecn.com/docs/components/content/blog.md): An article Open Graph image with a category badge, headline, excerpt, and author row.
+    - [Editorial](https://www.ogimagecn.com/docs/components/content/editorial.md): A poster-style Open Graph image with oversized display type and a large faint ghost word set behind the content.
+    - [Grid](https://www.ogimagecn.com/docs/components/content/grid.md): A framed, technical Open Graph image with a dashed border grid and a corner brand mark.
+    - [Photo](https://www.ogimagecn.com/docs/components/content/photo.md): A full-bleed photo Open Graph image with a dark gradient scrim and a bottom-aligned title block.
+    - [Profile](https://www.ogimagecn.com/docs/components/content/profile.md): A personal / portfolio Open Graph image with a circular avatar beside a name, role, bio, and website pill.
+    - [Quote](https://www.ogimagecn.com/docs/components/content/quote.md): A testimonial / tweet-style Open Graph image with a large quote and an author row.
+    - [Stat](https://www.ogimagecn.com/docs/components/content/stat.md): A metric / dashboard Open Graph image with an eyebrow label, an oversized number, a trend pill, and a caption.
+    - [Terminal](https://www.ogimagecn.com/docs/components/content/terminal.md): A minimal, technical Open Graph image with a wordmark and accent side-bar above a large wide-tracked uppercase headline.
+  - Product
+    - [Product](https://www.ogimagecn.com/docs/components/product.md): Open Graph images for product announcements, launches, events, and showcases.
+    - [Changelog](https://www.ogimagecn.com/docs/components/product/changelog.md): A release Open Graph image with a version pill, date, title, and a checklist of highlights.
+    - [Event](https://www.ogimagecn.com/docs/components/product/event.md): An event / launch Open Graph image with an eyebrow label, large title, and a date · location footer row.
+    - [Logo](https://www.ogimagecn.com/docs/components/product/logo.md): A centered brand Open Graph image with a logo tile, a large wordmark, and an optional tagline on a soft gradient field.
+    - [Product](https://www.ogimagecn.com/docs/components/product/product.md): A two-column product Open Graph image with brand and copy on the left, a product shot on the right, and a price pill.
+    - [Showcase](https://www.ogimagecn.com/docs/components/product/showcase.md): A product-showcase Open Graph image with a centered headline above a faux browser window and a minimal dashboard UI.
+    - [Simple](https://www.ogimagecn.com/docs/components/product/simple.md): A minimal, centered Open Graph image with an eyebrow label, title, description, and brand mark.
+  - Shadcn Registry
+    - [Shadcn Registry](https://www.ogimagecn.com/docs/components/shadcn-registry.md): Open Graph images for showcasing shadcn registries and component collections.
+    - [Shadcn Registry 1](https://www.ogimagecn.com/docs/components/shadcn-registry/1.md): A showcase Open Graph image for shadcn registries with logo, name, URL, description, and tag badges.
+    - [Shadcn Registry 2](https://www.ogimagecn.com/docs/components/shadcn-registry/2.md): A clean Open Graph image with a light background, logo, name, category, title, and dot-separated tags.
+    - [Shadcn Registry 3](https://www.ogimagecn.com/docs/components/shadcn-registry/3.md): A bold dark Open Graph image with large title, circular badge, ghost watermark, and credit text.
+    - [Shadcn Registry 4](https://www.ogimagecn.com/docs/components/shadcn-registry/4.md): A centered dark Open Graph image with logo, name, title, and URL on a subtle dot pattern background.
+    - [Shadcn Registry 5](https://www.ogimagecn.com/docs/components/shadcn-registry/5.md): A clean light Open Graph image with centered logo, name, title, and description inside a bordered frame.
+    - [Shadcn Registry 6](https://www.ogimagecn.com/docs/components/shadcn-registry/6.md): A minimal Open Graph image with solid border lines, a logo in the top-left, and title/description at the bottom.
+
+## Machine-readable Resources
+
+- [Full documentation](https://www.ogimagecn.com/llms-full.txt)
+- [Homepage markdown](https://www.ogimagecn.com/llms.md/content.md)
+- [OpenAPI description](https://www.ogimagecn.com/openapi.json)
+- [API catalog](https://www.ogimagecn.com/.well-known/api-catalog)
+- [Agent skill](https://www.ogimagecn.com/.well-known/agent-skills/site-skill.md)
+- [shadcn MCP server documentation](https://ui.shadcn.com/docs/mcp)

@@ -9,16 +9,24 @@ import {
 } from "@tanstack/react-query"
 import {
   ArchiveIcon,
+  ArrowDownIcon,
+  ArrowUpDownIcon,
+  ArrowUpIcon,
   BarcodeIcon,
   BoxesIcon,
+  CheckIcon,
+  DownloadIcon,
   EyeIcon,
+  FileSpreadsheetIcon,
+  FileTextIcon,
+  MinusIcon,
   MoreHorizontalIcon,
   PackageIcon,
   PencilLineIcon,
   PlusIcon,
   ReceiptTextIcon,
   SearchIcon,
-  SparklesIcon,
+  SlidersHorizontalIcon,
   TagsIcon,
 } from "lucide-react"
 
@@ -34,28 +42,22 @@ import {
 } from "@/components/ui/dialog"
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
+  SelectDisplayValue,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import {
@@ -66,12 +68,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/components/ui/toast"
+import type {
+  ProductFormErrors,
+  ProductFormState,
+  SheetMode,
+} from "@/components/products/product-form-types"
+import { ProductUpsertDialog } from "@/components/products/product-upsert-dialog"
 import { getStoredAuthSession } from "@/lib/auth/session"
+import {
+  getBarcodeSubmitKeyFromKeyboardEventKey,
+  readBarcodeScannerSettings,
+} from "@/lib/barcode-scanner/settings"
 import {
   archiveProduct,
   createProduct,
+  createProductBrand,
+  createProductCategory,
   getProduct,
   listProductMasters,
   listProducts,
@@ -82,9 +95,13 @@ import {
   type ProductListItem,
   type ProductStatus,
   type Taxability,
-  type TaxMode,
   type UpdateProductPayload,
 } from "@/lib/products/api"
+import {
+  getWarehouses,
+} from "@/lib/organization/api"
+import { getSettings } from "@/lib/settings/api"
+import { listTaxRules } from "@/lib/tax/api"
 import { cn } from "@/lib/utils"
 
 type FilterState = {
@@ -93,35 +110,26 @@ type FilterState = {
   status: ProductStatus | "all"
 }
 
-type SheetMode = "create" | "edit"
-
-type ProductFormState = {
-  name: string
-  itemType: ProductItemType
-  sku: string
-  description: string
-  manufacturer: string
-  modelNumber: string
-  status: ProductStatus
-  taxability: Taxability
-  hsnSac: string
-  gstRate: string
-  effectiveFrom: string
-  baseUnit: string
-  gstUqc: string
-  conversionFactor: string
-  price: string
-  taxMode: TaxMode
-  barcode: string
-  trackInventory: boolean
-  reorderLevel: string
-  minimumStock: string
-  maximumStock: string
-  batchTracking: boolean
-  serialTracking: boolean
-}
-
-type ProductFormErrors = Partial<Record<keyof ProductFormState, string>>
+type ProductExportFormat = "csv" | "excel" | "pdf"
+type ProductSortBy =
+  | "name"
+  | "sku"
+  | "itemType"
+  | "tax"
+  | "gst"
+  | "unit"
+  | "price"
+  | "inventory"
+  | "status"
+type ProductSortDir = "asc" | "desc"
+type ProductColumnKey =
+  | "product"
+  | "hsn"
+  | "gst"
+  | "unit"
+  | "price"
+  | "inventory"
+  | "status"
 
 const itemTypeLabels: Record<ProductItemType, string> = {
   GOODS: "Goods",
@@ -144,39 +152,88 @@ const taxabilityLabels: Record<Taxability, string> = {
 
 const itemTypes: ProductItemType[] = ["GOODS", "SERVICE"]
 const statuses: ProductStatus[] = ["ACTIVE", "INACTIVE", "ARCHIVED"]
-const tablePageSize = 15
-const taxabilities: Taxability[] = [
-  "TAXABLE",
-  "EXEMPT",
-  "NIL_RATED",
-  "NON_GST",
-  "ZERO_RATED",
+const itemTypeFilterOptions: ReadonlyArray<{
+  value: FilterState["itemType"]
+  label: string
+}> = [
+  { value: "all", label: "All types" },
+  ...itemTypes.map((itemType) => ({
+    value: itemType,
+    label: itemTypeLabels[itemType],
+  })),
 ]
+const statusFilterOptions: ReadonlyArray<{
+  value: FilterState["status"]
+  label: string
+}> = [
+  { value: "all", label: "All statuses" },
+  ...statuses.map((status) => ({
+    value: status,
+    label: statusLabels[status],
+  })),
+]
+const productTableColumns: ReadonlyArray<{
+  key: ProductColumnKey
+  label: string
+  widthClass: string
+}> = [
+  { key: "product", label: "Product", widthClass: "w-[27%]" },
+  { key: "hsn", label: "HSN", widthClass: "w-[13%]" },
+  { key: "gst", label: "GST", widthClass: "w-[9%]" },
+  { key: "unit", label: "Unit", widthClass: "w-[9%]" },
+  { key: "price", label: "Retail price", widthClass: "w-[13%]" },
+  { key: "inventory", label: "Inventory", widthClass: "w-[14%]" },
+  { key: "status", label: "Status", widthClass: "w-[8%]" },
+]
+const tablePageSize = 15
 
 const emptyForm: ProductFormState = {
   name: "",
   itemType: "GOODS",
   sku: "",
   description: "",
+  categoryId: "",
+  brandId: "",
   manufacturer: "",
   modelNumber: "",
   status: "ACTIVE",
   taxability: "TAXABLE",
-  hsnSac: "210690",
+  hsnSac: "",
   gstRate: "18",
+  cessRuleId: "",
   effectiveFrom: "2026-04-01",
+  effectiveTo: "",
   baseUnit: "PCS",
   gstUqc: "PCS",
   conversionFactor: "1",
   price: "0",
+  marginPercent: "0",
   taxMode: "EXCLUSIVE",
   barcode: "",
   trackInventory: true,
+  defaultWarehouseId: "",
   reorderLevel: "0",
   minimumStock: "0",
   maximumStock: "0",
   batchTracking: false,
   serialTracking: false,
+}
+
+type ProductPriceWithOptionalMargin = {
+  marginPercent?: string | number | null
+}
+
+function getProductMarginPercent(
+  price: ProductListItem["activePrice"] | ProductDetail["activePrice"]
+) {
+  if (!price) {
+    return "0"
+  }
+
+  const marginPercent = (price as ProductPriceWithOptionalMargin).marginPercent
+  return marginPercent === undefined || marginPercent === null || marginPercent === ""
+    ? "0"
+    : String(marginPercent)
 }
 
 function createFormFromProduct(product: ProductListItem): ProductFormState {
@@ -186,20 +243,26 @@ function createFormFromProduct(product: ProductListItem): ProductFormState {
     itemType: product.itemType,
     sku: product.sku,
     description: product.description ?? "",
+    categoryId: product.categoryId ?? "",
+    brandId: product.brandId ?? "",
     manufacturer: product.manufacturer ?? "",
     modelNumber: product.modelNumber ?? "",
     status: product.status,
     taxability: product.activeTaxProfile?.taxability ?? "TAXABLE",
     hsnSac: product.activeTaxProfile?.hsnSac ?? "",
     gstRate: product.activeTaxProfile?.gstRate ?? "0",
+    cessRuleId: product.activeTaxProfile?.cessRuleId ?? "",
     effectiveFrom: product.activeTaxProfile?.effectiveFrom ?? "2026-04-01",
+    effectiveTo: product.activeTaxProfile?.effectiveTo ?? "",
     baseUnit: product.unitProfile?.baseUnit ?? "PCS",
     gstUqc: product.unitProfile?.gstUqc ?? "",
     conversionFactor: product.unitProfile?.conversionFactor ?? "1",
     price: product.activePrice?.price ?? "0",
+    marginPercent: getProductMarginPercent(product.activePrice),
     taxMode: product.activePrice?.taxMode ?? "EXCLUSIVE",
     barcode: product.primaryBarcode?.barcode ?? "",
     trackInventory: product.inventoryProfile?.trackInventory ?? product.itemType === "GOODS",
+    defaultWarehouseId: product.inventoryProfile?.defaultWarehouseId ?? "",
     reorderLevel: product.inventoryProfile?.reorderLevel ?? "0",
     minimumStock: product.inventoryProfile?.minimumStock ?? "0",
     maximumStock: product.inventoryProfile?.maximumStock ?? "0",
@@ -217,6 +280,12 @@ export function ProductsPage() {
     itemType: "all",
     status: "ACTIVE",
   })
+  const [sortBy, setSortBy] = React.useState<ProductSortBy>("name")
+  const [sortDir, setSortDir] = React.useState<ProductSortDir>("asc")
+  const [selectedProductIds, setSelectedProductIds] = React.useState<string[]>([])
+  const [visibleProductColumns, setVisibleProductColumns] = React.useState<
+    ProductColumnKey[]
+  >(() => productTableColumns.map((column) => column.key))
   const [sheetMode, setSheetMode] = React.useState<SheetMode | null>(null)
   const [selectedProductId, setSelectedProductId] = React.useState<string | null>(null)
   const [detailProductId, setDetailProductId] = React.useState<string | null>(null)
@@ -248,6 +317,27 @@ export function ProductsPage() {
     staleTime: 1000 * 60 * 10,
   })
 
+  const settingsQuery = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => getSettings(accessToken),
+    enabled: accessToken.length > 0,
+    staleTime: 1000 * 60 * 5,
+  })
+
+  const warehousesQuery = useQuery({
+    queryKey: ["warehouses"],
+    queryFn: () => getWarehouses(accessToken),
+    enabled: accessToken.length > 0,
+    staleTime: 1000 * 60 * 5,
+  })
+
+  const taxRulesQuery = useQuery({
+    queryKey: ["tax", "rules"],
+    queryFn: () => listTaxRules(accessToken),
+    enabled: accessToken.length > 0,
+    staleTime: 1000 * 60 * 10,
+  })
+
   const detailQuery = useQuery({
     queryKey: ["products", "detail", detailProductId],
     queryFn: () => getProduct(detailProductId ?? "", accessToken),
@@ -255,16 +345,80 @@ export function ProductsPage() {
     staleTime: 1000 * 60 * 3,
   })
 
-  const products =
-    productsQuery.data?.pages.flatMap((page) => page.products) ?? []
+  const products = React.useMemo(
+    () => productsQuery.data?.pages.flatMap((page) => page.products) ?? [],
+    [productsQuery.data?.pages]
+  )
+  const sortedProducts = React.useMemo(
+    () => sortProducts(products, sortBy, sortDir),
+    [products, sortBy, sortDir]
+  )
   const totalProductsCount =
     productsQuery.data?.pages[0]?.pagination.total ?? products.length
+  const goodsProductsCount = products.filter(
+    (product) => product.itemType === "GOODS"
+  ).length
+  const trackedStockProductsCount = products.filter(
+    (product) => product.inventoryProfile?.trackInventory
+  ).length
+  const taxMappedProductsCount = products.filter(
+    (product) => product.activeTaxProfile?.hsnSac
+  ).length
   const detailProduct = detailQuery.data?.product ?? null
+  const categoryOptions = mastersQuery.data?.categories.map((category) => category.name) ?? []
+  const brandOptions = mastersQuery.data?.brands.map((brand) => brand.name) ?? []
   const hsnSacOptions =
     mastersQuery.data?.hsnSacCodes.filter((code) =>
       formState.itemType === "SERVICE" ? code.codeType === "SAC" : code.codeType === "HSN"
     ) ?? []
   const uqcOptions = mastersQuery.data?.uqcCodes ?? []
+  const cessRuleOptions = taxRulesQuery.data?.cessRules ?? []
+  const warehouseOptions = warehousesQuery.data?.warehouses ?? []
+  const defaultWarehouse =
+    warehouseOptions.find(
+      (warehouse) =>
+        warehouse.status.toLowerCase() === "active" && warehouse.warehouseCode === "MAIN"
+    ) ??
+    warehouseOptions.find((warehouse) => warehouse.status.toLowerCase() === "active") ??
+    null
+  const gstRateOptions = Array.from(
+    new Set([
+      ...(settingsQuery.data?.gstRateSettings.enabledGstSlabs ?? [5, 12, 18, 28]).map(
+        String
+      ),
+      formState.gstRate,
+    ].filter(Boolean))
+  ).map((slab) => ({
+    value: slab,
+    label: `${slab}% GST`,
+  }))
+  const selectedProductIdsSet = React.useMemo(
+    () => new Set(selectedProductIds),
+    [selectedProductIds]
+  )
+  const selectedProducts = React.useMemo(
+    () => products.filter((product) => selectedProductIdsSet.has(product.id)),
+    [products, selectedProductIdsSet]
+  )
+  const selectedArchivableProducts = selectedProducts.filter(
+    (product) => product.status !== "ARCHIVED"
+  )
+  const canBulkMarkActive = selectedProducts.some((product) => product.status !== "ACTIVE")
+  const canBulkMarkInactive = selectedProducts.some(
+    (product) => product.status !== "INACTIVE"
+  )
+  const visibleProductIds = sortedProducts.map((product) => product.id)
+  const visibleProductColumnSet = React.useMemo(
+    () => new Set(visibleProductColumns),
+    [visibleProductColumns]
+  )
+  const productTableColumnCount = visibleProductColumns.length + 2
+  const allVisibleProductsSelected =
+    visibleProductIds.length > 0 &&
+    visibleProductIds.every((productId) => selectedProductIdsSet.has(productId))
+  const someVisibleProductsSelected =
+    visibleProductIds.some((productId) => selectedProductIdsSet.has(productId)) &&
+    !allVisibleProductsSelected
 
   const upsertMutation = useMutation({
     mutationFn: (payload: {
@@ -299,6 +453,34 @@ export function ProductsPage() {
     },
   })
 
+  const createCategoryMutation = useMutation({
+    mutationFn: (name: string) => createProductCategory(name, accessToken),
+    onSuccess: async (response) => {
+      setFormState((current) => ({ ...current, categoryId: response.category.name }))
+      await queryClient.invalidateQueries({ queryKey: ["products", "masters"] })
+    },
+    onError: (error) => {
+      toast.error("Category save failed", {
+        description:
+          error instanceof Error ? error.message : "Unable to create product category.",
+      })
+    },
+  })
+
+  const createBrandMutation = useMutation({
+    mutationFn: (name: string) => createProductBrand(name, accessToken),
+    onSuccess: async (response) => {
+      setFormState((current) => ({ ...current, brandId: response.brand.name }))
+      await queryClient.invalidateQueries({ queryKey: ["products", "masters"] })
+    },
+    onError: (error) => {
+      toast.error("Brand save failed", {
+        description:
+          error instanceof Error ? error.message : "Unable to create product brand.",
+      })
+    },
+  })
+
   const archiveMutation = useMutation({
     mutationFn: (productId: string) => archiveProduct(productId, accessToken),
     onSuccess: async () => {
@@ -319,10 +501,60 @@ export function ProductsPage() {
     },
   })
 
+  const bulkStatusMutation = useMutation({
+    mutationFn: async (status: ProductStatus) => {
+      await Promise.all(
+        selectedProducts.map((product) =>
+          updateProduct(product.id, { status }, accessToken)
+        )
+      )
+    },
+    onSuccess: async (_, status) => {
+      toast.success("Products updated", {
+        description: `${selectedProducts.length} product${selectedProducts.length === 1 ? "" : "s"} marked ${statusLabels[status].toLowerCase()}.`,
+      })
+      await queryClient.invalidateQueries({ queryKey: ["products"] })
+      setSelectedProductIds([])
+    },
+    onError: (error) => {
+      toast.error("Bulk update failed", {
+        description:
+          error instanceof Error ? error.message : "Unable to update selected products.",
+      })
+    },
+  })
+
+  const bulkArchiveMutation = useMutation({
+    mutationFn: async () => {
+      await Promise.all(
+        selectedArchivableProducts.map((product) =>
+          archiveProduct(product.id, accessToken)
+        )
+      )
+    },
+    onSuccess: async () => {
+      toast.success("Products archived", {
+        description: `${selectedArchivableProducts.length} product${selectedArchivableProducts.length === 1 ? "" : "s"} moved out of normal selection.`,
+      })
+      await queryClient.invalidateQueries({ queryKey: ["products"] })
+      setSelectedProductIds([])
+    },
+    onError: (error) => {
+      toast.error("Bulk archive failed", {
+        description:
+          error instanceof Error ? error.message : "Unable to archive selected products.",
+      })
+    },
+  })
+
   function openCreateSheet() {
     setSheetMode("create")
     setSelectedProductId(null)
-    setFormState(emptyForm)
+    setFormState({
+      ...emptyForm,
+      sku: generateProductSku(emptyForm.itemType),
+      defaultWarehouseId: defaultWarehouse?.id ?? "",
+    })
     setFormErrors({})
   }
 
@@ -345,10 +577,19 @@ export function ProductsPage() {
       const next = { ...current, [key]: value }
 
       if (key === "itemType") {
-        next.hsnSac = value === "SERVICE" ? "998313" : "210690"
+        next.hsnSac = ""
         next.trackInventory = value === "GOODS"
         next.baseUnit = value === "SERVICE" ? "NOS" : "PCS"
         next.gstUqc = value === "SERVICE" ? "NOS" : "PCS"
+        next.defaultWarehouseId = value === "GOODS" ? current.defaultWarehouseId || defaultWarehouse?.id || "" : ""
+
+        if (sheetMode === "create") {
+          next.sku = generateProductSku(value as ProductItemType)
+        }
+      }
+
+      if (key === "trackInventory") {
+        next.defaultWarehouseId = value ? current.defaultWarehouseId || defaultWarehouse?.id || "" : ""
       }
 
       return next
@@ -357,26 +598,41 @@ export function ProductsPage() {
     setFormErrors((current) => ({ ...current, [key]: undefined }))
   }
 
-  function fillDummyProduct() {
-    setFormState({
-      ...emptyForm,
-      name: "Premium Tea Pack 250g",
-      itemType: "GOODS",
-      sku: `TEA-${Math.floor(Math.random() * 9000 + 1000)}`,
-      description: "Retail tea pack used for sales, purchase and GST testing.",
-      manufacturer: "GSTFY Demo Foods",
-      modelNumber: "TP-250",
-      hsnSac: "090240",
-      gstRate: "5",
-      price: "180",
-      barcode: `890${Math.floor(Math.random() * 1000000000)
-        .toString()
-        .padStart(9, "0")}`,
-      reorderLevel: "12",
-      minimumStock: "6",
-      maximumStock: "120",
+  function generateBarcodeForProduct() {
+    updateForm("barcode", generateEan13Barcode())
+    toast.success("Barcode generated", {
+      description: "A valid EAN-13 barcode value was added to this product.",
     })
-    setFormErrors({})
+  }
+
+  function handlePrimaryBarcodeKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    const submitKey = getBarcodeSubmitKeyFromKeyboardEventKey(event.key)
+
+    if (!submitKey) {
+      return
+    }
+
+    const scannerSettings = readBarcodeScannerSettings()
+
+    if (
+      !scannerSettings.enabled ||
+      scannerSettings.submitKey === "none" ||
+      scannerSettings.submitKey !== submitKey
+    ) {
+      return
+    }
+
+    const barcode = event.currentTarget.value.trim()
+
+    if (barcode.length < scannerSettings.minLength) {
+      return
+    }
+
+    event.preventDefault()
+    updateForm("barcode", barcode)
+    toast.success("Barcode captured", {
+      description: "Scanner input was accepted for this product.",
+    })
   }
 
   function submitForm(event: React.FormEvent<HTMLFormElement>) {
@@ -409,146 +665,442 @@ export function ProductsPage() {
     }
   }
 
+  function handleSortChange(nextSortBy: ProductSortBy) {
+    setSortDir((currentSortDir) =>
+      sortBy === nextSortBy && currentSortDir === "asc" ? "desc" : "asc"
+    )
+    setSortBy(nextSortBy)
+  }
+
+  function toggleProductSelection(product: ProductListItem) {
+    setSelectedProductIds((current) =>
+      current.includes(product.id) ?
+        current.filter((productId) => productId !== product.id)
+      : [...current, product.id]
+    )
+  }
+
+  function toggleAllVisibleProducts() {
+    setSelectedProductIds((current) => {
+      if (allVisibleProductsSelected) {
+        return current.filter((productId) => !visibleProductIds.includes(productId))
+      }
+
+      return Array.from(new Set([...current, ...visibleProductIds]))
+    })
+  }
+
+  function toggleProductColumn(columnKey: ProductColumnKey) {
+    setVisibleProductColumns((current) => {
+      if (current.includes(columnKey)) {
+        return current.length === 1 ?
+            current
+          : current.filter((key) => key !== columnKey)
+      }
+
+      const next = [...current, columnKey]
+      return productTableColumns
+        .map((column) => column.key)
+        .filter((key) => next.includes(key))
+    })
+  }
+
+  function handleProductExport(format: ProductExportFormat) {
+    if (sortedProducts.length === 0) {
+      toast.error("No products to export", {
+        description: "Adjust the filters or add products before exporting.",
+      })
+      return
+    }
+
+    if (format === "pdf") {
+      const didOpen = printProductsPdf(sortedProducts)
+
+      if (!didOpen) {
+        toast.error("Allow pop-ups to export the product PDF.")
+      }
+
+      return
+    }
+
+    const fileDate = new Date().toISOString().slice(0, 10)
+    const extension = format === "excel" ? "xls" : "csv"
+    const contentType =
+      format === "excel" ? "application/vnd.ms-excel;charset=utf-8" : "text/csv;charset=utf-8"
+
+    downloadTextFile(
+      `products-${fileDate}.${extension}`,
+      buildProductsCsv(sortedProducts),
+      contentType
+    )
+    toast.success("Product export ready", {
+      description: `${sortedProducts.length} loaded product${sortedProducts.length === 1 ? "" : "s"} exported.`,
+    })
+  }
+
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 sm:p-6">
-      <section className="overflow-hidden rounded-2xl border bg-card">
-        <div className="grid gap-6 p-5 lg:grid-cols-[1fr_320px] lg:p-6">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="gap-1.5">
-                <SparklesIcon className="size-3.5" />
-                Product Engine
+    <div className="flex flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
+      <section className="overflow-hidden rounded-2xl border border-border bg-card text-card-foreground">
+        <div className="grid lg:grid-cols-[minmax(0,1fr)_19rem]">
+          <div className="p-3.5 sm:p-4 lg:p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="gap-1.5 bg-background">
+                <PackageIcon className="size-3.5" />
+                Product Master
               </Badge>
-              <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">
-                Snapshot ready
+              <Badge
+                variant="outline"
+                className="gap-1.5 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+              >
+                <span className="size-1.5 rounded-full bg-current" />
+                GST mapped
               </Badge>
             </div>
-            <div className="max-w-3xl space-y-2">
-              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-                Products that resolve cleanly into sales, purchase, tax and stock flows.
+            <div className="mt-3 max-w-2xl space-y-1.5">
+              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+                Products
               </h1>
-              <p className="text-sm text-muted-foreground">
-                Maintain SKU, HSN/SAC, UQC, GST rate, price and inventory defaults here.
-                Transactions will snapshot the resolved state instead of depending on
-                mutable product master data.
+              <p className="max-w-xl text-sm leading-5 text-muted-foreground">
+                Add goods and services with SKU, HSN/SAC, GST rate, price, unit,
+                barcode, and stock defaults.
               </p>
             </div>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Button type="button" className="h-8 rounded-lg" onClick={openCreateSheet}>
+                <PlusIcon className="size-4" />
+                Add Product
+              </Button>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <PackageIcon className="size-3.5" />
+                Product defaults flow into sales, purchases, tax, and stock.
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard label="Active products" value={products.length.toString()} />
-            <StatCard
-              label="Tracked stock"
-              value={products
-                .filter((product) => product.inventoryProfile?.trackInventory)
-                .length.toString()}
-            />
-            <StatCard
-              label="Tax mapped"
-              value={products
-                .filter((product) => product.activeTaxProfile?.hsnSac)
-                .length.toString()}
-            />
-            <StatCard
-              label="Priced"
-              value={products
-                .filter((product) => Number(product.activePrice?.price ?? 0) > 0)
-                .length.toString()}
-            />
+          <div className="border-t border-border bg-muted/10 p-3.5 sm:p-4 lg:border-l lg:border-t-0 lg:p-5">
+            <div className="grid grid-cols-2 gap-2">
+              <ProductTopMetric
+                icon={<PackageIcon className="size-4" />}
+                label="Visible"
+                value={products.length.toString()}
+              />
+              <ProductTopMetric
+                icon={<BoxesIcon className="size-4" />}
+                label="Goods"
+                value={goodsProductsCount.toString()}
+                tone="success"
+              />
+              <ProductTopMetric
+                icon={<ReceiptTextIcon className="size-4" />}
+                label="GST"
+                value={taxMappedProductsCount.toString()}
+              />
+              <ProductTopMetric
+                icon={<TagsIcon className="size-4" />}
+                label="Stock"
+                value={trackedStockProductsCount.toString()}
+              />
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="rounded-2xl border bg-card">
-        <div className="flex flex-col gap-4 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row">
-            <div className="relative min-w-0 flex-1">
-              <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={filters.search}
-                onChange={(event) =>
-                  setFilters((current) => ({ ...current, search: event.target.value }))
+      <section className="overflow-hidden rounded-2xl border border-border bg-card text-card-foreground">
+        <div className="border-b border-border px-4 py-3 sm:px-5 lg:px-6">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:max-w-5xl">
+              <div className="relative sm:w-72 lg:w-[28rem] xl:w-[34rem]">
+                <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={filters.search}
+                  onChange={(event) =>
+                    setFilters((current) => ({ ...current, search: event.target.value }))
+                  }
+                  placeholder="Search product, SKU, barcode, HSN/SAC, supplier code..."
+                  className="h-7 rounded-md pl-7 text-xs"
+                />
+              </div>
+              <Select
+                value={filters.itemType}
+                onValueChange={(value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    itemType: value as FilterState["itemType"],
+                  }))
                 }
-                placeholder="Search name, SKU, barcode, HSN/SAC, supplier code"
-                className="pl-9"
-              />
+              >
+                <SelectTrigger size="sm" className="w-full justify-between sm:w-32">
+                  <SelectDisplayValue
+                    value={filters.itemType}
+                    options={itemTypeFilterOptions}
+                    placeholder="Type"
+                  />
+                </SelectTrigger>
+                <SelectContent align="start" sideOffset={6} className="min-w-32">
+                  {itemTypeFilterOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={filters.status}
+                onValueChange={(value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    status: value as FilterState["status"],
+                  }))
+                }
+              >
+                <SelectTrigger size="sm" className="w-full justify-between sm:w-32">
+                  <SelectDisplayValue
+                    value={filters.status}
+                    options={statusFilterOptions}
+                    placeholder="Status"
+                  />
+                </SelectTrigger>
+                <SelectContent align="start" sideOffset={6} className="min-w-32">
+                  {statusFilterOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Select
-              value={filters.itemType}
-              onValueChange={(value) =>
-                setFilters((current) => ({
-                  ...current,
-                  itemType: value as FilterState["itemType"],
-                }))
-              }
-            >
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All types</SelectItem>
-                {itemTypes.map((itemType) => (
-                  <SelectItem key={itemType} value={itemType}>
-                    {itemTypeLabels[itemType]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={filters.status}
-              onValueChange={(value) =>
-                setFilters((current) => ({
-                  ...current,
-                  status: value as FilterState["status"],
-                }))
-              }
-            >
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All status</SelectItem>
-                {statuses.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {statusLabels[status]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 justify-center gap-1.5 rounded-md text-xs sm:w-auto"
+                    />
+                  }
+                >
+                  <SlidersHorizontalIcon className="size-3.5" />
+                  Columns
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Show columns</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {productTableColumns.map((column) => (
+                      <DropdownMenuCheckboxItem
+                        key={column.key}
+                        checked={visibleProductColumnSet.has(column.key)}
+                        disabled={
+                          visibleProductColumns.length === 1 &&
+                          visibleProductColumnSet.has(column.key)
+                        }
+                        onCheckedChange={() => toggleProductColumn(column.key)}
+                      >
+                        {column.label}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 justify-center gap-1.5 rounded-md text-xs sm:w-auto"
+                    />
+                  }
+                >
+                  <DownloadIcon className="size-3.5" />
+                  Export
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Export loaded rows</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => handleProductExport("csv")}>
+                      <FileSpreadsheetIcon />
+                      CSV
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleProductExport("excel")}>
+                      <FileSpreadsheetIcon />
+                      Excel
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleProductExport("pdf")}>
+                      <FileTextIcon />
+                      PDF
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
-          <Button onClick={openCreateSheet} className="gap-2">
-            <PlusIcon className="size-4" />
-            Add product
-          </Button>
         </div>
 
         <div
           onScroll={handleProductsTableScroll}
           className="app-scrollbar max-h-[35rem] overflow-auto"
         >
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead>Tax</TableHead>
-                <TableHead>Unit</TableHead>
-                <TableHead className="text-right">Retail price</TableHead>
-                <TableHead>Inventory</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-12" />
+          {selectedProducts.length > 0 ? (
+            <div className="flex flex-col gap-2 border-b border-border bg-muted/20 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-5 lg:px-6">
+              <div className="text-sm">
+                <span className="font-medium">{selectedProducts.length}</span> selected
+                <span className="ml-2 text-muted-foreground">
+                  {selectedArchivableProducts.length} archivable
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!canBulkMarkActive || bulkStatusMutation.isPending}
+                  onClick={() => bulkStatusMutation.mutate("ACTIVE")}
+                >
+                  Mark active
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!canBulkMarkInactive || bulkStatusMutation.isPending}
+                  onClick={() => bulkStatusMutation.mutate("INACTIVE")}
+                >
+                  Mark inactive
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  disabled={
+                    selectedArchivableProducts.length === 0 ||
+                    bulkArchiveMutation.isPending
+                  }
+                  onClick={() => bulkArchiveMutation.mutate()}
+                >
+                  Archive selected
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedProductIds([])}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          <Table className="w-full table-fixed text-[11px] sm:text-xs [&_td]:min-w-0 [&_td]:overflow-hidden [&_td]:px-2 [&_td]:py-2 [&_th]:h-8 [&_th]:min-w-0 [&_th]:px-2">
+            <colgroup>
+              <col className="w-[4%]" />
+              {productTableColumns
+                .filter((column) => visibleProductColumnSet.has(column.key))
+                .map((column) => (
+                  <col key={column.key} className={column.widthClass} />
+                ))}
+              <col className="w-[7%]" />
+            </colgroup>
+            <TableHeader className="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_var(--border)]">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="pl-3">
+                  <SelectionCheckbox
+                    checked={allVisibleProductsSelected}
+                    indeterminate={someVisibleProductsSelected}
+                    disabled={visibleProductIds.length === 0}
+                    label="Select all products"
+                    onCheckedChange={toggleAllVisibleProducts}
+                  />
+                </TableHead>
+                {visibleProductColumnSet.has("product") ? (
+                  <SortableProductsTableHead
+                    sortKey="name"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSortChange}
+                  >
+                    Product
+                  </SortableProductsTableHead>
+                ) : null}
+                {visibleProductColumnSet.has("hsn") ? (
+                  <SortableProductsTableHead
+                    sortKey="tax"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSortChange}
+                  >
+                    HSN
+                  </SortableProductsTableHead>
+                ) : null}
+                {visibleProductColumnSet.has("gst") ? (
+                  <SortableProductsTableHead
+                    sortKey="gst"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSortChange}
+                  >
+                    GST
+                  </SortableProductsTableHead>
+                ) : null}
+                {visibleProductColumnSet.has("unit") ? (
+                  <SortableProductsTableHead
+                    sortKey="unit"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSortChange}
+                  >
+                    Unit
+                  </SortableProductsTableHead>
+                ) : null}
+                {visibleProductColumnSet.has("price") ? (
+                  <SortableProductsTableHead
+                    sortKey="price"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSortChange}
+                    className="text-right"
+                  >
+                    Retail price
+                  </SortableProductsTableHead>
+                ) : null}
+                {visibleProductColumnSet.has("inventory") ? (
+                  <SortableProductsTableHead
+                    sortKey="inventory"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSortChange}
+                  >
+                    Inventory
+                  </SortableProductsTableHead>
+                ) : null}
+                {visibleProductColumnSet.has("status") ? (
+                  <SortableProductsTableHead
+                    sortKey="status"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSortChange}
+                  >
+                    Status
+                  </SortableProductsTableHead>
+                ) : null}
+                <TableHead className="pr-3 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {productsQuery.isLoading ?
                 Array.from({ length: 5 }).map((_, index) => (
                   <TableRow key={index}>
-                    <TableCell colSpan={7}>
+                    <TableCell colSpan={productTableColumnCount}>
                       <Skeleton className="h-10 w-full" />
                     </TableCell>
                   </TableRow>
                 ))
-              : products.length === 0 ?
+              : sortedProducts.length === 0 ?
                 <TableRow>
-                  <TableCell colSpan={7} className="py-12 text-center">
+                  <TableCell colSpan={productTableColumnCount} className="py-12 text-center">
                     <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
                       <PackageIcon className="size-8 text-muted-foreground" />
                       <p className="font-medium">No products found</p>
@@ -562,65 +1114,90 @@ export function ProductsPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              : products.map((product) => (
-                  <TableRow key={product.id}>
-                    <TableCell>
-                      <div className="min-w-56 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{product.name}</span>
-                          <Badge variant="outline">{itemTypeLabels[product.itemType]}</Badge>
-                        </div>
-                        <p className="font-mono text-xs tracking-[0.14em] text-muted-foreground">
-                          {product.sku}
-                        </p>
-                        {product.primaryBarcode ?
-                          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <BarcodeIcon className="size-3.5" />
-                            {product.primaryBarcode.barcode}
+              : sortedProducts.map((product) => {
+                  const isSelected = selectedProductIdsSet.has(product.id)
+
+                  return (
+                  <TableRow key={product.id} data-state={isSelected ? "selected" : undefined}>
+                    <TableCell className="pl-3">
+                      <SelectionCheckbox
+                        checked={isSelected}
+                        label={`Select ${product.name}`}
+                        onCheckedChange={() => toggleProductSelection(product)}
+                      />
+                    </TableCell>
+                    {visibleProductColumnSet.has("product") ? (
+                      <TableCell>
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="truncate font-medium">{product.name}</span>
+                            <Badge variant="outline" className="shrink-0">
+                              {itemTypeLabels[product.itemType]}
+                            </Badge>
+                          </div>
+                          <p className="truncate font-mono text-xs tracking-[0.14em] text-muted-foreground">
+                            {product.sku}
                           </p>
-                        : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1 text-sm">
-                        <p className="font-mono">
-                          {product.activeTaxProfile?.hsnSac ?? "Not mapped"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {product.activeTaxProfile ?
-                            `${taxabilityLabels[product.activeTaxProfile.taxability]} · ${product.activeTaxProfile.gstRate}% GST`
-                          : "Tax profile missing"}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1 text-sm">
-                        <p>{product.unitProfile?.baseUnit ?? "PCS"}</p>
-                        <p className="text-xs text-muted-foreground">
-                          UQC {product.unitProfile?.gstUqc ?? "-"}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {formatCurrency(product.activePrice?.price ?? "0")}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "gap-1.5",
-                          product.inventoryProfile?.trackInventory &&
-                            "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-                        )}
-                      >
-                        <BoxesIcon className="size-3.5" />
-                        {product.inventoryProfile?.trackInventory ? "Tracked" : "Not tracked"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={product.status} />
-                    </TableCell>
-                    <TableCell>
+                        </div>
+                      </TableCell>
+                    ) : null}
+                    {visibleProductColumnSet.has("hsn") ? (
+                      <TableCell>
+                        <div className="space-y-1 text-sm">
+                          <p className="truncate font-mono">
+                            {product.activeTaxProfile?.hsnSac ?? "Not mapped"}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {product.activeTaxProfile ?
+                              taxabilityLabels[product.activeTaxProfile.taxability]
+                            : "Tax profile missing"}
+                          </p>
+                        </div>
+                      </TableCell>
+                    ) : null}
+                    {visibleProductColumnSet.has("gst") ? (
+                      <TableCell>
+                        <span className="font-mono text-sm">
+                          {product.activeTaxProfile ? `${product.activeTaxProfile.gstRate}%` : "-"}
+                        </span>
+                      </TableCell>
+                    ) : null}
+                    {visibleProductColumnSet.has("unit") ? (
+                      <TableCell>
+                        <div className="space-y-1 text-sm">
+                          <p>{product.unitProfile?.baseUnit ?? "PCS"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            UQC {product.unitProfile?.gstUqc ?? "-"}
+                          </p>
+                        </div>
+                      </TableCell>
+                    ) : null}
+                    {visibleProductColumnSet.has("price") ? (
+                      <TableCell className="text-right font-mono">
+                        {formatCurrency(product.activePrice?.price ?? "0")}
+                      </TableCell>
+                    ) : null}
+                    {visibleProductColumnSet.has("inventory") ? (
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "gap-1.5",
+                            product.inventoryProfile?.trackInventory &&
+                              "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                          )}
+                        >
+                          <BoxesIcon className="size-3.5" />
+                          {product.inventoryProfile?.trackInventory ? "Tracked" : "Not tracked"}
+                        </Badge>
+                      </TableCell>
+                    ) : null}
+                    {visibleProductColumnSet.has("status") ? (
+                      <TableCell>
+                        <StatusBadge status={product.status} />
+                      </TableCell>
+                    ) : null}
+                    <TableCell className="pr-3 text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger render={<Button variant="ghost" size="icon" />}>
                           <MoreHorizontalIcon className="size-4" />
@@ -629,7 +1206,7 @@ export function ProductsPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => setDetailProductId(product.id)}>
                             <EyeIcon />
-                            View resolved defaults
+                            View
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openEditSheet(product)}>
                             <PencilLineIcon />
@@ -647,7 +1224,8 @@ export function ProductsPage() {
                       </DropdownMenu>
                     </TableCell>
                   </TableRow>
-                ))
+                  )
+                })
               }
             </TableBody>
           </Table>
@@ -668,346 +1246,50 @@ export function ProductsPage() {
         </div>
       </section>
 
-      <Sheet open={Boolean(sheetMode)} onOpenChange={(open) => !open && closeSheet()}>
-        <SheetContent className="flex w-full flex-col sm:max-w-2xl">
-          <SheetHeader>
-            <SheetTitle>
-              {sheetMode === "edit" ? "Edit product" : "Add product"}
-            </SheetTitle>
-            <SheetDescription>
-              Product Master stores defaults only. Sales, purchase and tax engines resolve
-              these values at transaction time.
-            </SheetDescription>
-          </SheetHeader>
-          <form onSubmit={submitForm} className="flex min-h-0 flex-1 flex-col">
-            <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-1 py-4">
-              <FieldGroup className="gap-5">
-                {sheetMode === "create" ?
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-fit gap-2"
-                    onClick={fillDummyProduct}
-                  >
-                    <SparklesIcon className="size-4" />
-                    Fill dummy product
-                  </Button>
-                : null}
+      <ProductUpsertDialog
+        accessToken={accessToken}
+        open={Boolean(sheetMode)}
+        mode={sheetMode}
+        formState={formState}
+        formErrors={formErrors}
+        brandOptions={brandOptions}
+        categoryOptions={categoryOptions}
+        hsnSacOptions={hsnSacOptions}
+        uqcOptions={uqcOptions}
+        cessRuleOptions={cessRuleOptions}
+        warehouseOptions={warehouseOptions}
+        gstRateOptions={gstRateOptions}
+        pending={upsertMutation.isPending}
+        creatingBrand={createBrandMutation.isPending}
+        creatingCategory={createCategoryMutation.isPending}
+        onClose={closeSheet}
+        onSubmit={submitForm}
+        onUpdate={updateForm}
+        onCreateBrand={(name) => createBrandMutation.mutate(name)}
+        onCreateCategory={(name) => createCategoryMutation.mutate(name)}
+        onGenerateBarcode={generateBarcodeForProduct}
+        onBarcodeKeyDown={handlePrimaryBarcodeKeyDown}
+      />
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <ProductField label="Product name" error={formErrors.name}>
-                    <Input
-                      value={formState.name}
-                      onChange={(event) => updateForm("name", event.target.value)}
-                      placeholder="Premium Tea Pack 250g"
-                    />
-                  </ProductField>
-                  <ProductField label="SKU" error={formErrors.sku}>
-                    <Input
-                      value={formState.sku}
-                      onChange={(event) =>
-                        updateForm("sku", event.target.value.toUpperCase())
-                      }
-                      placeholder="TEA-250"
-                      className="font-mono uppercase tracking-[0.14em]"
-                    />
-                  </ProductField>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <ProductField label="Type">
-                    <Select
-                      value={formState.itemType}
-                      onValueChange={(value) =>
-                        updateForm("itemType", value as ProductItemType)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {itemTypes.map((itemType) => (
-                          <SelectItem key={itemType} value={itemType}>
-                            {itemTypeLabels[itemType]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </ProductField>
-                  <ProductField label="Manufacturer">
-                    <Input
-                      value={formState.manufacturer}
-                      onChange={(event) => updateForm("manufacturer", event.target.value)}
-                      placeholder="Brand or maker"
-                    />
-                  </ProductField>
-                  <ProductField label="Model number">
-                    <Input
-                      value={formState.modelNumber}
-                      onChange={(event) => updateForm("modelNumber", event.target.value)}
-                      placeholder="Optional"
-                    />
-                  </ProductField>
-                </div>
-
-                <ProductField label="Description">
-                  <Textarea
-                    value={formState.description}
-                    onChange={(event) => updateForm("description", event.target.value)}
-                    placeholder="Short invoice description"
-                    rows={3}
-                  />
-                </ProductField>
-
-                <div className="rounded-2xl border p-4">
-                  <div className="mb-4 flex items-center gap-2">
-                    <ReceiptTextIcon className="size-4 text-muted-foreground" />
-                    <h2 className="text-sm font-medium">Tax and unit defaults</h2>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-4">
-                    <ProductField label="Taxability" error={formErrors.taxability}>
-                      <Select
-                        value={formState.taxability}
-                        onValueChange={(value) =>
-                          updateForm("taxability", value as Taxability)
-                        }
-                        disabled={sheetMode === "edit"}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {taxabilities.map((taxability) => (
-                            <SelectItem key={taxability} value={taxability}>
-                              {taxabilityLabels[taxability]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </ProductField>
-                    <ProductField
-                      label={formState.itemType === "SERVICE" ? "SAC" : "HSN"}
-                      error={formErrors.hsnSac}
-                    >
-                      <Select
-                        value={formState.hsnSac}
-                        onValueChange={(value) => updateForm("hsnSac", value ?? "")}
-                        disabled={sheetMode === "edit"}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Choose code" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {hsnSacOptions.map((code) => (
-                            <SelectItem key={code.code} value={code.code}>
-                              {code.code} · {code.description}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </ProductField>
-                    <ProductField label="GST rate" error={formErrors.gstRate}>
-                      <Input
-                        value={formState.gstRate}
-                        onChange={(event) => updateForm("gstRate", event.target.value)}
-                        inputMode="decimal"
-                        placeholder="18"
-                        disabled={sheetMode === "edit"}
-                      />
-                    </ProductField>
-                    <ProductField label="Effective from" error={formErrors.effectiveFrom}>
-                      <Input
-                        type="date"
-                        value={formState.effectiveFrom}
-                        onChange={(event) =>
-                          updateForm("effectiveFrom", event.target.value)
-                        }
-                        disabled={sheetMode === "edit"}
-                      />
-                    </ProductField>
-                  </div>
-                  <div className="mt-4 grid gap-4 sm:grid-cols-3">
-                    <ProductField label="Base unit" error={formErrors.baseUnit}>
-                      <Input
-                        value={formState.baseUnit}
-                        onChange={(event) =>
-                          updateForm("baseUnit", event.target.value.toUpperCase())
-                        }
-                        placeholder="PCS"
-                        disabled={sheetMode === "edit"}
-                      />
-                    </ProductField>
-                    <ProductField label="GST UQC">
-                      <Select
-                        value={formState.gstUqc}
-                        onValueChange={(value) => updateForm("gstUqc", value ?? "")}
-                        disabled={sheetMode === "edit"}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Choose UQC" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {uqcOptions.map((uqc) => (
-                            <SelectItem key={uqc.code} value={uqc.code}>
-                              {uqc.code} · {uqc.description}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </ProductField>
-                    <ProductField label="Conversion factor">
-                      <Input
-                        value={formState.conversionFactor}
-                        onChange={(event) =>
-                          updateForm("conversionFactor", event.target.value)
-                        }
-                        inputMode="decimal"
-                        disabled={sheetMode === "edit"}
-                      />
-                    </ProductField>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border p-4">
-                  <div className="mb-4 flex items-center gap-2">
-                    <TagsIcon className="size-4 text-muted-foreground" />
-                    <h2 className="text-sm font-medium">Price and inventory defaults</h2>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <ProductField label="Retail price" error={formErrors.price}>
-                      <Input
-                        value={formState.price}
-                        onChange={(event) => updateForm("price", event.target.value)}
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        disabled={sheetMode === "edit"}
-                      />
-                    </ProductField>
-                    <ProductField label="Tax mode">
-                      <Select
-                        value={formState.taxMode}
-                        onValueChange={(value) => updateForm("taxMode", value as TaxMode)}
-                        disabled={sheetMode === "edit"}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="EXCLUSIVE">Tax exclusive</SelectItem>
-                          <SelectItem value="INCLUSIVE">Tax inclusive</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </ProductField>
-                    <ProductField label="Primary barcode">
-                      <Input
-                        value={formState.barcode}
-                        onChange={(event) => updateForm("barcode", event.target.value)}
-                        placeholder="890..."
-                        disabled={sheetMode === "edit"}
-                      />
-                    </ProductField>
-                  </div>
-                  <div className="mt-4 grid gap-4 sm:grid-cols-3">
-                    <ProductField label="Reorder level">
-                      <Input
-                        value={formState.reorderLevel}
-                        onChange={(event) =>
-                          updateForm("reorderLevel", event.target.value)
-                        }
-                        inputMode="decimal"
-                        disabled={sheetMode === "edit"}
-                      />
-                    </ProductField>
-                    <ProductField label="Minimum stock">
-                      <Input
-                        value={formState.minimumStock}
-                        onChange={(event) =>
-                          updateForm("minimumStock", event.target.value)
-                        }
-                        inputMode="decimal"
-                        disabled={sheetMode === "edit"}
-                      />
-                    </ProductField>
-                    <ProductField label="Maximum stock">
-                      <Input
-                        value={formState.maximumStock}
-                        onChange={(event) =>
-                          updateForm("maximumStock", event.target.value)
-                        }
-                        inputMode="decimal"
-                        disabled={sheetMode === "edit"}
-                      />
-                    </ProductField>
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <TogglePill
-                      active={formState.trackInventory}
-                      label="Track inventory"
-                      disabled={sheetMode === "edit"}
-                      onClick={() => updateForm("trackInventory", !formState.trackInventory)}
-                    />
-                    <TogglePill
-                      active={formState.batchTracking}
-                      label="Batch tracking"
-                      disabled={sheetMode === "edit"}
-                      onClick={() => updateForm("batchTracking", !formState.batchTracking)}
-                    />
-                    <TogglePill
-                      active={formState.serialTracking}
-                      label="Serial tracking"
-                      disabled={sheetMode === "edit"}
-                      onClick={() => updateForm("serialTracking", !formState.serialTracking)}
-                    />
-                  </div>
-                </div>
-
-                <ProductField label="Status">
-                  <Select
-                    value={formState.status}
-                    onValueChange={(value) => updateForm("status", value as ProductStatus)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {statuses.map((status) => (
-                        <SelectItem key={status} value={status}>
-                          {statusLabels[status]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </ProductField>
-              </FieldGroup>
-            </div>
-            <SheetFooter className="border-t pt-3">
-              <Button type="button" variant="ghost" onClick={closeSheet}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={upsertMutation.isPending}>
-                {upsertMutation.isPending ? <Spinner /> : null}
-                {upsertMutation.isPending ? "" : sheetMode === "edit" ? "Save" : "Create"}
-              </Button>
-            </SheetFooter>
-          </form>
-        </SheetContent>
-      </Sheet>
-
-      <Dialog open={Boolean(detailProductId)} onOpenChange={(open) => !open && setDetailProductId(null)}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Resolved product defaults</DialogTitle>
+      <Dialog
+        open={Boolean(detailProductId)}
+        onOpenChange={(open) => !open && setDetailProductId(null)}
+      >
+        <DialogContent className="max-h-[calc(100vh-2rem)] max-w-5xl gap-0 overflow-hidden p-0">
+          <DialogHeader className="border-b border-border px-5 py-3 pr-12">
+            <DialogTitle>Product details</DialogTitle>
             <DialogDescription>
-              Snapshot-ready configuration for the current date. Tax and accounting engines
-              still perform final transaction calculations.
+              Full product defaults resolved for sales, purchase, tax and stock flows.
             </DialogDescription>
           </DialogHeader>
-          {detailQuery.isLoading || !detailProduct ?
+          <div className="app-scrollbar max-h-[calc(100vh-8.5rem)] overflow-y-auto px-5 py-4">
+            {detailQuery.isLoading || !detailProduct ?
             <div className="space-y-3">
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-32 w-full" />
             </div>
-          : <ProductDetailView product={detailProduct} />}
+          : <ProductDetailView product={detailProduct} warehouses={warehouseOptions} />}
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -1040,108 +1322,183 @@ export function ProductsPage() {
   )
 }
 
-function ProductField({
-  label,
-  error,
-  children,
+function ProductDetailView({
+  product,
+  warehouses,
 }: {
-  label: string
-  error?: string
-  children: React.ReactNode
+  product: ProductDetail
+  warehouses: Array<{ id: string; name: string; warehouseCode: string }>
 }) {
-  return (
-    <Field data-invalid={Boolean(error)}>
-      <FieldLabel>
-        {label}
-        {error ? <span className="text-destructive">*</span> : null}
-      </FieldLabel>
-      {children}
-      {error ? <FieldError>{error}</FieldError> : null}
-    </Field>
-  )
-}
-
-function TogglePill({
-  active,
-  disabled,
-  label,
-  onClick,
-}: {
-  active: boolean
-  disabled?: boolean
-  label: string
-  onClick: () => void
-}) {
-  return (
-    <Button
-      type="button"
-      variant={active ? "default" : "outline"}
-      size="sm"
-      disabled={disabled}
-      onClick={onClick}
-    >
-      {label}
-    </Button>
-  )
-}
-
-function ProductDetailView({ product }: { product: ProductDetail }) {
   const taxProfile = product.activeTaxProfile
   const unit = product.units[0] ?? null
   const price = product.activePrice
+  const inventory = product.inventoryProfile
+  const defaultWarehouse =
+    inventory?.defaultWarehouseId ?
+      warehouses.find((warehouse) => warehouse.id === inventory.defaultWarehouseId)
+    : null
+  const taxPreview = getProductTaxPreview(price?.price ?? "0", getProductMarginPercent(price), taxProfile?.gstRate ?? "0", price?.taxMode ?? "EXCLUSIVE")
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">{product.name}</h2>
-            <p className="font-mono text-xs tracking-[0.14em] text-muted-foreground">
-              {product.sku}
-            </p>
+    <div className="space-y-3">
+      <div className="rounded-2xl border border-border bg-muted/20 p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="truncate text-lg font-semibold">{product.name}</h2>
+              <StatusBadge status={product.status} />
+              <Badge variant="outline" className="bg-background">
+                {itemTypeLabels[product.itemType]}
+              </Badge>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className="font-mono tracking-[0.14em]">{product.sku}</span>
+              {product.primaryBarcode?.barcode ?
+                <>
+                  <span>·</span>
+                  <span className="font-mono">{product.primaryBarcode.barcode}</span>
+                </>
+              : null}
+            </div>
+            {product.description ?
+              <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+                {product.description}
+              </p>
+            : null}
           </div>
-          <StatusBadge status={product.status} />
+          <div className="grid min-w-56 gap-2 rounded-xl border border-border bg-background p-3 text-sm">
+            <CompactRow label="Manufacturer" value={product.manufacturer ?? "-"} />
+            <CompactRow label="Model" value={product.modelNumber ?? "-"} />
+            <CompactRow label="Category" value={product.categoryId ?? "-"} />
+            <CompactRow label="Brand" value={product.brandId ?? "-"} />
+          </div>
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <DetailCard
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <ProductDetailSection
           icon={<ReceiptTextIcon className="size-4" />}
-          title="Tax profile"
+          title="Tax defaults"
           rows={[
             ["HSN/SAC", taxProfile?.hsnSac ?? "-"],
             ["Taxability", taxProfile ? taxabilityLabels[taxProfile.taxability] : "-"],
             ["GST rate", taxProfile ? `${taxProfile.gstRate}%` : "-"],
-            ["Effective", taxProfile?.effectiveFrom ?? "-"],
+            ["Cess rule", taxProfile?.cessRuleId ?? "-"],
+            ["Effective from", taxProfile?.effectiveFrom ?? "-"],
+            ["Effective to", taxProfile?.effectiveTo ?? "-"],
+            ["Tax status", taxProfile ? statusLabels[taxProfile.status] : "-"],
           ]}
         />
-        <DetailCard
+        <ProductDetailSection
           icon={<TagsIcon className="size-4" />}
-          title="Price"
+          title="Retail price"
           rows={[
-            ["Retail", formatCurrency(price?.price ?? "0")],
+            ["Price type", price?.priceType ?? "-"],
+            ["Retail price", formatCurrency(price?.price ?? "0")],
+            ["Margin", `${getProductMarginPercent(price)}%`],
             ["Tax mode", price?.taxMode ?? "-"],
             ["Currency", price?.currency ?? "INR"],
-            ["Minimum qty", price?.minimumQuantity ?? "1"],
+            ["Minimum quantity", price?.minimumQuantity ?? "-"],
+            ["Effective from", price?.effectiveFrom ?? "-"],
+            ["Effective to", price?.effectiveTo ?? "-"],
+            ["Price status", price ? statusLabels[price.status] : "-"],
           ]}
         />
-        <DetailCard
+        <ProductDetailSection
           icon={<BoxesIcon className="size-4" />}
           title="Unit and inventory"
           rows={[
             ["Base unit", unit?.baseUnit ?? "-"],
+            ["Secondary unit", unit?.secondaryUnit ?? "-"],
+            ["Conversion factor", unit?.conversionFactor ?? "-"],
             ["GST UQC", unit?.gstUqc ?? "-"],
-            ["Track stock", product.inventoryProfile?.trackInventory ? "Yes" : "No"],
-            ["Reorder level", product.inventoryProfile?.reorderLevel ?? "0"],
+            ["Track inventory", inventory?.trackInventory ? "Yes" : "No"],
+            [
+              "Default warehouse",
+              defaultWarehouse ?
+                `${defaultWarehouse.name} (${defaultWarehouse.warehouseCode})`
+              : inventory?.defaultWarehouseId ?? "-",
+            ],
+            ["Reorder level", inventory?.reorderLevel ?? "0"],
+            ["Minimum stock", inventory?.minimumStock ?? "0"],
+            ["Maximum stock", inventory?.maximumStock ?? "0"],
+            ["Batch tracking", inventory?.batchTracking ? "Yes" : "No"],
+            ["Serial tracking", inventory?.serialTracking ? "Yes" : "No"],
           ]}
         />
-        <DetailCard
+        <ProductDetailSection
           icon={<BarcodeIcon className="size-4" />}
-          title="Mappings"
+          title="Barcodes and links"
           rows={[
-            ["Barcodes", product.barcodes.length.toString()],
-            ["Suppliers", product.suppliers.length.toString()],
+            ["Primary barcode", product.primaryBarcode?.barcode ?? "-"],
+            ["Barcode count", product.barcodes.length.toString()],
+            ["Supplier links", product.suppliers.length.toString()],
             ["Tax profiles", product.taxProfiles.length.toString()],
             ["Price profiles", product.prices.length.toString()],
+          ]}
+        />
+      </div>
+
+      <div className="rounded-2xl border border-border p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <ReceiptTextIcon className="size-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium">GST calculation preview</h3>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-5">
+          <ProductPreviewMetric
+            label="Margin"
+            value={formatCurrency(taxPreview.marginAmount)}
+          />
+          <ProductPreviewMetric
+            label="Rate after margin"
+            value={formatCurrency(taxPreview.rateAfterMargin)}
+          />
+          <ProductPreviewMetric
+            label="CGST + SGST"
+            value={`${formatCurrency(taxPreview.cgst)} + ${formatCurrency(taxPreview.sgst)}`}
+          />
+          <ProductPreviewMetric label="IGST" value={formatCurrency(taxPreview.igst)} />
+          <ProductPreviewMetric
+            label="Final rate"
+            value={formatCurrency(taxPreview.finalRate)}
+            highlight
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-3">
+        <ProductCollectionCard
+          title="Tax profile history"
+          emptyText="No tax profiles added."
+          rows={product.taxProfiles.map((profile) => ({
+            title: `${profile.hsnSac ?? "-"} · ${profile.gstRate}%`,
+            description: `${taxabilityLabels[profile.taxability]} · ${profile.effectiveFrom}${profile.effectiveTo ? ` to ${profile.effectiveTo}` : ""}`,
+            status: statusLabels[profile.status],
+          }))}
+        />
+        <ProductCollectionCard
+          title="Price history"
+          emptyText="No price profiles added."
+          rows={product.prices.map((profile) => ({
+            title: `${profile.priceType} · ${formatCurrency(profile.price)}`,
+            description: `${getProductMarginPercent(profile)}% margin · ${profile.taxMode} · min ${profile.minimumQuantity}`,
+            status: statusLabels[profile.status],
+          }))}
+        />
+        <ProductCollectionCard
+          title="Barcodes and suppliers"
+          emptyText="No barcode or supplier mappings."
+          rows={[
+            ...product.barcodes.map((barcode) => ({
+              title: barcode.barcode,
+              description: `${barcode.barcodeType ?? "Barcode"}${barcode.isPrimary ? " · Primary" : ""}`,
+              status: statusLabels[barcode.status],
+            })),
+            ...product.suppliers.map((supplier) => ({
+              title: supplier.supplierName,
+              description: `Code ${supplier.supplierItemCode ?? "-"} · price ${supplier.purchasePrice ? formatCurrency(supplier.purchasePrice) : "-"}`,
+              status: supplier.isPreferred ? "Preferred" : statusLabels[supplier.status],
+            })),
           ]}
         />
       </div>
@@ -1149,29 +1506,98 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
   )
 }
 
-function DetailCard({
+function ProductDetailSection({
   icon,
-  title,
   rows,
+  title,
 }: {
   icon: React.ReactNode
-  title: string
   rows: Array<[string, string]>
+  title: string
 }) {
   return (
-    <div className="rounded-2xl border p-4">
+    <div className="rounded-2xl border border-border p-4">
       <div className="mb-3 flex items-center gap-2 text-sm font-medium">
         {icon}
         {title}
       </div>
-      <div className="space-y-2">
+      <div className="grid gap-2">
         {rows.map(([label, value]) => (
-          <div key={label} className="flex items-center justify-between gap-4 text-sm">
-            <span className="text-muted-foreground">{label}</span>
-            <span className="text-right font-medium">{value}</span>
-          </div>
+          <CompactRow key={label} label={label} value={value} />
         ))}
       </div>
+    </div>
+  )
+}
+
+function ProductCollectionCard({
+  emptyText,
+  rows,
+  title,
+}: {
+  emptyText: string
+  rows: Array<{ description: string; status: string; title: string }>
+  title: string
+}) {
+  return (
+    <div className="rounded-2xl border border-border p-4">
+      <h3 className="mb-3 text-sm font-medium">{title}</h3>
+      {rows.length === 0 ?
+        <p className="text-sm text-muted-foreground">{emptyText}</p>
+      : <div className="space-y-2">
+          {rows.map((row, index) => (
+            <div
+              key={`${row.title}-${index}`}
+              className="rounded-xl border border-border bg-muted/20 px-3 py-2"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{row.title}</p>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                    {row.description}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-background px-2 py-0.5 text-[10px] text-muted-foreground">
+                  {row.status}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      }
+    </div>
+  )
+}
+
+function CompactRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[8rem_minmax(0,1fr)] items-start gap-3 text-sm">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="min-w-0 break-words text-right font-medium">{value}</span>
+    </div>
+  )
+}
+
+function ProductPreviewMetric({
+  highlight,
+  label,
+  value,
+}: {
+  highlight?: boolean
+  label: string
+  value: string
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border border-border bg-background px-3 py-2",
+        highlight && "border-emerald-200 bg-emerald-50 text-emerald-800"
+      )}
+    >
+      <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 truncate font-mono text-sm font-medium">{value}</p>
     </div>
   )
 }
@@ -1192,13 +1618,188 @@ function StatusBadge({ status }: { status: ProductStatus }) {
   )
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function SortableProductsTableHead({
+  children,
+  className,
+  onSort,
+  sortBy,
+  sortDir,
+  sortKey,
+}: {
+  children: React.ReactNode
+  className?: string
+  onSort: (sortBy: ProductSortBy) => void
+  sortBy: ProductSortBy
+  sortDir: ProductSortDir
+  sortKey: ProductSortBy
+}) {
+  const isActive = sortBy === sortKey
+  const SortIcon =
+    !isActive ? ArrowUpDownIcon
+    : sortDir === "asc" ? ArrowUpIcon
+    : ArrowDownIcon
+
   return (
-    <div className="rounded-2xl border bg-muted/20 p-4">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+    <TableHead className={className}>
+      <button
+        type="button"
+        className={cn(
+          "flex max-w-full items-center gap-1 rounded-md text-left transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          className?.includes("text-right") && "ml-auto text-right",
+          isActive ? "text-primary" : "text-foreground"
+        )}
+        onClick={() => onSort(sortKey)}
+      >
+        <span className="truncate">{children}</span>
+        <SortIcon
+          className={cn(
+            "size-3 shrink-0",
+            !isActive && "text-muted-foreground/70"
+          )}
+        />
+      </button>
+    </TableHead>
+  )
+}
+
+function SelectionCheckbox({
+  checked,
+  indeterminate = false,
+  disabled = false,
+  label,
+  onCheckedChange,
+}: {
+  checked: boolean
+  indeterminate?: boolean
+  disabled?: boolean
+  label: string
+  onCheckedChange: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={indeterminate ? "mixed" : checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onCheckedChange}
+      className={cn(
+        "flex size-4 items-center justify-center rounded-sm border border-input bg-background text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40",
+        (checked || indeterminate) && "border-primary bg-primary text-primary-foreground"
+      )}
+    >
+      {checked ? (
+        <CheckIcon className="size-3" />
+      ) : indeterminate ? (
+        <MinusIcon className="size-3" />
+      ) : null}
+    </button>
+  )
+}
+
+function ProductTopMetric({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  tone?: "success"
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-background p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <span
+          className={cn(
+            "flex size-6 items-center justify-center rounded-md border border-border text-muted-foreground",
+            tone === "success" &&
+              "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+          )}
+        >
+          {icon}
+        </span>
+      </div>
+      <p className="mt-1 text-xl font-semibold tracking-tight">{value}</p>
     </div>
   )
+}
+
+function sortProducts(
+  products: ProductListItem[],
+  sortBy: ProductSortBy,
+  sortDir: ProductSortDir
+) {
+  return [...products].sort((first, second) => {
+    const firstValue = getProductSortValue(first, sortBy)
+    const secondValue = getProductSortValue(second, sortBy)
+
+    if (typeof firstValue === "number" && typeof secondValue === "number") {
+      return sortDir === "asc" ? firstValue - secondValue : secondValue - firstValue
+    }
+
+    const result = String(firstValue).localeCompare(String(secondValue), "en-IN", {
+      numeric: true,
+      sensitivity: "base",
+    })
+
+    return sortDir === "asc" ? result : -result
+  })
+}
+
+function getProductSortValue(product: ProductListItem, sortBy: ProductSortBy) {
+  switch (sortBy) {
+    case "name":
+      return product.name
+    case "sku":
+      return product.sku
+    case "itemType":
+      return itemTypeLabels[product.itemType]
+    case "tax":
+      return product.activeTaxProfile?.hsnSac ?? ""
+    case "gst":
+      return Number(product.activeTaxProfile?.gstRate ?? 0)
+    case "unit":
+      return product.unitProfile?.baseUnit ?? "PCS"
+    case "price":
+      return Number(product.activePrice?.price ?? 0)
+    case "inventory":
+      return product.inventoryProfile?.trackInventory ? 1 : 0
+    case "status":
+      return statusLabels[product.status]
+    default:
+      return product.name
+  }
+}
+
+function generateProductSku(itemType: ProductItemType) {
+  const prefix = itemType === "SERVICE" ? "SRV" : "PRD"
+  const datePart = new Date()
+    .toISOString()
+    .slice(2, 10)
+    .replaceAll("-", "")
+  const randomPart = Math.floor(Math.random() * 9000 + 1000)
+
+  return `${prefix}-${datePart}-${randomPart}`
+}
+
+function generateEan13Barcode() {
+  const body = `890${Math.floor(Math.random() * 1_000_000_000)
+    .toString()
+    .padStart(9, "0")}`
+
+  return `${body}${getEan13CheckDigit(body)}`
+}
+
+function getEan13CheckDigit(firstTwelveDigits: string) {
+  const total = firstTwelveDigits
+    .split("")
+    .map((digit) => Number(digit))
+    .reduce((sum, digit, index) => sum + digit * (index % 2 === 0 ? 1 : 3), 0)
+
+  return String((10 - (total % 10)) % 10)
 }
 
 function validateProductForm(form: ProductFormState, mode: SheetMode) {
@@ -1221,9 +1822,11 @@ function validateProductForm(form: ProductFormState, mode: SheetMode) {
       errors.gstRate = "Enter a valid GST rate."
     }
 
-    if (!form.effectiveFrom) {
-      errors.effectiveFrom = "Effective date is required."
-    }
+  if (!form.effectiveFrom) {
+    errors.effectiveFrom = "Effective date is required."
+  } else if (form.effectiveTo && form.effectiveTo < form.effectiveFrom) {
+    errors.effectiveTo = "Effective-to cannot be before effective-from."
+  }
 
     if (!form.baseUnit.trim()) {
       errors.baseUnit = "Base unit is required."
@@ -1231,6 +1834,14 @@ function validateProductForm(form: ProductFormState, mode: SheetMode) {
 
     if (!/^\d+(\.\d{1,2})?$/.test(form.price.trim())) {
       errors.price = "Enter a valid price."
+    }
+
+    if (!/^\d+(\.\d{1,2})?$/.test(form.marginPercent.trim())) {
+      errors.marginPercent = "Enter a valid margin."
+    }
+
+    if (form.trackInventory && !form.defaultWarehouseId.trim()) {
+      errors.defaultWarehouseId = "Choose the default warehouse."
     }
   }
 
@@ -1243,6 +1854,8 @@ function buildCreatePayload(form: ProductFormState): CreateProductPayload {
     itemType: form.itemType,
     sku: form.sku.trim().toUpperCase(),
     description: form.description.trim() || null,
+    categoryId: form.categoryId.trim() || null,
+    brandId: form.brandId.trim() || null,
     manufacturer: form.manufacturer.trim() || null,
     modelNumber: form.modelNumber.trim() || null,
     status: form.status,
@@ -1250,7 +1863,9 @@ function buildCreatePayload(form: ProductFormState): CreateProductPayload {
       taxability: form.taxability,
       hsnSac: form.hsnSac.trim() || null,
       gstRate: form.gstRate,
+      cessRuleId: form.taxability === "TAXABLE" ? form.cessRuleId.trim() || null : null,
       effectiveFrom: form.effectiveFrom,
+      effectiveTo: form.effectiveTo || null,
       status: "ACTIVE",
     },
     unitProfile: {
@@ -1261,6 +1876,7 @@ function buildCreatePayload(form: ProductFormState): CreateProductPayload {
     price: {
       priceType: "RETAIL",
       price: form.price,
+      marginPercent: form.marginPercent || "0",
       taxMode: form.taxMode,
       currency: "INR",
       minimumQuantity: "1",
@@ -1269,6 +1885,7 @@ function buildCreatePayload(form: ProductFormState): CreateProductPayload {
     },
     inventoryProfile: {
       trackInventory: form.trackInventory,
+      defaultWarehouseId: form.trackInventory ? form.defaultWarehouseId || null : null,
       reorderLevel: form.reorderLevel || "0",
       minimumStock: form.minimumStock || "0",
       maximumStock: form.maximumStock || "0",
@@ -1288,16 +1905,188 @@ function buildUpdatePayload(form: ProductFormState): UpdateProductPayload {
     itemType: form.itemType,
     sku: form.sku.trim().toUpperCase(),
     description: form.description.trim() || null,
+    categoryId: form.categoryId.trim() || null,
+    brandId: form.brandId.trim() || null,
     manufacturer: form.manufacturer.trim() || null,
     modelNumber: form.modelNumber.trim() || null,
     status: form.status,
   }
 }
 
-function formatCurrency(value: string) {
+function getProductTaxPreview(
+  price: string,
+  marginPercent: string,
+  gstRate: string,
+  taxMode: "EXCLUSIVE" | "INCLUSIVE"
+) {
+  const parsedPrice = Number(price || 0)
+  const parsedMargin = Number(marginPercent || 0)
+  const parsedGstRate = Number(gstRate || 0)
+
+  if (
+    !Number.isFinite(parsedPrice) ||
+    !Number.isFinite(parsedMargin) ||
+    !Number.isFinite(parsedGstRate)
+  ) {
+    return {
+      marginAmount: 0,
+      rateAfterMargin: 0,
+      cgst: 0,
+      sgst: 0,
+      igst: 0,
+      finalRate: 0,
+    }
+  }
+
+  const marginAmount = (parsedPrice * parsedMargin) / 100
+  const rateAfterMargin = parsedPrice + marginAmount
+  const taxableValue =
+    taxMode === "INCLUSIVE" && parsedGstRate > 0 ?
+      rateAfterMargin / (1 + parsedGstRate / 100)
+    : rateAfterMargin
+  const igst =
+    taxMode === "INCLUSIVE" ?
+      rateAfterMargin - taxableValue
+    : taxableValue * (parsedGstRate / 100)
+  const halfTax = igst / 2
+  const finalRate = taxMode === "INCLUSIVE" ? rateAfterMargin : taxableValue + igst
+
+  return {
+    marginAmount,
+    rateAfterMargin,
+    cgst: halfTax,
+    sgst: halfTax,
+    igst,
+    finalRate,
+  }
+}
+
+function formatCurrency(value: string | number) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
     maximumFractionDigits: 2,
   }).format(Number(value || 0))
+}
+
+function buildProductsCsv(products: ProductListItem[]) {
+  const rows = [
+    [
+      "Name",
+      "SKU",
+      "Type",
+      "Status",
+      "HSN/SAC",
+      "GST Rate",
+      "Unit",
+      "Retail Price",
+      "Margin %",
+      "Barcode",
+      "Inventory",
+    ],
+    ...products.map((product) => [
+      product.name,
+      product.sku,
+      itemTypeLabels[product.itemType],
+      statusLabels[product.status],
+      product.activeTaxProfile?.hsnSac ?? "",
+      product.activeTaxProfile?.gstRate ? `${product.activeTaxProfile.gstRate}%` : "",
+      product.unitProfile?.baseUnit ?? "PCS",
+      product.activePrice?.price ?? "0",
+      getProductMarginPercent(product.activePrice),
+      product.primaryBarcode?.barcode ?? "",
+      product.inventoryProfile?.trackInventory ? "Tracked" : "Not tracked",
+    ]),
+  ]
+
+  return rows.map((row) => row.map(escapeCsvCell).join(",")).join("\r\n")
+}
+
+function escapeCsvCell(value: string) {
+  const escaped = value.replaceAll('"', '""')
+  return /[",\r\n]/.test(escaped) ? `"${escaped}"` : escaped
+}
+
+function downloadTextFile(fileName: string, content: string, contentType: string) {
+  const blob = new Blob([content], { type: contentType })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = fileName
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+function printProductsPdf(products: ProductListItem[]) {
+  const printWindow = window.open("", "_blank", "noopener,noreferrer")
+
+  if (!printWindow) {
+    return false
+  }
+
+  const rows = products
+    .map(
+      (product) => `
+        <tr>
+          <td>${escapeHtml(product.name)}</td>
+          <td>${escapeHtml(product.sku)}</td>
+          <td>${escapeHtml(itemTypeLabels[product.itemType])}</td>
+          <td>${escapeHtml(product.activeTaxProfile?.hsnSac ?? "-")}</td>
+          <td>${escapeHtml(product.activeTaxProfile?.gstRate ? `${product.activeTaxProfile.gstRate}%` : "-")}</td>
+          <td>${escapeHtml(product.activePrice?.price ?? "0")}</td>
+          <td>${escapeHtml(getProductMarginPercent(product.activePrice))}%</td>
+          <td>${escapeHtml(statusLabels[product.status])}</td>
+        </tr>
+      `
+    )
+    .join("")
+
+  printWindow.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <title>Product Register</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+          h1 { margin: 0 0 4px; font-size: 20px; }
+          p { margin: 0 0 18px; color: #6b7280; font-size: 12px; }
+          table { border-collapse: collapse; width: 100%; font-size: 11px; }
+          th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
+          th { background: #f9fafb; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+        </style>
+      </head>
+      <body>
+        <h1>Product Register</h1>
+        <p>${products.length} loaded product${products.length === 1 ? "" : "s"} exported on ${new Date().toLocaleDateString("en-IN")}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>SKU</th>
+              <th>Type</th>
+              <th>HSN/SAC</th>
+              <th>GST</th>
+              <th>Retail price</th>
+              <th>Margin</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </body>
+    </html>
+  `)
+  printWindow.document.close()
+  printWindow.focus()
+  printWindow.print()
+  return true
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;")
 }

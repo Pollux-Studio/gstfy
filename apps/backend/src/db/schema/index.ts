@@ -1,4 +1,7 @@
 import {
+  sql,
+} from "drizzle-orm"
+import {
   boolean,
   date,
   foreignKey,
@@ -2629,6 +2632,50 @@ export const uqcCodes = pgTable(
   })
 )
 
+export const productCategories = pgTable(
+  "product_categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    status: text("status").notNull().default("active"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("product_categories_business_id_idx").on(table.businessId),
+    businessNameUnique: uniqueIndex("product_categories_business_lower_name_unique").on(
+      table.businessId,
+      sql`lower(${table.name})`
+    ),
+  })
+)
+
+export const productBrands = pgTable(
+  "product_brands",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    status: text("status").notNull().default("active"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("product_brands_business_id_idx").on(table.businessId),
+    businessNameUnique: uniqueIndex("product_brands_business_lower_name_unique").on(
+      table.businessId,
+      sql`lower(${table.name})`
+    ),
+  })
+)
+
 export const items = pgTable(
   "items",
   {
@@ -2793,6 +2840,7 @@ export const itemPrices = pgTable(
       .references(() => items.id, { onDelete: "cascade" }),
     priceType: text("price_type").notNull(),
     price: numeric("price", { precision: 14, scale: 2 }).notNull().default("0"),
+    marginPercent: numeric("margin_percent", { precision: 8, scale: 2 }).notNull().default("0"),
     taxMode: text("tax_mode").notNull().default("EXCLUSIVE"),
     currency: text("currency").notNull().default("INR"),
     minimumQuantity: numeric("minimum_quantity", {
@@ -3186,6 +3234,8 @@ export type PartyCustomerProfileRecord = typeof partyCustomerProfiles.$inferSele
 export type PartySupplierProfileRecord = typeof partySupplierProfiles.$inferSelect
 export type HsnSacCodeRecord = typeof hsnSacCodes.$inferSelect
 export type UqcCodeRecord = typeof uqcCodes.$inferSelect
+export type ProductCategoryRecord = typeof productCategories.$inferSelect
+export type ProductBrandRecord = typeof productBrands.$inferSelect
 export type ItemRecord = typeof items.$inferSelect
 export type ItemTaxProfileRecord = typeof itemTaxProfiles.$inferSelect
 export type CessRuleRecord = typeof cessRules.$inferSelect

@@ -5,6 +5,7 @@ import { SignJWT } from "jose"
 import { getEnv } from "../../config/env.js"
 import { db } from "../../db/client.js"
 import {
+  branchWarehouses,
   businessBranches,
   businessLocations,
   businessMemberPermissions,
@@ -22,6 +23,7 @@ import {
   passwordResetTokens,
   sessions,
   users,
+  warehouses,
   type BusinessRecord,
   type UserRecord,
 } from "../../db/schema/index.js"
@@ -390,6 +392,7 @@ export class AuthService {
             isSalesLocation: true,
             isPurchaseLocation: true,
             isDispatchLocation: true,
+            isWarehouseLocation: true,
             isOffice: true,
           })
           .returning()
@@ -434,6 +437,28 @@ export class AuthService {
         if (!mainBranch) {
           throw new HttpError(500, "Unable to create main branch.")
         }
+
+        const [mainWarehouse] = await tx
+          .insert(warehouses)
+          .values({
+            businessId: business.id,
+            locationId: principalLocation.id,
+            warehouseCode: "MAIN",
+            name: `${business.tradeName} Default Warehouse`,
+            warehouseType: "branch",
+            status: "active",
+          })
+          .returning()
+
+        if (!mainWarehouse) {
+          throw new HttpError(500, "Unable to create default warehouse.")
+        }
+
+        await tx.insert(branchWarehouses).values({
+          branchId: mainBranch.id,
+          warehouseId: mainWarehouse.id,
+          isDefault: true,
+        })
 
         const currentFinancialYear = getCurrentFinancialYear()
         const [financialYear] = await tx

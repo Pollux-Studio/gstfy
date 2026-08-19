@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { format, parseISO } from "date-fns"
 import {
   BadgeCheckIcon,
+  BarcodeIcon,
   Building2Icon,
   CalendarIcon,
   FileTextIcon,
@@ -45,6 +46,16 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getStoredAuthSession, setStoredAuthSession } from "@/lib/auth/session"
+import {
+  barcodeSubmitKeyOptions,
+  getBarcodeSubmitKeyFromKeyboardEventKey,
+  getBarcodeSubmitKeyLabel,
+  normalizeBarcodeScannerSettings,
+  persistBarcodeScannerSettings,
+  readBarcodeScannerSettings,
+  type BarcodeScannerConnectorSettings,
+  type BarcodeScannerSubmitKey,
+} from "@/lib/barcode-scanner/settings"
 import { getAllGstStates } from "@/lib/gst-state"
 import {
   getSettings,
@@ -114,6 +125,15 @@ const gstRateSettingsSchema = z.object({
   enabledGstSlabs: z
     .array(z.union([z.literal(5), z.literal(12), z.literal(18), z.literal(28)]))
     .min(1, "Enable at least one GST slab."),
+  enabledCessPresetCodes: z.array(
+    z.enum([
+      "TOBACCO_CESS",
+      "PAN_MASALA_CESS",
+      "COAL_CESS",
+      "AERATED_DRINK_CESS",
+      "MOTOR_VEHICLE_CESS",
+    ])
+  ),
 })
 
 const printerSettingsSchema = z.object({
@@ -127,6 +147,13 @@ type BusinessDetailsFormValues = z.infer<typeof businessDetailsSchema>
 type InvoiceSettingsFormValues = z.infer<typeof invoiceSettingsSchema>
 type GstRateSettingsFormValues = z.infer<typeof gstRateSettingsSchema>
 type PrinterSettingsFormValues = z.infer<typeof printerSettingsSchema>
+
+type BarcodeScannerTestResult = {
+  value: string
+  submitKey: BarcodeScannerSubmitKey
+  durationMs: number | null
+  capturedAt: string
+}
 
 const invoiceTemplateOptions: Array<{
   value: SettingsResponse["invoiceSettings"]["invoiceTemplate"]
@@ -203,6 +230,12 @@ const settingsTabs = [
     description: "Paper and print behavior",
     icon: <PrinterIcon className="size-4" />,
   },
+  {
+    value: "connectors",
+    label: "Connectors",
+    description: "Scanners and local devices",
+    icon: <BarcodeIcon className="size-4" />,
+  },
 ] as const
 
 export function SettingsPage() {
@@ -211,10 +244,19 @@ export function SettingsPage() {
   const queryClient = useQueryClient()
   const [isBusinessEditing, setIsBusinessEditing] = React.useState(false)
   const [caReferralCode, setCaReferralCode] = React.useState("")
-  const [tenantSlugInput, setTenantSlugInput] = React.useState("")
-  const [tenantSlugError, setTenantSlugError] = React.useState<string | null>(null)
+  const [tenantSlugDraft, setTenantSlugDraft] = React.useState<{
+    sourceTenantSlug: string
+    value: string
+    error: string | null
+  } | null>(null)
   const [isRegistrationDatePickerOpen, setIsRegistrationDatePickerOpen] =
     React.useState(false)
+  const [barcodeScannerSettings, setBarcodeScannerSettings] =
+    React.useState<BarcodeScannerConnectorSettings>(() => readBarcodeScannerSettings())
+  const [barcodeTestValue, setBarcodeTestValue] = React.useState("")
+  const [barcodeTestResult, setBarcodeTestResult] =
+    React.useState<BarcodeScannerTestResult | null>(null)
+  const barcodeTestStartRef = React.useRef<number | null>(null)
 
   const {
     data,
@@ -242,6 +284,7 @@ export function SettingsPage() {
     resolver: zodResolver(gstRateSettingsSchema),
     defaultValues: {
       enabledGstSlabs: [5, 12, 18, 28],
+      enabledCessPresetCodes: [],
     },
   })
   const printerForm = useForm<PrinterSettingsFormValues>({
@@ -259,8 +302,6 @@ export function SettingsPage() {
       return
     }
 
-    setTenantSlugInput(data.business.tenantSlug ?? "")
-    setTenantSlugError(null)
     businessForm.reset({
       businessEmail: data.business.businessEmail ?? "",
       businessMobile: data.business.businessMobile ?? "",
@@ -281,6 +322,9 @@ export function SettingsPage() {
     })
     gstForm.reset({
       enabledGstSlabs: data.gstRateSettings.enabledGstSlabs,
+      enabledCessPresetCodes: data.gstRateSettings.cessPresets
+        .filter((preset) => preset.enabled)
+        .map((preset) => preset.code),
     })
     printerForm.reset({
       paperSize: data.printerSettings.paperSize,
@@ -302,6 +346,10 @@ export function SettingsPage() {
     control: gstForm.control,
     name: "enabledGstSlabs",
   })
+  const currentEnabledCessPresetCodes = useWatch({
+    control: gstForm.control,
+    name: "enabledCessPresetCodes",
+  })
   const autoOpenPrintDialog = useWatch({
     control: printerForm.control,
     name: "autoOpenPrintDialog",
@@ -317,6 +365,23 @@ export function SettingsPage() {
   const selectedRegistrationDate = registrationDateValue
     ? parseISO(registrationDateValue)
     : undefined
+  const tenantSlugSourceValue = data?.business.tenantSlug ?? ""
+  const tenantSlugInput =
+    tenantSlugDraft?.sourceTenantSlug === tenantSlugSourceValue ?
+      tenantSlugDraft.value
+    : tenantSlugSourceValue
+  const tenantSlugError =
+    tenantSlugDraft?.sourceTenantSlug === tenantSlugSourceValue ?
+      tenantSlugDraft.error
+    : null
+
+  function updateTenantSlugDraft(value: string, error: string | null = null) {
+    setTenantSlugDraft({
+      sourceTenantSlug: tenantSlugSourceValue,
+      value,
+      error,
+    })
+  }
 
   const businessMutation = useMutation({
     mutationFn: (values: BusinessDetailsFormValues) =>
@@ -356,7 +421,7 @@ export function SettingsPage() {
       const validationError = getTenantSlugValidationError(tenantSlug)
 
       if (validationError) {
-        setTenantSlugError(validationError)
+        updateTenantSlugDraft(tenantSlugInput, validationError)
         throw new Error(validationError)
       }
 
@@ -364,8 +429,7 @@ export function SettingsPage() {
     },
     onSuccess: (nextSettings) => {
       setSettingsCache(queryClient, nextSettings)
-      setTenantSlugInput(nextSettings.business.tenantSlug)
-      setTenantSlugError(null)
+      setTenantSlugDraft(null)
 
       const currentSession = getStoredAuthSession()
 
@@ -432,11 +496,13 @@ export function SettingsPage() {
       updateGstRateSettings(
         {
           enabledGstSlabs: values.enabledGstSlabs,
+          enabledCessPresetCodes: values.enabledCessPresetCodes,
         },
         accessToken
       ),
     onSuccess: (nextSettings) => {
       setSettingsCache(queryClient, nextSettings)
+      queryClient.invalidateQueries({ queryKey: ["tax", "rules"] })
       toast.success("GST presets updated.")
     },
     onError: (mutationError) => {
@@ -491,6 +557,63 @@ export function SettingsPage() {
   const tenantDisplayUrl =
     data.business.tenantUrl ||
     (currentTenantSlug ? `${currentTenantSlug}.gstfy.in` : "Not set")
+
+  function updateBarcodeScannerSettings(
+    nextSettings: Partial<BarcodeScannerConnectorSettings>
+  ) {
+    setBarcodeScannerSettings((currentSettings) => ({
+      ...currentSettings,
+      ...nextSettings,
+    }))
+  }
+
+  function saveBarcodeScannerSettings() {
+    const nextSettings = normalizeBarcodeScannerSettings({
+      ...barcodeScannerSettings,
+      updatedAt: new Date().toISOString(),
+    })
+
+    setBarcodeScannerSettings(nextSettings)
+    persistBarcodeScannerSettings(nextSettings)
+    toast.success("Barcode scanner connector saved.")
+  }
+
+  function handleBarcodeTestChange(event: React.ChangeEvent<HTMLInputElement>) {
+    if (barcodeTestStartRef.current === null) {
+      barcodeTestStartRef.current = performance.now()
+    }
+
+    setBarcodeTestValue(event.target.value)
+  }
+
+  function handleBarcodeTestKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    const submitKey = getBarcodeSubmitKeyFromKeyboardEventKey(event.key)
+
+    if (!submitKey) {
+      return
+    }
+
+    event.preventDefault()
+
+    const value = barcodeTestValue.trim()
+
+    if (value.length < barcodeScannerSettings.minLength) {
+      toast.error(`Scan at least ${barcodeScannerSettings.minLength} characters.`)
+      return
+    }
+
+    setBarcodeTestResult({
+      value,
+      submitKey,
+      durationMs:
+        barcodeTestStartRef.current === null ?
+          null
+        : Math.max(0, Math.round(performance.now() - barcodeTestStartRef.current)),
+      capturedAt: new Date().toISOString(),
+    })
+
+    updateBarcodeScannerSettings({ submitKey })
+  }
 
   return (
     <Tabs defaultValue="business" className="contents">
@@ -614,10 +737,9 @@ export function SettingsPage() {
                                 id="settings-tenant-slug"
                                 value={tenantSlugInput}
                                 onChange={(event) => {
-                                  setTenantSlugInput(
+                                  updateTenantSlugDraft(
                                     normalizeTenantSlugInput(event.target.value)
                                   )
-                                  setTenantSlugError(null)
                                 }}
                                 maxLength={48}
                                 disabled={!canEditBusiness || tenantMutation.isPending}
@@ -646,10 +768,9 @@ export function SettingsPage() {
                             variant="outline"
                             disabled={!canEditBusiness || tenantMutation.isPending}
                             onClick={() => {
-                              setTenantSlugInput(
+                              updateTenantSlugDraft(
                                 createTenantSlugSuggestion(data.business.tradeName)
                               )
-                              setTenantSlugError(null)
                             }}
                           >
                             <RefreshCwIcon className="size-4" />
@@ -1197,6 +1318,84 @@ export function SettingsPage() {
                 </Field>
               </FieldGroup>
 
+              <div className="mt-5 border-t border-border pt-5">
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel>Compensation cess categories</FieldLabel>
+                    <FieldDescription>
+                      Does {data.business.tradeName || data.business.legalName} sell any products
+                      that may attract GST compensation cess? Enable only the categories you need in
+                      the product master.
+                    </FieldDescription>
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {data.gstRateSettings.cessPresets.map((preset) => {
+                        const isActive = currentEnabledCessPresetCodes.includes(preset.code)
+
+                        return (
+                          <button
+                            key={preset.code}
+                            type="button"
+                            disabled={!canEditBusiness}
+                            className={cn(
+                              "group flex min-h-24 flex-col rounded-2xl border p-3 text-left transition-colors",
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              isActive
+                                ? "border-blue-500/70 bg-blue-50/70 text-blue-700 dark:bg-blue-950/20 dark:text-blue-300"
+                                : "border-border bg-background hover:bg-muted/30",
+                              !canEditBusiness && "cursor-not-allowed opacity-60"
+                            )}
+                            onClick={() => {
+                              gstForm.setValue(
+                                "enabledCessPresetCodes",
+                                toggleCessPresetCode(
+                                  currentEnabledCessPresetCodes,
+                                  preset.code
+                                ),
+                                {
+                                  shouldDirty: true,
+                                  shouldValidate: true,
+                                }
+                              )
+                            }}
+                          >
+                            <span className="flex items-start justify-between gap-3">
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-medium">
+                                  {preset.label}
+                                </span>
+                                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                                  {preset.description}
+                                </span>
+                              </span>
+                              <span
+                                className={cn(
+                                  "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
+                                  isActive
+                                    ? "border-blue-500 bg-blue-500"
+                                    : "border-border bg-background"
+                                )}
+                              >
+                                {isActive ? (
+                                  <span className="size-1.5 rounded-full bg-white" />
+                                ) : null}
+                              </span>
+                            </span>
+                            <span className="mt-auto pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                              {preset.code}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <FieldDescription>
+                      These are system-created product-selectable cess rules. Exact cess rates must
+                      be reviewed before live billing because compensation cess depends on notified
+                      goods and can change.
+                    </FieldDescription>
+                  </Field>
+                </FieldGroup>
+              </div>
+
               <div className="mt-6 flex justify-end border-t border-border pt-4">
                 <Button type="submit" disabled={gstMutation.isPending || !canEditBusiness}>
                   {gstMutation.isPending ? (
@@ -1363,6 +1562,230 @@ export function SettingsPage() {
                 </Button>
               </div>
             </form>
+          </SettingsSection>
+        </TabsContent>
+
+        <TabsContent value="connectors" className="mt-0">
+          <SettingsSection
+            icon={<BarcodeIcon className="size-4" />}
+            title="Connectors"
+            badgeLabel={barcodeScannerSettings.enabled ? "Scanner enabled" : "Scanner disabled"}
+          >
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-border bg-muted/20 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium">Barcode scanner</p>
+                      <Badge variant="outline" className="bg-background">
+                        Keyboard mode
+                      </Badge>
+                    </div>
+                    <p className="max-w-2xl text-sm text-muted-foreground">
+                      USB and Bluetooth barcode scanners usually work like a keyboard. Connect the
+                      scanner, place the cursor in a barcode field, then scan. GSTFY listens for the
+                      configured suffix key.
+                    </p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="w-fit gap-1.5 bg-background text-[11px]"
+                  >
+                    <BadgeCheckIcon className="size-3.5" />
+                    Saved on this device
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                <div className="rounded-2xl border border-border bg-background p-4">
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-medium">Test scanner input</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Click the input, scan one product barcode, then check the detected result.
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="bg-muted/40">
+                      HID
+                    </Badge>
+                  </div>
+
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel htmlFor="settings-barcode-test">Scan test</FieldLabel>
+                      <Input
+                        id="settings-barcode-test"
+                        value={barcodeTestValue}
+                        placeholder="Click here and scan a barcode"
+                        className="font-mono"
+                        autoComplete="off"
+                        onFocus={() => {
+                          barcodeTestStartRef.current = performance.now()
+                        }}
+                        onChange={handleBarcodeTestChange}
+                        onKeyDown={handleBarcodeTestKeyDown}
+                      />
+                      <FieldDescription>
+                        If your scanner can be configured, set its suffix to Enter or Tab.
+                      </FieldDescription>
+                    </Field>
+                  </FieldGroup>
+
+                  <div className="mt-4 grid gap-2 rounded-xl border border-border/70 bg-muted/20 p-3 text-sm">
+                    <ConnectorDetail
+                      label="Detected barcode"
+                      value={barcodeTestResult?.value ?? "No scan captured yet"}
+                      mono={Boolean(barcodeTestResult)}
+                    />
+                    <ConnectorDetail
+                      label="Detected suffix"
+                      value={
+                        barcodeTestResult ?
+                          getBarcodeSubmitKeyLabel(barcodeTestResult.submitKey)
+                        : "Waiting for Enter or Tab"
+                      }
+                    />
+                    <ConnectorDetail
+                      label="Scan speed"
+                      value={
+                        barcodeTestResult?.durationMs === null || !barcodeTestResult ?
+                          "Not measured"
+                        : `${barcodeTestResult.durationMs} ms`
+                      }
+                    />
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setBarcodeTestValue("")
+                        setBarcodeTestResult(null)
+                        barcodeTestStartRef.current = null
+                      }}
+                    >
+                      Clear test
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-border bg-background p-4">
+                  <div className="mb-4">
+                    <h3 className="text-sm font-medium">Scanner behavior</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      These preferences are used by this browser/device for product and POS barcode
+                      fields.
+                    </p>
+                  </div>
+
+                  <FieldGroup>
+                    <Field>
+                      <FieldLabel htmlFor="settings-barcode-submit-key">Suffix key</FieldLabel>
+                      <Select
+                        value={barcodeScannerSettings.submitKey}
+                        onValueChange={(value) =>
+                          updateBarcodeScannerSettings({
+                            submitKey: value as BarcodeScannerSubmitKey,
+                          })
+                        }
+                      >
+                        <SelectTrigger id="settings-barcode-submit-key" className="w-full">
+                          <SelectDisplayValue
+                            value={barcodeScannerSettings.submitKey}
+                            options={barcodeSubmitKeyOptions}
+                            placeholder="Choose suffix key"
+                          />
+                        </SelectTrigger>
+                        <SelectContent align="start">
+                          {barcodeSubmitKeyOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor="settings-barcode-min-length">
+                        Minimum barcode length
+                      </FieldLabel>
+                      <Input
+                        id="settings-barcode-min-length"
+                        type="number"
+                        min={4}
+                        max={32}
+                        value={barcodeScannerSettings.minLength}
+                        onChange={(event) =>
+                          updateBarcodeScannerSettings({
+                            minLength: Number.parseInt(event.target.value, 10) || 8,
+                          })
+                        }
+                      />
+                    </Field>
+
+                    <Field>
+                      <FieldLabel>Connector status</FieldLabel>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant={barcodeScannerSettings.enabled ? "default" : "outline"}
+                          onClick={() => updateBarcodeScannerSettings({ enabled: true })}
+                        >
+                          Enabled
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={!barcodeScannerSettings.enabled ? "default" : "outline"}
+                          onClick={() => updateBarcodeScannerSettings({ enabled: false })}
+                        >
+                          Disabled
+                        </Button>
+                      </div>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel>Auto-search after scan</FieldLabel>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant={barcodeScannerSettings.autoSearch ? "default" : "outline"}
+                          onClick={() => updateBarcodeScannerSettings({ autoSearch: true })}
+                        >
+                          Enabled
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={!barcodeScannerSettings.autoSearch ? "default" : "outline"}
+                          onClick={() => updateBarcodeScannerSettings({ autoSearch: false })}
+                        >
+                          Disabled
+                        </Button>
+                      </div>
+                      <FieldDescription>
+                        When enabled, POS/product fields can search immediately after the scanner
+                        suffix is received.
+                      </FieldDescription>
+                    </Field>
+                  </FieldGroup>
+
+                  <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Last saved:{" "}
+                      {barcodeScannerSettings.updatedAt ?
+                        formatDateTime(barcodeScannerSettings.updatedAt)
+                      : "Not saved yet"}
+                    </p>
+                    <Button type="button" onClick={saveBarcodeScannerSettings}>
+                      <SaveIcon className="size-4" />
+                      Save connector
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </SettingsSection>
         </TabsContent>
         </main>
@@ -1538,6 +1961,33 @@ function ReadOnlyDetail({
   )
 }
 
+function ConnectorDetail({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string
+  value: string
+  mono?: boolean
+}) {
+  return (
+    <div className="grid gap-1 sm:grid-cols-[8.5rem_minmax(0,1fr)] sm:items-center">
+      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "min-w-0 truncate text-sm font-medium text-foreground",
+          mono && "font-mono tracking-[0.12em]"
+        )}
+        title={value}
+      >
+        {value}
+      </p>
+    </div>
+  )
+}
+
 function createBusinessDefaults(data?: SettingsResponse): BusinessDetailsFormValues {
   return {
     businessEmail: data?.business.businessEmail ?? "",
@@ -1577,6 +2027,17 @@ function toggleGstSlab(
   return [...currentSlabs, targetSlab].sort((left, right) => left - right) as GstRateSettingsFormValues["enabledGstSlabs"]
 }
 
+function toggleCessPresetCode(
+  currentCodes: GstRateSettingsFormValues["enabledCessPresetCodes"],
+  targetCode: GstRateSettingsFormValues["enabledCessPresetCodes"][number]
+) {
+  if (currentCodes.includes(targetCode)) {
+    return currentCodes.filter((code) => code !== targetCode)
+  }
+
+  return [...currentCodes, targetCode]
+}
+
 function formatTitleCase(value: string) {
   return value
     .replaceAll("_", " ")
@@ -1591,6 +2052,16 @@ function formatDate(value: string) {
     day: "2-digit",
     month: "short",
     year: "numeric",
+  }).format(new Date(value))
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   }).format(new Date(value))
 }
 

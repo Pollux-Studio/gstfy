@@ -1,4 +1,4 @@
-import { and, eq, ilike, or, sql as drizzleSql, type SQL } from "drizzle-orm"
+import { and, asc, desc, eq, ilike, or, sql as drizzleSql, type SQL } from "drizzle-orm"
 import type { FastifyInstance } from "fastify"
 
 import { db, sql } from "../../db/client.js"
@@ -16,8 +16,10 @@ import {
   listAccountsQuerySchema,
   reportQuerySchema,
   updateLedgerAccountSchema,
+  type AccountSortField,
   type AccountType,
   type ReportQueryInput,
+  type SortDirection,
 } from "./accounting.schemas.js"
 
 type BusinessAccess = Awaited<ReturnType<typeof requirePrimaryBusinessAccess>>
@@ -123,7 +125,7 @@ export async function registerAccountingRoutes(app: FastifyInstance) {
       .select()
       .from(ledgerAccounts)
       .where(and(...conditions))
-      .orderBy(ledgerAccounts.accountCode)
+      .orderBy(getLedgerAccountSort(query.sortBy, query.sortDir))
       .limit(query.limit)
       .offset(offset)
 
@@ -447,6 +449,17 @@ function createPaginationMeta(page: number, limit: number, total: number) {
     total,
     hasMore: page * limit < total,
   }
+}
+
+function getLedgerAccountSort(sortBy: AccountSortField, sortDir: SortDirection) {
+  const column =
+    sortBy === "accountName" ? ledgerAccounts.accountName
+    : sortBy === "accountType" ? ledgerAccounts.accountType
+    : sortBy === "accountGroup" ? ledgerAccounts.accountGroup
+    : sortBy === "status" ? ledgerAccounts.status
+    : ledgerAccounts.accountCode
+
+  return sortDir === "desc" ? desc(column) : asc(column)
 }
 
 async function listBusinessAccounts(businessId: string) {

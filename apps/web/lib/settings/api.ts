@@ -64,6 +64,22 @@ export type SettingsResponse = {
   }
   gstRateSettings: {
     enabledGstSlabs: Array<5 | 12 | 18 | 28>
+    cessPresets: Array<{
+      code:
+        | "TOBACCO_CESS"
+        | "PAN_MASALA_CESS"
+        | "COAL_CESS"
+        | "AERATED_DRINK_CESS"
+        | "MOTOR_VEHICLE_CESS"
+      label: string
+      description: string
+      enabled: boolean
+      cessRuleId: string | null
+      calculationMethod: string
+      ratePercent: string | null
+      amountPerUnit: string | null
+      requiresRateConfiguration: boolean
+    }>
   }
   printerSettings: {
     paperSize: "A4" | "A5" | "THERMAL_80MM"
@@ -118,6 +134,13 @@ export type UpdateInvoiceSettingsPayload = {
 
 export type UpdateGstRateSettingsPayload = {
   enabledGstSlabs: Array<5 | 12 | 18 | 28>
+  enabledCessPresetCodes: Array<
+    | "TOBACCO_CESS"
+    | "PAN_MASALA_CESS"
+    | "COAL_CESS"
+    | "AERATED_DRINK_CESS"
+    | "MOTOR_VEHICLE_CESS"
+  >
 }
 
 export type UpdatePrinterSettingsPayload = {

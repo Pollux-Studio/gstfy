@@ -25,10 +25,24 @@ export type HsnSacCode = {
   status: string
 }
 
+export type HsnCodeSearchResult = {
+  code: string
+  description: string
+  gstRate: string | null
+  source: "master" | "tally"
+}
+
 export type UqcCode = {
   id: string
   code: string
   description: string
+  status: string
+}
+
+export type ProductMasterOption = {
+  id: string
+  businessId: string
+  name: string
   status: string
 }
 
@@ -58,6 +72,7 @@ export type ProductPrice = {
   itemId: string
   priceType: PriceType
   price: string
+  marginPercent: string
   taxMode: TaxMode
   currency: string
   minimumQuantity: string
@@ -137,6 +152,8 @@ export type CreateProductPayload = {
   itemType: ProductItemType
   sku: string
   description?: string | null
+  categoryId?: string | null
+  brandId?: string | null
   manufacturer?: string | null
   modelNumber?: string | null
   status?: ProductStatus
@@ -144,6 +161,7 @@ export type CreateProductPayload = {
     taxability: Taxability
     hsnSac?: string | null
     gstRate: string | number
+    cessRuleId?: string | null
     effectiveFrom: string
     effectiveTo?: string | null
     status?: ProductStatus
@@ -157,6 +175,7 @@ export type CreateProductPayload = {
   price?: {
     priceType: PriceType
     price: string | number
+    marginPercent?: string | number
     taxMode: TaxMode
     currency?: string
     minimumQuantity?: string | number
@@ -166,6 +185,7 @@ export type CreateProductPayload = {
   }
   inventoryProfile?: {
     trackInventory: boolean
+    defaultWarehouseId?: string | null
     reorderLevel?: string | number
     minimumStock?: string | number
     maximumStock?: string | number
@@ -183,7 +203,15 @@ export type CreateProductPayload = {
 export type UpdateProductPayload = Partial<
   Pick<
     CreateProductPayload,
-    "name" | "itemType" | "sku" | "description" | "manufacturer" | "modelNumber" | "status"
+    | "name"
+    | "itemType"
+    | "sku"
+    | "description"
+    | "categoryId"
+    | "brandId"
+    | "manufacturer"
+    | "modelNumber"
+    | "status"
   >
 >
 
@@ -195,8 +223,58 @@ export type PaginationMeta = {
 }
 
 export function listProductMasters(accessToken: string) {
-  return apiRequest<{ hsnSacCodes: HsnSacCode[]; uqcCodes: UqcCode[] }>(
+  return apiRequest<{
+    hsnSacCodes: HsnSacCode[]
+    uqcCodes: UqcCode[]
+    categories: ProductMasterOption[]
+    brands: ProductMasterOption[]
+  }>(
     "/products/masters",
+    {
+      method: "GET",
+      accessToken,
+    }
+  )
+}
+
+export function createProductCategory(name: string, accessToken: string) {
+  return apiRequest<{
+    category: ProductMasterOption
+    categories: ProductMasterOption[]
+  }>("/products/categories", {
+    method: "POST",
+    body: { name },
+    accessToken,
+  })
+}
+
+export function createProductBrand(name: string, accessToken: string) {
+  return apiRequest<{
+    brand: ProductMasterOption
+    brands: ProductMasterOption[]
+  }>("/products/brands", {
+    method: "POST",
+    body: { name },
+    accessToken,
+  })
+}
+
+export function searchHsnCodes(
+  accessToken: string,
+  filters: {
+    q: string
+    limit?: number
+  }
+) {
+  const params = new URLSearchParams()
+  params.set("q", filters.q)
+
+  if (filters.limit) {
+    params.set("limit", String(filters.limit))
+  }
+
+  return apiRequest<{ codes: HsnCodeSearchResult[] }>(
+    `/products/hsn-search?${params.toString()}`,
     {
       method: "GET",
       accessToken,

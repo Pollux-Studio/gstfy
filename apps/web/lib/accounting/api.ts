@@ -3,6 +3,13 @@ import { apiRequest } from "@/lib/api/client"
 export type LedgerAccountType = "ASSET" | "LIABILITY" | "EQUITY" | "INCOME" | "EXPENSE"
 export type NormalBalance = "DEBIT" | "CREDIT"
 export type LedgerAccountStatus = "active" | "inactive"
+export type LedgerAccountSortBy =
+  | "accountCode"
+  | "accountName"
+  | "accountType"
+  | "accountGroup"
+  | "status"
+export type SortDirection = "asc" | "desc"
 
 export type LedgerAccount = {
   id: string
@@ -49,6 +56,15 @@ export type AccountingReportQuery = {
   warehouseId?: string | null
   page?: number
   limit?: number
+}
+
+export type ListLedgerAccountsFilters = {
+  page?: number
+  limit?: number
+  status?: LedgerAccountStatus | "all"
+  accountType?: LedgerAccountType | "all"
+  sortBy?: LedgerAccountSortBy
+  sortDir?: SortDirection
 }
 
 export type PaginationMeta = {
@@ -131,7 +147,7 @@ export type DayBookEntry = {
 export async function listLedgerAccounts(
   accessToken: string,
   search = "",
-  filters: { page?: number; limit?: number } = {}
+  filters: ListLedgerAccountsFilters = {}
 ) {
   const query = new URLSearchParams()
 
@@ -145,6 +161,22 @@ export async function listLedgerAccounts(
 
   if (filters.limit) {
     query.set("limit", String(filters.limit))
+  }
+
+  if (filters.status && filters.status !== "all") {
+    query.set("status", filters.status)
+  }
+
+  if (filters.accountType && filters.accountType !== "all") {
+    query.set("accountType", filters.accountType)
+  }
+
+  if (filters.sortBy) {
+    query.set("sortBy", filters.sortBy)
+  }
+
+  if (filters.sortDir) {
+    query.set("sortDir", filters.sortDir)
   }
 
   return apiRequest<{ accounts: LedgerAccount[]; pagination: PaginationMeta }>(

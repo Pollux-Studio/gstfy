@@ -343,6 +343,16 @@ export function AddBranchPage() {
     () => warehousesQuery.data?.warehouses ?? [],
     [warehousesQuery.data?.warehouses]
   )
+  const defaultWarehouse = React.useMemo(
+    () =>
+      warehouses.find(
+        (warehouse) =>
+          warehouse.status.toLowerCase() === "active" && warehouse.warehouseCode === "MAIN"
+      ) ??
+      warehouses.find((warehouse) => warehouse.status.toLowerCase() === "active") ??
+      null,
+    [warehouses]
+  )
   const users = React.useMemo(
     () => usersQuery.data?.users ?? [],
     [usersQuery.data?.users]
@@ -364,6 +374,21 @@ export function AddBranchPage() {
       })
     }
   }, [form, gstRegistrations])
+
+  React.useEffect(() => {
+    if (
+      defaultWarehouse &&
+      form.getValues("warehouseMode") === "none" &&
+      !form.getValues("existingWarehouseId")
+    ) {
+      form.setValue("warehouseMode", "existing", {
+        shouldValidate: true,
+      })
+      form.setValue("existingWarehouseId", defaultWarehouse.id, {
+        shouldValidate: true,
+      })
+    }
+  }, [defaultWarehouse, form])
 
   const createBranchMutation = useMutation({
     mutationFn: async (valuesToSubmit: AddBranchValues) => {
@@ -1117,6 +1142,7 @@ function WarehouseStep({
                   {warehouses.map((warehouse) => (
                     <SelectItem key={warehouse.id} value={warehouse.id}>
                       {warehouse.name} ({warehouse.warehouseCode})
+                      {warehouse.warehouseCode === "MAIN" ? " · Default" : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>

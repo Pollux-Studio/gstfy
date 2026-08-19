@@ -17,6 +17,8 @@ import {
   ledgerAccounts,
   parties,
   partySupplierProfiles,
+  productBrands,
+  productCategories,
   uqcCodes,
   warehouses,
   type ItemPriceRecord,
@@ -28,11 +30,13 @@ import { requirePrimaryBusinessAccess } from "../businesses/business-access.js"
 import {
   childParamsSchema,
   createProductSchema,
+  hsnSearchQuerySchema,
   idParamsSchema,
   listProductsQuerySchema,
   productAccountingProfileSchema,
   productBarcodeSchema,
   productInventoryProfileSchema,
+  productMasterNameSchema,
   productPriceSchema,
   productSupplierSchema,
   productTaxProfileSchema,
@@ -51,6 +55,17 @@ import {
 
 type BusinessAccess = Awaited<ReturnType<typeof requirePrimaryBusinessAccess>>
 type ProductAction = "view" | "create" | "edit" | "delete"
+type HsnSearchResult = {
+  code: string
+  description: string
+  gstRate: string | null
+  source: "master" | "tally"
+}
+
+const tallyHsnGoodsUrl =
+  "https://tallysolutions.com/wp-content/uploads/2025/hsn-code-finder/hsn-code-goods.json"
+const hsnCacheTtlMs = 1000 * 60 * 60 * 12
+let tallyHsnCache: { loadedAt: number; codes: HsnSearchResult[] } | null = null
 
 export async function registerProductsRoutes(app: FastifyInstance) {
   app.get("/products/masters", async (request) => {
@@ -68,6 +83,30 @@ export async function registerProductsRoutes(app: FastifyInstance) {
         .from(uqcCodes)
         .where(eq(uqcCodes.status, "active"))
         .orderBy(uqcCodes.code),
+      categories: await listProductCategories(access.business.id),
+      brands: await listProductBrands(access.business.id),
+    }
+  })
+
+  app.post("/products/categories", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    await assertCanUseProducts(access, "create")
+    const body = productMasterNameSchema.parse(request.body)
+
+    return {
+      category: await ensureProductCategory(access.business.id, body.name, access.userId),
+      categories: await listProductCategories(access.business.id),
+    }
+  })
+
+  app.post("/products/brands", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    await assertCanUseProducts(access, "create")
+    const body = productMasterNameSchema.parse(request.body)
+
+    return {
+      brand: await ensureProductBrand(access.business.id, body.name, access.userId),
+      brands: await listProductBrands(access.business.id),
     }
   })
 
@@ -131,6 +170,16 @@ export async function registerProductsRoutes(app: FastifyInstance) {
     }
   })
 
+  app.get("/products/hsn-search", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    await assertCanUseProducts(access, "view")
+    const query = hsnSearchQuerySchema.parse(request.query)
+
+    return {
+      codes: await searchHsnCodes(query.q, query.limit),
+    }
+  })
+
   app.post("/products", async (request) => {
     const access = await requirePrimaryBusinessAccess(request)
     await assertCanUseProducts(access, "create")
@@ -138,6 +187,12 @@ export async function registerProductsRoutes(app: FastifyInstance) {
 
     await assertSkuAvailable(access.business.id, body.sku)
     await validateNestedProductReferences(access.business.id, body)
+    const categoryName =
+      body.categoryId ? (await ensureProductCategory(access.business.id, body.categoryId, access.userId)).name
+      : null
+    const brandName =
+      body.brandId ? (await ensureProductBrand(access.business.id, body.brandId, access.userId)).name
+      : null
 
     const product = await db.transaction(async (tx) => {
       const [insertedProduct] = await tx
@@ -148,8 +203,8 @@ export async function registerProductsRoutes(app: FastifyInstance) {
           itemType: body.itemType,
           sku: body.sku,
           description: body.description ?? null,
-          categoryId: body.categoryId ?? null,
-          brandId: body.brandId ?? null,
+          categoryId: categoryName,
+          brandId: brandName,
           manufacturer: body.manufacturer ?? null,
           modelNumber: body.modelNumber ?? null,
           status: body.status,
@@ -198,6 +253,7 @@ export async function registerProductsRoutes(app: FastifyInstance) {
           itemId: insertedProduct.id,
           priceType: body.price.priceType,
           price: body.price.price,
+          marginPercent: body.price.marginPercent,
           taxMode: body.price.taxMode,
           currency: body.price.currency,
           minimumQuantity: body.price.minimumQuantity,
@@ -308,6 +364,14 @@ export async function registerProductsRoutes(app: FastifyInstance) {
 
     if (body.sku && body.sku !== before.sku) {
       await assertSkuAvailable(access.business.id, body.sku, id)
+    }
+
+    if (body.categoryId) {
+      body.categoryId = (await ensureProductCategory(access.business.id, body.categoryId, access.userId)).name
+    }
+
+    if (body.brandId) {
+      body.brandId = (await ensureProductBrand(access.business.id, body.brandId, access.userId)).name
     }
 
     const [product] = await db
@@ -481,6 +545,7 @@ export async function registerProductsRoutes(app: FastifyInstance) {
         itemId: id,
         priceType: body.priceType,
         price: body.price,
+        marginPercent: body.marginPercent,
         taxMode: body.taxMode,
         currency: body.currency,
         minimumQuantity: body.minimumQuantity,
@@ -509,6 +574,7 @@ export async function registerProductsRoutes(app: FastifyInstance) {
     const candidate = {
       priceType: body.priceType ?? before.priceType,
       price: body.price ?? before.price,
+      marginPercent: body.marginPercent ?? before.marginPercent,
       taxMode: body.taxMode ?? before.taxMode,
       currency: body.currency ?? before.currency,
       minimumQuantity: body.minimumQuantity ?? before.minimumQuantity,
@@ -1176,6 +1242,275 @@ async function validateNestedProductReferences(
   }
 }
 
+async function listProductCategories(businessId: string) {
+  return db
+    .select()
+    .from(productCategories)
+    .where(
+      and(eq(productCategories.businessId, businessId), eq(productCategories.status, "active"))
+    )
+    .orderBy(productCategories.name)
+}
+
+async function listProductBrands(businessId: string) {
+  return db
+    .select()
+    .from(productBrands)
+    .where(and(eq(productBrands.businessId, businessId), eq(productBrands.status, "active")))
+    .orderBy(productBrands.name)
+}
+
+async function ensureProductCategory(
+  businessId: string,
+  rawName: string,
+  userId: string
+) {
+  const name = normalizeProductMasterName(rawName)
+  const existing = await db.query.productCategories.findFirst({
+    where: and(
+      eq(productCategories.businessId, businessId),
+      drizzleSql`lower(${productCategories.name}) = ${name.toLowerCase()}`
+    ),
+  })
+
+  if (existing) {
+    if (existing.status === "active" && existing.name === name) {
+      return existing
+    }
+
+    const [updated] = await db
+      .update(productCategories)
+      .set({ name, status: "active", updatedBy: userId, updatedAt: new Date() })
+      .where(eq(productCategories.id, existing.id))
+      .returning()
+
+    return updated ?? existing
+  }
+
+  const [inserted] = await db
+    .insert(productCategories)
+    .values({
+      businessId,
+      name,
+      status: "active",
+      createdBy: userId,
+      updatedBy: userId,
+    })
+    .returning()
+
+  if (!inserted) {
+    throw new HttpError(500, "Unable to create product category.")
+  }
+
+  return inserted
+}
+
+async function ensureProductBrand(businessId: string, rawName: string, userId: string) {
+  const name = normalizeProductMasterName(rawName)
+  const existing = await db.query.productBrands.findFirst({
+    where: and(
+      eq(productBrands.businessId, businessId),
+      drizzleSql`lower(${productBrands.name}) = ${name.toLowerCase()}`
+    ),
+  })
+
+  if (existing) {
+    if (existing.status === "active" && existing.name === name) {
+      return existing
+    }
+
+    const [updated] = await db
+      .update(productBrands)
+      .set({ name, status: "active", updatedBy: userId, updatedAt: new Date() })
+      .where(eq(productBrands.id, existing.id))
+      .returning()
+
+    return updated ?? existing
+  }
+
+  const [inserted] = await db
+    .insert(productBrands)
+    .values({
+      businessId,
+      name,
+      status: "active",
+      createdBy: userId,
+      updatedBy: userId,
+    })
+    .returning()
+
+  if (!inserted) {
+    throw new HttpError(500, "Unable to create product brand.")
+  }
+
+  return inserted
+}
+
+function normalizeProductMasterName(value: string) {
+  return value.trim().replace(/\s+/g, " ")
+}
+
+async function searchHsnCodes(search: string, limit: number) {
+  const term = search.trim()
+  const escapedTerm = `%${escapeLikeTerm(term)}%`
+  const localRows = await db
+    .select({
+      code: hsnSacCodes.code,
+      description: hsnSacCodes.description,
+    })
+    .from(hsnSacCodes)
+    .where(
+      and(
+        eq(hsnSacCodes.codeType, "HSN"),
+        eq(hsnSacCodes.status, "active"),
+        or(ilike(hsnSacCodes.code, escapedTerm), ilike(hsnSacCodes.description, escapedTerm))
+      )
+    )
+    .orderBy(hsnSacCodes.code)
+    .limit(limit)
+
+  const merged = new Map<string, HsnSearchResult>()
+
+  for (const row of localRows) {
+    merged.set(row.code, {
+      code: row.code,
+      description: row.description,
+      gstRate: null,
+      source: "master",
+    })
+  }
+
+  try {
+    const tallyCodes = await loadTallyHsnCodes()
+    const normalizedTerm = term.toLowerCase()
+
+    for (const code of tallyCodes) {
+      if (merged.size >= limit) {
+        break
+      }
+
+      if (
+        code.code.includes(term) ||
+        code.description.toLowerCase().includes(normalizedTerm)
+      ) {
+        merged.set(code.code, code)
+      }
+    }
+  } catch {
+    // Local HSN master results still keep the product form usable if Tally is unavailable.
+  }
+
+  return Array.from(merged.values()).slice(0, limit)
+}
+
+async function loadTallyHsnCodes() {
+  const now = Date.now()
+  if (tallyHsnCache && now - tallyHsnCache.loadedAt < hsnCacheTtlMs) {
+    return tallyHsnCache.codes
+  }
+
+  const response = await fetch(tallyHsnGoodsUrl, {
+    headers: {
+      accept: "application/json",
+      "user-agent": "GSTFY-HSN-Search/1.0",
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Tally HSN search failed with status ${response.status}`)
+  }
+
+  const payload = (await response.json()) as unknown
+  const codes = extractHsnRecords(payload)
+    .map(normalizeHsnRecord)
+    .filter((record): record is HsnSearchResult => Boolean(record))
+
+  tallyHsnCache = {
+    loadedAt: now,
+    codes,
+  }
+
+  return codes
+}
+
+function extractHsnRecords(payload: unknown): Record<string, unknown>[] {
+  if (Array.isArray(payload)) {
+    return payload.flatMap(extractHsnRecords)
+  }
+
+  if (!isRecord(payload)) {
+    return []
+  }
+
+  if (findStringValue(payload, ["code", "hsn", "hsnCode", "hsn_code", "HSN"])) {
+    return [payload]
+  }
+
+  const collectionKeys = ["data", "items", "records", "results", "hsn", "hsnCodes"]
+  const collections = collectionKeys.flatMap((key) => extractHsnRecords(payload[key]))
+
+  if (collections.length > 0) {
+    return collections
+  }
+
+  return Object.values(payload).flatMap(extractHsnRecords)
+}
+
+function normalizeHsnRecord(record: Record<string, unknown>): HsnSearchResult | null {
+  const code = findStringValue(record, [
+    "code",
+    "hsn",
+    "hsnCode",
+    "hsn_code",
+    "HSN",
+    "HSNCode",
+  ])?.replace(/\D/g, "")
+  const description = findStringValue(record, [
+    "description",
+    "hsnDescription",
+    "hsn_description",
+    "Description",
+    "name",
+    "commodity",
+  ])
+  const gstRate = findStringValue(record, [
+    "gstRate",
+    "gst_rate",
+    "rate",
+    "taxRate",
+    "tax_rate",
+  ])?.replace(/[^\d.]/g, "")
+
+  if (!code || !/^\d{4,8}$/.test(code) || !description) {
+    return null
+  }
+
+  return {
+    code,
+    description,
+    gstRate: gstRate || null,
+    source: "tally",
+  }
+}
+
+function findStringValue(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === "string" && value.trim()) {
+      return value.trim()
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value)
+    }
+  }
+
+  return null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
 async function validateTaxProfileForProduct(
   itemType: string,
   profile: {
@@ -1201,6 +1536,15 @@ async function validateTaxProfileForProduct(
   })
 
   if (!code) {
+    if (expectedCodeType === "HSN") {
+      const externalMatches = await searchHsnCodes(profile.hsnSac, 10)
+      const hasExternalMatch = externalMatches.some((match) => match.code === profile.hsnSac)
+
+      if (hasExternalMatch) {
+        return
+      }
+    }
+
     throw new HttpError(
       400,
       `${expectedCodeType} code is not available in the configured product master.`

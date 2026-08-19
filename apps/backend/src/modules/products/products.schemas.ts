@@ -20,17 +20,13 @@ export const priceTypes = [
 export const taxModes = ["EXCLUSIVE", "INCLUSIVE"] as const
 
 const nullableTrimmed = z
-  .string()
-  .trim()
-  .max(240)
+  .union([z.string().trim().max(240), z.null()])
   .optional()
   .or(z.literal(""))
   .transform((value) => (value === undefined ? undefined : value || null))
 
 const optionalDateSchema = z
-  .string()
-  .trim()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .union([z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/), z.null()])
   .optional()
   .or(z.literal(""))
   .transform((value) => (value === undefined ? undefined : value || null))
@@ -89,6 +85,21 @@ export const listProductsQuerySchema = z.object({
     }),
 })
 
+export const hsnSearchQuerySchema = z.object({
+  q: z.string().trim().min(2).max(120),
+  limit: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((value) => {
+      if (value === undefined || value === "") {
+        return 12
+      }
+
+      const parsed = Number(value)
+      return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 25) : 12
+    }),
+})
+
 export const resolveProductQuerySchema = z.object({
   transactionDate: requiredDateSchema,
   branchId: z.uuid().optional(),
@@ -99,6 +110,10 @@ export const resolveProductQuerySchema = z.object({
     .enum(["SALES", "PURCHASE", "STOCK_TRANSFER", "STOCK_ADJUSTMENT"])
     .default("SALES"),
   priceType: z.enum(priceTypes).default("RETAIL"),
+})
+
+export const productMasterNameSchema = z.object({
+  name: z.string().trim().min(1).max(80),
 })
 
 const productTaxProfileBaseSchema = z.object({
@@ -161,6 +176,7 @@ export const productUnitSchema = z.object({
 const productPriceBaseSchema = z.object({
   priceType: z.enum(priceTypes).default("RETAIL"),
   price: decimalSchema(2).default("0"),
+  marginPercent: decimalSchema(2).default("0"),
   taxMode: z.enum(taxModes).default("EXCLUSIVE"),
   currency: z.string().trim().toUpperCase().length(3).default("INR"),
   minimumQuantity: positiveDecimalSchema(3).default("1"),

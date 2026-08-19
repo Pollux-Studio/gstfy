@@ -65,6 +65,17 @@ export const updateGstRateSettingsSchema = z.object({
     .array(z.union([z.literal(5), z.literal(12), z.literal(18), z.literal(28)]))
     .min(1)
     .optional(),
+  enabledCessPresetCodes: z
+    .array(
+      z.enum([
+        "TOBACCO_CESS",
+        "PAN_MASALA_CESS",
+        "COAL_CESS",
+        "AERATED_DRINK_CESS",
+        "MOTOR_VEHICLE_CESS",
+      ])
+    )
+    .optional(),
 })
 
 export const updatePrinterSettingsSchema = z.object({
