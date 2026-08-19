@@ -18,6 +18,7 @@ import {
   RefreshCwIcon,
   SaveIcon,
   Settings2Icon,
+  WarehouseIcon,
 } from "lucide-react"
 import { Controller, useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
@@ -57,6 +58,11 @@ import {
   type BarcodeScannerSubmitKey,
 } from "@/lib/barcode-scanner/settings"
 import { getAllGstStates } from "@/lib/gst-state"
+import {
+  getInventorySettings,
+  updateInventorySettings,
+  type InventorySettings,
+} from "@/lib/inventory/api"
 import {
   getSettings,
   updateBusinessTenant,
@@ -196,6 +202,45 @@ const printerOrientationOptions: Array<{
   { value: "landscape", label: "Landscape" },
 ]
 
+const negativeStockPolicyOptions: Array<{
+  value: InventorySettings["negativeStockPolicy"]
+  label: string
+  description: string
+}> = [
+  {
+    value: "BLOCK",
+    label: "Block transactions",
+    description: "Prevent sales, transfers, and adjustments that would make stock negative.",
+  },
+  {
+    value: "WARN",
+    label: "Warn and allow",
+    description: "Show a warning but allow the transaction for controlled exceptions.",
+  },
+  {
+    value: "ALLOW",
+    label: "Allow silently",
+    description: "Permit negative stock without interruption. Use only for loose stock control.",
+  },
+]
+
+const valuationMethodOptions: Array<{
+  value: InventorySettings["valuationMethod"]
+  label: string
+  description: string
+}> = [
+  {
+    value: "WEIGHTED_AVERAGE",
+    label: "Weighted average",
+    description: "Recalculate average cost as stock is purchased or adjusted.",
+  },
+  {
+    value: "FIFO",
+    label: "FIFO foundation",
+    description: "Keep FIFO configured for future batch-layer valuation workflows.",
+  },
+]
+
 const possessionOptions = [
   { value: "own", label: "Own" },
   { value: "rented", label: "Rented" },
@@ -229,6 +274,12 @@ const settingsTabs = [
     label: "Printer",
     description: "Paper and print behavior",
     icon: <PrinterIcon className="size-4" />,
+  },
+  {
+    value: "inventory",
+    label: "Inventory",
+    description: "Stock posting policies",
+    icon: <WarehouseIcon className="size-4" />,
   },
   {
     value: "connectors",
@@ -267,6 +318,11 @@ export function SettingsPage() {
     queryFn: () => getSettings(accessToken),
     enabled: accessToken.length > 0,
     staleTime: 1000 * 60 * 5,
+  })
+  const inventorySettingsQuery = useQuery({
+    queryKey: ["inventory", "settings"],
+    queryFn: () => getInventorySettings(accessToken),
+    enabled: accessToken.length > 0,
   })
 
   const businessForm = useForm<BusinessDetailsFormValues>({
@@ -521,6 +577,20 @@ export function SettingsPage() {
       toast.error(getErrorMessage(mutationError))
     },
   })
+  const inventoryMutation = useMutation({
+    mutationFn: (
+      values: Partial<
+        Pick<InventorySettings, "negativeStockPolicy" | "valuationMethod">
+      >
+    ) => updateInventorySettings(values, accessToken),
+    onSuccess: (nextInventorySettings) => {
+      queryClient.setQueryData(["inventory", "settings"], nextInventorySettings)
+      toast.success("Inventory policy updated.")
+    },
+    onError: (mutationError) => {
+      toast.error(getErrorMessage(mutationError))
+    },
+  })
 
   const businessStateMeta =
     data ?
@@ -557,6 +627,7 @@ export function SettingsPage() {
   const tenantDisplayUrl =
     data.business.tenantUrl ||
     (currentTenantSlug ? `${currentTenantSlug}.gstfy.in` : "Not set")
+  const inventorySettings = inventorySettingsQuery.data?.settings
 
   function updateBarcodeScannerSettings(
     nextSettings: Partial<BarcodeScannerConnectorSettings>
@@ -1562,6 +1633,138 @@ export function SettingsPage() {
                 </Button>
               </div>
             </form>
+          </SettingsSection>
+        </TabsContent>
+
+        <TabsContent value="inventory" className="mt-0">
+          <SettingsSection
+            icon={<WarehouseIcon className="size-4" />}
+            title="Inventory policy"
+            description="Control how stock postings behave across product stock, POS, sales, purchases, transfers, and adjustments."
+            badgeLabel={
+              inventorySettings?.valuationMethod === "FIFO" ?
+                "FIFO configured"
+              : "Weighted average"
+            }
+          >
+            {inventorySettingsQuery.isLoading ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <Skeleton className="h-28 rounded-2xl" />
+                <Skeleton className="h-28 rounded-2xl" />
+              </div>
+            ) : (
+              <FieldGroup>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field>
+                    <FieldLabel htmlFor="settings-negative-stock-policy">
+                      Negative stock policy
+                    </FieldLabel>
+                    <Select
+                      value={inventorySettings?.negativeStockPolicy ?? "WARN"}
+                      disabled={!canEditBusiness || inventoryMutation.isPending}
+                      onValueChange={(value) =>
+                        inventoryMutation.mutate({
+                          negativeStockPolicy:
+                            value as InventorySettings["negativeStockPolicy"],
+                        })
+                      }
+                    >
+                      <SelectTrigger
+                        id="settings-negative-stock-policy"
+                        className="w-full"
+                      >
+                        <SelectDisplayValue
+                          value={inventorySettings?.negativeStockPolicy ?? "WARN"}
+                          options={negativeStockPolicyOptions}
+                          placeholder="Choose negative stock policy"
+                        />
+                      </SelectTrigger>
+                      <SelectContent align="start">
+                        {negativeStockPolicyOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>
+                      {
+                        negativeStockPolicyOptions.find(
+                          (option) =>
+                            option.value ===
+                            (inventorySettings?.negativeStockPolicy ?? "WARN")
+                        )?.description
+                      }
+                    </FieldDescription>
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="settings-valuation-method">
+                      Valuation method
+                    </FieldLabel>
+                    <Select
+                      value={inventorySettings?.valuationMethod ?? "WEIGHTED_AVERAGE"}
+                      disabled={!canEditBusiness || inventoryMutation.isPending}
+                      onValueChange={(value) =>
+                        inventoryMutation.mutate({
+                          valuationMethod:
+                            value as InventorySettings["valuationMethod"],
+                        })
+                      }
+                    >
+                      <SelectTrigger id="settings-valuation-method" className="w-full">
+                        <SelectDisplayValue
+                          value={
+                            inventorySettings?.valuationMethod ?? "WEIGHTED_AVERAGE"
+                          }
+                          options={valuationMethodOptions}
+                          placeholder="Choose valuation method"
+                        />
+                      </SelectTrigger>
+                      <SelectContent align="start">
+                        {valuationMethodOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>
+                      {
+                        valuationMethodOptions.find(
+                          (option) =>
+                            option.value ===
+                            (inventorySettings?.valuationMethod ?? "WEIGHTED_AVERAGE")
+                        )?.description
+                      }
+                    </FieldDescription>
+                  </Field>
+                </div>
+
+                <div className="rounded-2xl border border-border bg-muted/20 p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-medium">Posting behavior</h3>
+                      <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                        Inventory screens now focus on operational work. Policy changes
+                        live here so stock controls are configured once for the whole
+                        business.
+                      </p>
+                    </div>
+                    {inventoryMutation.isPending ? (
+                      <Badge variant="outline" className="w-fit gap-1.5 bg-background">
+                        <Spinner className="size-3.5" />
+                        Saving
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="w-fit bg-background">
+                        Auto-saved
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </FieldGroup>
+            )}
           </SettingsSection>
         </TabsContent>
 

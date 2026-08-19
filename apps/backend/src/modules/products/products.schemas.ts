@@ -260,6 +260,7 @@ export const createProductSchema = z.object({
   price: productPriceSchema.optional(),
   supplier: productSupplierSchema.optional(),
   barcodes: z.array(productBarcodeSchema).default([]),
+  imageIds: z.array(z.uuid()).max(8).default([]),
   inventoryProfile: productInventoryProfileSchema.optional(),
   accountingProfile: productAccountingProfileSchema.optional(),
 })
@@ -271,8 +272,12 @@ export const updateProductSchema = createProductSchema
     price: true,
     supplier: true,
     barcodes: true,
+    imageIds: true,
     inventoryProfile: true,
     accountingProfile: true,
+  })
+  .extend({
+    imageIds: z.array(z.uuid()).max(8).optional(),
   })
   .partial()
 

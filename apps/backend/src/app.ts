@@ -1,5 +1,6 @@
 import cookie from "@fastify/cookie"
 import cors from "@fastify/cors"
+import multipart from "@fastify/multipart"
 import fastify from "fastify"
 
 import { getEnv } from "./config/env.js"
@@ -25,6 +26,8 @@ import { registerSettingsRoutes } from "./modules/settings/settings.routes.js"
 import { registerTaxRoutes } from "./modules/tax/tax.routes.js"
 import { registerUsersRoutes } from "./modules/users/users.routes.js"
 import { registerErrorHandler } from "./utils/error-handler.js"
+import { productImageMaxBytes } from "./utils/r2-storage.js"
+import { isHttpError } from "./utils/http-error.js"
 
 export async function buildApp() {
   const env = getEnv()
@@ -66,6 +69,21 @@ export async function buildApp() {
 
   app.addHook("onError", async (request, reply, error) => {
     const startedAt = requestStartTimes.get(request) ?? Date.now()
+    const statusCode = getErrorStatusCode(error, reply.statusCode)
+    const logPayload = {
+      requestId: request.id,
+      method: request.method,
+      url: request.url,
+      statusCode,
+      durationMs: Date.now() - startedAt,
+      err: error,
+    }
+
+    if (isHttpError(error) || (statusCode >= 400 && statusCode < 500)) {
+      request.log.warn(logPayload, "request rejected")
+      return
+    }
+
     request.log.error(
       {
         requestId: request.id,
@@ -88,6 +106,12 @@ export async function buildApp() {
     allowedHeaders: ["Authorization", "Content-Type", "X-GSTFY-Tenant"],
   })
   await app.register(cookie)
+  await app.register(multipart, {
+    limits: {
+      fileSize: productImageMaxBytes,
+      files: 1,
+    },
+  })
   registerErrorHandler(app)
 
   app.get("/health", async () => ({
@@ -112,6 +136,19 @@ export async function buildApp() {
   })
 
   return app
+}
+
+function getErrorStatusCode(error: unknown, fallbackStatusCode: number) {
+  if (
+    error &&
+    typeof error === "object" &&
+    "statusCode" in error &&
+    typeof error.statusCode === "number"
+  ) {
+    return error.statusCode
+  }
+
+  return fallbackStatusCode
 }
 
 function isAllowedWebOrigin(origin: string | undefined, env: ReturnType<typeof getEnv>) {

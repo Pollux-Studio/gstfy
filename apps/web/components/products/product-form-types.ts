@@ -1,5 +1,6 @@
 import type {
   ProductItemType,
+  ProductImage,
   ProductStatus,
   Taxability,
   TaxMode,
@@ -17,6 +18,7 @@ export type ProductFormState = {
   manufacturer: string
   modelNumber: string
   status: ProductStatus
+  images: ProductImage[]
   taxability: Taxability
   hsnSac: string
   gstRate: string

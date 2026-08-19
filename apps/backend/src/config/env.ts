@@ -69,6 +69,16 @@ const envSchema = z.object({
   FIREBASE_CLIENT_EMAIL: z.string().optional(),
   FIREBASE_PRIVATE_KEY: z.string().optional(),
   GOOGLE_APPLICATION_CREDENTIALS: z.string().optional(),
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_ENDPOINT: z
+    .string()
+    .url()
+    .default("https://62f0623e68314aa04e47174412fdf9e2.r2.cloudflarestorage.com"),
+  R2_BUCKET_NAME: z.string().default("gstfy"),
+  R2_PUBLIC_BASE_URL: z.string().url().optional(),
+  R2_FORCE_PATH_STYLE: envBoolean(true),
 }).superRefine((env, ctx) => {
   if (
     env.NODE_ENV === "production" &&
@@ -89,6 +99,16 @@ const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["CORE_POSTING_INTERNAL_KEY"],
       message: "CORE_POSTING_INTERNAL_KEY must be changed in production.",
+    })
+  }
+
+  const hasAnyR2Credential = Boolean(env.R2_ACCESS_KEY_ID || env.R2_SECRET_ACCESS_KEY)
+
+  if (hasAnyR2Credential && (!env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["R2_ACCESS_KEY_ID"],
+      message: "R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY are required for R2 uploads.",
     })
   }
 })

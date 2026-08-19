@@ -2921,6 +2921,45 @@ export const itemBarcodes = pgTable(
   })
 )
 
+export const itemImages = pgTable(
+  "item_images",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    itemId: uuid("item_id"),
+    objectKey: text("object_key").notNull(),
+    publicUrl: text("public_url").notNull(),
+    fileName: text("file_name"),
+    contentType: text("content_type").notNull(),
+    fileSizeBytes: integer("file_size_bytes").notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+    status: text("status").notNull().default("ACTIVE"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("item_images_business_id_idx").on(table.businessId),
+    itemIndex: index("item_images_item_id_idx").on(table.itemId),
+    statusIndex: index("item_images_status_idx").on(table.status),
+    objectKeyUnique: uniqueIndex("item_images_object_key_unique").on(table.objectKey),
+    identityUnique: uniqueIndex("item_images_id_business_id_unique").on(
+      table.id,
+      table.businessId
+    ),
+    itemBusinessFk: foreignKey({
+      columns: [table.itemId, table.businessId],
+      foreignColumns: [items.id, items.businessId],
+      name: "item_images_item_business_fk",
+    }).onDelete("cascade"),
+  })
+)
+
 export const itemInventoryProfiles = pgTable(
   "item_inventory_profiles",
   {
@@ -3244,5 +3283,6 @@ export type ItemUnitRecord = typeof itemUnits.$inferSelect
 export type ItemPriceRecord = typeof itemPrices.$inferSelect
 export type ItemSupplierRecord = typeof itemSuppliers.$inferSelect
 export type ItemBarcodeRecord = typeof itemBarcodes.$inferSelect
+export type ItemImageRecord = typeof itemImages.$inferSelect
 export type ItemInventoryProfileRecord = typeof itemInventoryProfiles.$inferSelect
 export type ItemAccountingProfileRecord = typeof itemAccountingProfiles.$inferSelect

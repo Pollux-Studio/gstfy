@@ -62,8 +62,10 @@ async function sendApiRequest(
   const { body, accessToken, headers, ...restOptions } = options
   void accessToken
   const requestHeaders = new Headers(headers)
+  const isFormData =
+    typeof FormData !== "undefined" && body instanceof FormData
 
-  if (body !== undefined) {
+  if (body !== undefined && !isFormData) {
     requestHeaders.set("Content-Type", "application/json")
   }
 
@@ -79,7 +81,10 @@ async function sendApiRequest(
     ...restOptions,
     credentials: "include",
     headers: requestHeaders,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body:
+      body === undefined ? undefined
+      : isFormData ? body
+      : JSON.stringify(body),
   })
 
   const payload = await parseResponse(response)

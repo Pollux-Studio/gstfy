@@ -59,6 +59,24 @@ FIREBASE_PRIVATE_KEY=
 
 Or set `GOOGLE_APPLICATION_CREDENTIALS` to a service-account JSON file path. When using `FIREBASE_PRIVATE_KEY` in `.env`, keep newlines escaped as `\n`.
 
+## Cloudflare R2 Product Images
+
+Product image uploads use the R2 S3-compatible API. Store only keys in environment variables; never commit access keys.
+
+```env
+R2_ACCOUNT_ID=
+R2_ENDPOINT=
+R2_BUCKET_NAME=gstfy
+R2_PUBLIC_BASE_URL=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_FORCE_PATH_STYLE=true
+```
+
+`R2_PUBLIC_BASE_URL` must point to a public bucket URL, custom domain, or Worker route that can serve uploaded objects. If the bucket is private, uploads will still succeed but product thumbnails will not render publicly until a public delivery path is configured.
+
+Product uploads perform one S3 `PutObject` call per successful image upload. The backend does not list, head, or read objects during product list/detail rendering; image display uses the stored public URL directly from the browser with lazy loading and immutable cache headers.
+
 ## Current Endpoints
 
 - `GET /health`
@@ -107,6 +125,7 @@ All application API endpoints are versioned under `/api/v1`.
 - `POST /api/v1/ca/invites/accept`
 - `GET /api/v1/ca/clients/:businessId/summary`
 - `POST /api/v1/ca/clients/:businessId/revoke`
+- `POST /api/v1/products/images`
 - `GET /api/v1/avatars/profile/:seed.svg`
 
 ## Auth Direction

@@ -1,5 +1,5 @@
 import { and, desc, eq, ilike, inArray, or, sql as drizzleSql, type SQL } from "drizzle-orm"
-import type { FastifyInstance } from "fastify"
+import type { FastifyInstance, FastifyRequest } from "fastify"
 
 import { db } from "../../db/client.js"
 import {
@@ -8,6 +8,7 @@ import {
   hsnSacCodes,
   itemAccountingProfiles,
   itemBarcodes,
+  itemImages,
   itemInventoryProfiles,
   itemPrices,
   items,
@@ -26,6 +27,10 @@ import {
   type ItemTaxProfileRecord,
 } from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
+import {
+  productImageMaxSizeLabel,
+  uploadProductImageObject,
+} from "../../utils/r2-storage.js"
 import { requirePrimaryBusinessAccess } from "../businesses/business-access.js"
 import {
   childParamsSchema,
@@ -55,17 +60,19 @@ import {
 
 type BusinessAccess = Awaited<ReturnType<typeof requirePrimaryBusinessAccess>>
 type ProductAction = "view" | "create" | "edit" | "delete"
+type ProductImageMultipartFile = NonNullable<
+  Awaited<ReturnType<FastifyRequest["file"]>>
+>
 type HsnSearchResult = {
   code: string
   description: string
   gstRate: string | null
-  source: "master" | "tally"
+  source: "master" | "hsnlookup"
 }
 
-const tallyHsnGoodsUrl =
-  "https://tallysolutions.com/wp-content/uploads/2025/hsn-code-finder/hsn-code-goods.json"
+const hsnLookupDatasetUrl = "https://hsnlookup.in/api/hsn.json"
 const hsnCacheTtlMs = 1000 * 60 * 60 * 12
-let tallyHsnCache: { loadedAt: number; codes: HsnSearchResult[] } | null = null
+let publicHsnCache: { loadedAt: number; codes: HsnSearchResult[] } | null = null
 
 export async function registerProductsRoutes(app: FastifyInstance) {
   app.get("/products/masters", async (request) => {
@@ -108,6 +115,57 @@ export async function registerProductsRoutes(app: FastifyInstance) {
       brand: await ensureProductBrand(access.business.id, body.name, access.userId),
       brands: await listProductBrands(access.business.id),
     }
+  })
+
+  app.post("/products/images", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    await assertCanUploadProductImages(access)
+
+    if (!request.isMultipart()) {
+      throw new HttpError(
+        400,
+        "Upload product images as multipart/form-data with a file field named \"file\"."
+      )
+    }
+
+    const file = await readProductImageFile(request)
+
+    if (!file) {
+      throw new HttpError(400, "Upload a product image file.")
+    }
+
+    const body = await readProductImageBuffer(file)
+
+    const uploadedObject = await uploadProductImageObject({
+      businessId: access.business.id,
+      body,
+      contentType: file.mimetype,
+      fileName: file.filename,
+    })
+
+    const [image] = await db
+      .insert(itemImages)
+      .values({
+        businessId: access.business.id,
+        itemId: null,
+        objectKey: uploadedObject.objectKey,
+        publicUrl: uploadedObject.publicUrl,
+        fileName: file.filename,
+        contentType: uploadedObject.contentType,
+        fileSizeBytes: uploadedObject.fileSizeBytes,
+        isPrimary: true,
+        sortOrder: 0,
+        status: "ACTIVE",
+        createdBy: access.userId,
+        updatedBy: access.userId,
+      })
+      .returning()
+
+    if (!image) {
+      throw new HttpError(500, "Unable to save uploaded product image.")
+    }
+
+    return { image }
   })
 
   app.get("/products", async (request) => {
@@ -340,6 +398,8 @@ export async function registerProductsRoutes(app: FastifyInstance) {
       return insertedProduct
     })
 
+    await syncProductImages(access.business.id, product.id, body.imageIds, access.userId)
+
     return {
       product: await getProductDetail(access.business.id, product.id),
     }
@@ -360,7 +420,8 @@ export async function registerProductsRoutes(app: FastifyInstance) {
     await assertCanUseProducts(access, "edit")
     const { id } = idParamsSchema.parse(request.params)
     const before = await requireProduct(access.business.id, id)
-    const body = compactObject(updateProductSchema.parse(request.body))
+    const parsedBody = compactObject(updateProductSchema.parse(request.body))
+    const { imageIds, ...body } = parsedBody
 
     if (body.sku && body.sku !== before.sku) {
       await assertSkuAvailable(access.business.id, body.sku, id)
@@ -384,6 +445,7 @@ export async function registerProductsRoutes(app: FastifyInstance) {
       .where(and(eq(items.businessId, access.business.id), eq(items.id, id)))
       .returning()
 
+    await syncProductImages(access.business.id, id, imageIds, access.userId)
     await writeAudit(access, "PRODUCT_UPDATED", id, before, product)
 
     return {
@@ -932,6 +994,7 @@ async function getProductDetail(businessId: string, productId: string) {
     prices,
     suppliers,
     barcodes,
+    images,
     inventoryProfile,
     accountingProfile,
   ] = await Promise.all([
@@ -940,6 +1003,7 @@ async function getProductDetail(businessId: string, productId: string) {
     listPrices(businessId, productId),
     listSuppliers(businessId, productId),
     listBarcodes(businessId, productId),
+    listImages(businessId, productId),
     db.query.itemInventoryProfiles.findFirst({
       where: and(
         eq(itemInventoryProfiles.businessId, businessId),
@@ -961,22 +1025,25 @@ async function getProductDetail(businessId: string, productId: string) {
     prices,
     suppliers,
     barcodes,
+    images,
     inventoryProfile: inventoryProfile ?? null,
     accountingProfile: accountingProfile ?? null,
     activeTaxProfile: resolveTaxProfile(taxProfiles, todayIso()),
     activePrice: resolvePrice(prices, todayIso(), "RETAIL"),
     primaryBarcode: barcodes.find((barcode) => barcode.isPrimary) ?? barcodes[0] ?? null,
+    primaryImage: images.find((image) => image.isPrimary) ?? images[0] ?? null,
   }
 }
 
 async function buildProductSummaries(businessId: string, rows: ItemRecord[]) {
   return Promise.all(
     rows.map(async (product) => {
-      const [taxProfiles, units, prices, barcodes, inventoryProfile] = await Promise.all([
+      const [taxProfiles, units, prices, barcodes, images, inventoryProfile] = await Promise.all([
         listTaxProfiles(businessId, product.id),
         listUnits(businessId, product.id),
         listPrices(businessId, product.id),
         listBarcodes(businessId, product.id),
+        listImages(businessId, product.id),
         db.query.itemInventoryProfiles.findFirst({
           where: and(
             eq(itemInventoryProfiles.businessId, businessId),
@@ -991,6 +1058,8 @@ async function buildProductSummaries(businessId: string, rows: ItemRecord[]) {
         unitProfile: units[0] ?? null,
         activePrice: resolvePrice(prices, todayIso(), "RETAIL"),
         primaryBarcode: barcodes.find((barcode) => barcode.isPrimary) ?? barcodes[0] ?? null,
+        images,
+        primaryImage: images.find((image) => image.isPrimary) ?? images[0] ?? null,
         inventoryProfile: inventoryProfile ?? null,
       }
     })
@@ -1058,6 +1127,20 @@ async function listBarcodes(businessId: string, productId: string) {
     .from(itemBarcodes)
     .where(and(eq(itemBarcodes.businessId, businessId), eq(itemBarcodes.itemId, productId)))
     .orderBy(desc(itemBarcodes.isPrimary), desc(itemBarcodes.createdAt))
+}
+
+async function listImages(businessId: string, productId: string) {
+  return db
+    .select()
+    .from(itemImages)
+    .where(
+      and(
+        eq(itemImages.businessId, businessId),
+        eq(itemImages.itemId, productId),
+        eq(itemImages.status, "ACTIVE")
+      )
+    )
+    .orderBy(desc(itemImages.isPrimary), itemImages.sortOrder, desc(itemImages.createdAt))
 }
 
 async function requireProduct(businessId: string, productId: string) {
@@ -1381,10 +1464,10 @@ async function searchHsnCodes(search: string, limit: number) {
   }
 
   try {
-    const tallyCodes = await loadTallyHsnCodes()
+    const publicCodes = await loadPublicHsnCodes()
     const normalizedTerm = term.toLowerCase()
 
-    for (const code of tallyCodes) {
+    for (const code of publicCodes) {
       if (merged.size >= limit) {
         break
       }
@@ -1397,19 +1480,19 @@ async function searchHsnCodes(search: string, limit: number) {
       }
     }
   } catch {
-    // Local HSN master results still keep the product form usable if Tally is unavailable.
+    // Local HSN master results still keep the product form usable if the public dataset is unavailable.
   }
 
   return Array.from(merged.values()).slice(0, limit)
 }
 
-async function loadTallyHsnCodes() {
+async function loadPublicHsnCodes() {
   const now = Date.now()
-  if (tallyHsnCache && now - tallyHsnCache.loadedAt < hsnCacheTtlMs) {
-    return tallyHsnCache.codes
+  if (publicHsnCache && now - publicHsnCache.loadedAt < hsnCacheTtlMs) {
+    return publicHsnCache.codes
   }
 
-  const response = await fetch(tallyHsnGoodsUrl, {
+  const response = await fetch(hsnLookupDatasetUrl, {
     headers: {
       accept: "application/json",
       "user-agent": "GSTFY-HSN-Search/1.0",
@@ -1417,7 +1500,7 @@ async function loadTallyHsnCodes() {
   })
 
   if (!response.ok) {
-    throw new Error(`Tally HSN search failed with status ${response.status}`)
+    throw new Error(`Public HSN search failed with status ${response.status}`)
   }
 
   const payload = (await response.json()) as unknown
@@ -1425,7 +1508,7 @@ async function loadTallyHsnCodes() {
     .map(normalizeHsnRecord)
     .filter((record): record is HsnSearchResult => Boolean(record))
 
-  tallyHsnCache = {
+  publicHsnCache = {
     loadedAt: now,
     codes,
   }
@@ -1476,6 +1559,8 @@ function normalizeHsnRecord(record: Record<string, unknown>): HsnSearchResult | 
   const gstRate = findStringValue(record, [
     "gstRate",
     "gst_rate",
+    "igst",
+    "IGST",
     "rate",
     "taxRate",
     "tax_rate",
@@ -1489,7 +1574,7 @@ function normalizeHsnRecord(record: Record<string, unknown>): HsnSearchResult | 
     code,
     description,
     gstRate: gstRate || null,
-    source: "tally",
+    source: "hsnlookup",
   }
 }
 
@@ -1757,6 +1842,138 @@ async function assertCanUseProducts(access: BusinessAccess, action: ProductActio
   if (!allowed) {
     throw new HttpError(403, "You do not have permission to manage products.")
   }
+}
+
+async function assertCanUploadProductImages(access: BusinessAccess) {
+  try {
+    await assertCanUseProducts(access, "create")
+  } catch (error) {
+    if (!(error instanceof HttpError) || error.statusCode !== 403) {
+      throw error
+    }
+
+    await assertCanUseProducts(access, "edit")
+  }
+}
+
+async function readProductImageFile(request: FastifyRequest) {
+  try {
+    const file = await request.file()
+
+    if (file && file.fieldname !== "file") {
+      throw new HttpError(
+        400,
+        "Upload product images using a multipart file field named \"file\"."
+      )
+    }
+
+    return file
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error
+    }
+
+    throw getMultipartUploadError(error)
+  }
+}
+
+async function readProductImageBuffer(file: ProductImageMultipartFile) {
+  try {
+    return await file.toBuffer()
+  } catch (error) {
+    throw getMultipartUploadError(error)
+  }
+}
+
+function getMultipartUploadError(error: unknown) {
+  const code =
+    error && typeof error === "object" && "code" in error && typeof error.code === "string" ?
+      error.code
+    : ""
+
+  if (code === "FST_REQ_FILE_TOO_LARGE") {
+    return new HttpError(
+      400,
+      `Product image must be ${productImageMaxSizeLabel} or smaller.`
+    )
+  }
+
+  if (code === "FST_INVALID_MULTIPART_CONTENT_TYPE") {
+    return new HttpError(
+      400,
+      "Upload product images as multipart/form-data with a file field named \"file\"."
+    )
+  }
+
+  return new HttpError(
+    400,
+    "Unable to read product image upload. Use multipart/form-data with one file field named \"file\"."
+  )
+}
+
+async function syncProductImages(
+  businessId: string,
+  productId: string,
+  imageIds: string[] | undefined,
+  userId: string
+) {
+  if (imageIds === undefined) {
+    return
+  }
+
+  const uniqueImageIds = Array.from(new Set(imageIds))
+  const now = new Date()
+
+  if (uniqueImageIds.length > 0) {
+    const imageRows = await db
+      .select()
+      .from(itemImages)
+      .where(
+        and(
+          eq(itemImages.businessId, businessId),
+          eq(itemImages.status, "ACTIVE"),
+          inArray(itemImages.id, uniqueImageIds)
+        )
+      )
+
+    if (imageRows.length !== uniqueImageIds.length) {
+      throw new HttpError(400, "One or more product images are invalid.")
+    }
+
+    const alreadyAttachedToAnotherProduct = imageRows.find(
+      (image) => image.itemId && image.itemId !== productId
+    )
+
+    if (alreadyAttachedToAnotherProduct) {
+      throw new HttpError(400, "One or more images already belong to another product.")
+    }
+  }
+
+  await db
+    .update(itemImages)
+    .set({
+      itemId: null,
+      isPrimary: false,
+      sortOrder: 0,
+      updatedBy: userId,
+      updatedAt: now,
+    })
+    .where(and(eq(itemImages.businessId, businessId), eq(itemImages.itemId, productId)))
+
+  await Promise.all(
+    uniqueImageIds.map((imageId, index) =>
+      db
+        .update(itemImages)
+        .set({
+          itemId: productId,
+          isPrimary: index === 0,
+          sortOrder: index,
+          updatedBy: userId,
+          updatedAt: now,
+        })
+        .where(and(eq(itemImages.businessId, businessId), eq(itemImages.id, imageId)))
+    )
+  )
 }
 
 async function writeAudit(

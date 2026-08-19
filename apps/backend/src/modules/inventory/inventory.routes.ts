@@ -228,7 +228,13 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
         item: items,
       })
       .from(inventoryBalances)
-      .innerJoin(items, eq(items.id, inventoryBalances.itemId))
+      .innerJoin(
+        items,
+        and(
+          eq(items.businessId, inventoryBalances.businessId),
+          eq(drizzleSql`${items.id}::text`, inventoryBalances.itemId)
+        )
+      )
       .where(
         and(
           eq(inventoryBalances.businessId, access.business.id),

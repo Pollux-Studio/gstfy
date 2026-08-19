@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import * as React from "react"
+import * as React from "react";
+import Image from "next/image";
 import {
   useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
-} from "@tanstack/react-query"
+} from "@tanstack/react-query";
 import {
   ArchiveIcon,
   ArrowDownIcon,
   ArrowUpDownIcon,
   ArrowUpIcon,
-  BarcodeIcon,
   BoxesIcon,
   CheckIcon,
   DownloadIcon,
@@ -28,10 +28,10 @@ import {
   SearchIcon,
   SlidersHorizontalIcon,
   TagsIcon,
-} from "lucide-react"
+} from "lucide-react";
 
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -39,7 +39,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -49,17 +49,17 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectDisplayValue,
   SelectItem,
   SelectTrigger,
-} from "@/components/ui/select"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Spinner } from "@/components/ui/spinner"
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
   TableBody,
@@ -67,50 +67,60 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { toast } from "@/components/ui/toast"
+} from "@/components/ui/table";
+import { toast } from "@/components/ui/toast";
 import type {
   ProductFormErrors,
   ProductFormState,
   SheetMode,
-} from "@/components/products/product-form-types"
-import { ProductUpsertDialog } from "@/components/products/product-upsert-dialog"
-import { getStoredAuthSession } from "@/lib/auth/session"
+} from "@/components/products/product-form-types";
+import { ProductDetailDialog } from "@/components/products/product-detail-dialog";
+import { ProductUpsertDialog } from "@/components/products/product-upsert-dialog";
+import { getStoredAuthSession } from "@/lib/auth/session";
 import {
   getBarcodeSubmitKeyFromKeyboardEventKey,
   readBarcodeScannerSettings,
-} from "@/lib/barcode-scanner/settings"
+} from "@/lib/barcode-scanner/settings";
 import {
   archiveProduct,
   createProduct,
+  createProductBarcode,
   createProductBrand,
   createProductCategory,
+  createProductPriceProfile,
+  createProductTaxProfile,
+  createProductUnitProfile,
+  deleteProductBarcode,
   getProduct,
   listProductMasters,
   listProducts,
   updateProduct,
+  updateProductBarcode,
+  updateProductInventoryProfile,
+  updateProductPriceProfile,
+  updateProductTaxProfile,
+  updateProductUnitProfile,
+  uploadProductImage,
   type CreateProductPayload,
-  type ProductDetail,
+  type ProductImage,
   type ProductItemType,
   type ProductListItem,
   type ProductStatus,
   type Taxability,
   type UpdateProductPayload,
-} from "@/lib/products/api"
-import {
-  getWarehouses,
-} from "@/lib/organization/api"
-import { getSettings } from "@/lib/settings/api"
-import { listTaxRules } from "@/lib/tax/api"
-import { cn } from "@/lib/utils"
+} from "@/lib/products/api";
+import { getWarehouses } from "@/lib/organization/api";
+import { getSettings } from "@/lib/settings/api";
+import { listTaxRules } from "@/lib/tax/api";
+import { cn } from "@/lib/utils";
 
 type FilterState = {
-  search: string
-  itemType: ProductItemType | "all"
-  status: ProductStatus | "all"
-}
+  search: string;
+  itemType: ProductItemType | "all";
+  status: ProductStatus | "all";
+};
 
-type ProductExportFormat = "csv" | "excel" | "pdf"
+type ProductExportFormat = "csv" | "excel" | "pdf";
 type ProductSortBy =
   | "name"
   | "sku"
@@ -120,8 +130,8 @@ type ProductSortBy =
   | "unit"
   | "price"
   | "inventory"
-  | "status"
-type ProductSortDir = "asc" | "desc"
+  | "status";
+type ProductSortDir = "asc" | "desc";
 type ProductColumnKey =
   | "product"
   | "hsn"
@@ -129,18 +139,18 @@ type ProductColumnKey =
   | "unit"
   | "price"
   | "inventory"
-  | "status"
+  | "status";
 
 const itemTypeLabels: Record<ProductItemType, string> = {
   GOODS: "Goods",
   SERVICE: "Service",
-}
+};
 
 const statusLabels: Record<ProductStatus, string> = {
   ACTIVE: "Active",
   INACTIVE: "Inactive",
   ARCHIVED: "Archived",
-}
+};
 
 const taxabilityLabels: Record<Taxability, string> = {
   TAXABLE: "Taxable",
@@ -148,44 +158,45 @@ const taxabilityLabels: Record<Taxability, string> = {
   NIL_RATED: "Nil rated",
   NON_GST: "Non-GST",
   ZERO_RATED: "Zero rated",
-}
+};
 
-const itemTypes: ProductItemType[] = ["GOODS", "SERVICE"]
-const statuses: ProductStatus[] = ["ACTIVE", "INACTIVE", "ARCHIVED"]
+const defaultBarcodeType = "EAN-13";
+const itemTypes: ProductItemType[] = ["GOODS", "SERVICE"];
+const statuses: ProductStatus[] = ["ACTIVE", "INACTIVE", "ARCHIVED"];
 const itemTypeFilterOptions: ReadonlyArray<{
-  value: FilterState["itemType"]
-  label: string
+  value: FilterState["itemType"];
+  label: string;
 }> = [
   { value: "all", label: "All types" },
   ...itemTypes.map((itemType) => ({
     value: itemType,
     label: itemTypeLabels[itemType],
   })),
-]
+];
 const statusFilterOptions: ReadonlyArray<{
-  value: FilterState["status"]
-  label: string
+  value: FilterState["status"];
+  label: string;
 }> = [
   { value: "all", label: "All statuses" },
   ...statuses.map((status) => ({
     value: status,
     label: statusLabels[status],
   })),
-]
+];
 const productTableColumns: ReadonlyArray<{
-  key: ProductColumnKey
-  label: string
-  widthClass: string
+  key: ProductColumnKey;
+  label: string;
+  widthClass: string;
 }> = [
   { key: "product", label: "Product", widthClass: "w-[27%]" },
   { key: "hsn", label: "HSN", widthClass: "w-[13%]" },
   { key: "gst", label: "GST", widthClass: "w-[9%]" },
   { key: "unit", label: "Unit", widthClass: "w-[9%]" },
-  { key: "price", label: "Retail price", widthClass: "w-[13%]" },
+  { key: "price", label: "Final price", widthClass: "w-[13%]" },
   { key: "inventory", label: "Inventory", widthClass: "w-[14%]" },
   { key: "status", label: "Status", widthClass: "w-[8%]" },
-]
-const tablePageSize = 15
+];
+const tablePageSize = 15;
 
 const emptyForm: ProductFormState = {
   name: "",
@@ -197,6 +208,7 @@ const emptyForm: ProductFormState = {
   manufacturer: "",
   modelNumber: "",
   status: "ACTIVE",
+  images: [],
   taxability: "TAXABLE",
   hsnSac: "",
   gstRate: "18",
@@ -217,23 +229,23 @@ const emptyForm: ProductFormState = {
   maximumStock: "0",
   batchTracking: false,
   serialTracking: false,
-}
+};
 
 type ProductPriceWithOptionalMargin = {
-  marginPercent?: string | number | null
-}
+  marginPercent?: string | number | null;
+};
 
-function getProductMarginPercent(
-  price: ProductListItem["activePrice"] | ProductDetail["activePrice"]
-) {
+function getProductMarginPercent(price: ProductListItem["activePrice"]) {
   if (!price) {
-    return "0"
+    return "0";
   }
 
-  const marginPercent = (price as ProductPriceWithOptionalMargin).marginPercent
-  return marginPercent === undefined || marginPercent === null || marginPercent === ""
+  const marginPercent = (price as ProductPriceWithOptionalMargin).marginPercent;
+  return marginPercent === undefined ||
+    marginPercent === null ||
+    marginPercent === ""
     ? "0"
-    : String(marginPercent)
+    : String(marginPercent);
 }
 
 function createFormFromProduct(product: ProductListItem): ProductFormState {
@@ -248,6 +260,12 @@ function createFormFromProduct(product: ProductListItem): ProductFormState {
     manufacturer: product.manufacturer ?? "",
     modelNumber: product.modelNumber ?? "",
     status: product.status,
+    images:
+      product.images.length > 0
+        ? product.images
+        : product.primaryImage
+          ? [product.primaryImage]
+          : [],
     taxability: product.activeTaxProfile?.taxability ?? "TAXABLE",
     hsnSac: product.activeTaxProfile?.hsnSac ?? "",
     gstRate: product.activeTaxProfile?.gstRate ?? "0",
@@ -256,42 +274,56 @@ function createFormFromProduct(product: ProductListItem): ProductFormState {
     effectiveTo: product.activeTaxProfile?.effectiveTo ?? "",
     baseUnit: product.unitProfile?.baseUnit ?? "PCS",
     gstUqc: product.unitProfile?.gstUqc ?? "",
-    conversionFactor: product.unitProfile?.conversionFactor ?? "1",
-    price: product.activePrice?.price ?? "0",
-    marginPercent: getProductMarginPercent(product.activePrice),
+    conversionFactor: formatCompactDecimal(
+      product.unitProfile?.conversionFactor ?? "1",
+    ),
+    price: getEditableBasePrice(product),
+    marginPercent: formatCompactDecimal(
+      getProductMarginPercent(product.activePrice),
+      2,
+    ),
     taxMode: product.activePrice?.taxMode ?? "EXCLUSIVE",
     barcode: product.primaryBarcode?.barcode ?? "",
-    trackInventory: product.inventoryProfile?.trackInventory ?? product.itemType === "GOODS",
+    trackInventory:
+      product.inventoryProfile?.trackInventory ?? product.itemType === "GOODS",
     defaultWarehouseId: product.inventoryProfile?.defaultWarehouseId ?? "",
     reorderLevel: product.inventoryProfile?.reorderLevel ?? "0",
     minimumStock: product.inventoryProfile?.minimumStock ?? "0",
     maximumStock: product.inventoryProfile?.maximumStock ?? "0",
     batchTracking: product.inventoryProfile?.batchTracking ?? false,
     serialTracking: product.inventoryProfile?.serialTracking ?? false,
-  }
+  };
 }
 
 export function ProductsPage() {
-  const storedSession = getStoredAuthSession()
-  const accessToken = storedSession?.session.accessToken ?? ""
-  const queryClient = useQueryClient()
+  const storedSession = getStoredAuthSession();
+  const accessToken = storedSession?.session.accessToken ?? "";
+  const queryClient = useQueryClient();
   const [filters, setFilters] = React.useState<FilterState>({
     search: "",
     itemType: "all",
     status: "ACTIVE",
-  })
-  const [sortBy, setSortBy] = React.useState<ProductSortBy>("name")
-  const [sortDir, setSortDir] = React.useState<ProductSortDir>("asc")
-  const [selectedProductIds, setSelectedProductIds] = React.useState<string[]>([])
+  });
+  const [sortBy, setSortBy] = React.useState<ProductSortBy>("name");
+  const [sortDir, setSortDir] = React.useState<ProductSortDir>("asc");
+  const [selectedProductIds, setSelectedProductIds] = React.useState<string[]>(
+    [],
+  );
   const [visibleProductColumns, setVisibleProductColumns] = React.useState<
     ProductColumnKey[]
-  >(() => productTableColumns.map((column) => column.key))
-  const [sheetMode, setSheetMode] = React.useState<SheetMode | null>(null)
-  const [selectedProductId, setSelectedProductId] = React.useState<string | null>(null)
-  const [detailProductId, setDetailProductId] = React.useState<string | null>(null)
-  const [pendingArchive, setPendingArchive] = React.useState<ProductListItem | null>(null)
-  const [formState, setFormState] = React.useState<ProductFormState>(emptyForm)
-  const [formErrors, setFormErrors] = React.useState<ProductFormErrors>({})
+  >(() => productTableColumns.map((column) => column.key));
+  const [sheetMode, setSheetMode] = React.useState<SheetMode | null>(null);
+  const [selectedProductId, setSelectedProductId] = React.useState<
+    string | null
+  >(null);
+  const [detailProductId, setDetailProductId] = React.useState<string | null>(
+    null,
+  );
+  const [pendingArchive, setPendingArchive] =
+    React.useState<ProductListItem | null>(null);
+  const [bulkArchiveOpen, setBulkArchiveOpen] = React.useState(false);
+  const [formState, setFormState] = React.useState<ProductFormState>(emptyForm);
+  const [formErrors, setFormErrors] = React.useState<ProductFormErrors>({});
 
   const productsQuery = useInfiniteQuery({
     queryKey: ["products", filters],
@@ -308,434 +340,507 @@ export function ProductsPage() {
       lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
     enabled: accessToken.length > 0,
     staleTime: 1000 * 60 * 3,
-  })
+  });
 
   const mastersQuery = useQuery({
     queryKey: ["products", "masters"],
     queryFn: () => listProductMasters(accessToken),
     enabled: accessToken.length > 0,
     staleTime: 1000 * 60 * 10,
-  })
+  });
 
   const settingsQuery = useQuery({
     queryKey: ["settings"],
     queryFn: () => getSettings(accessToken),
     enabled: accessToken.length > 0,
     staleTime: 1000 * 60 * 5,
-  })
+  });
 
   const warehousesQuery = useQuery({
     queryKey: ["warehouses"],
     queryFn: () => getWarehouses(accessToken),
     enabled: accessToken.length > 0,
     staleTime: 1000 * 60 * 5,
-  })
+  });
 
   const taxRulesQuery = useQuery({
     queryKey: ["tax", "rules"],
     queryFn: () => listTaxRules(accessToken),
     enabled: accessToken.length > 0,
     staleTime: 1000 * 60 * 10,
-  })
+  });
 
   const detailQuery = useQuery({
     queryKey: ["products", "detail", detailProductId],
     queryFn: () => getProduct(detailProductId ?? "", accessToken),
     enabled: accessToken.length > 0 && Boolean(detailProductId),
     staleTime: 1000 * 60 * 3,
-  })
+  });
 
   const products = React.useMemo(
     () => productsQuery.data?.pages.flatMap((page) => page.products) ?? [],
-    [productsQuery.data?.pages]
-  )
+    [productsQuery.data?.pages],
+  );
   const sortedProducts = React.useMemo(
     () => sortProducts(products, sortBy, sortDir),
-    [products, sortBy, sortDir]
-  )
+    [products, sortBy, sortDir],
+  );
   const totalProductsCount =
-    productsQuery.data?.pages[0]?.pagination.total ?? products.length
+    productsQuery.data?.pages[0]?.pagination.total ?? products.length;
   const goodsProductsCount = products.filter(
-    (product) => product.itemType === "GOODS"
-  ).length
+    (product) => product.itemType === "GOODS",
+  ).length;
   const trackedStockProductsCount = products.filter(
-    (product) => product.inventoryProfile?.trackInventory
-  ).length
+    (product) => product.inventoryProfile?.trackInventory,
+  ).length;
   const taxMappedProductsCount = products.filter(
-    (product) => product.activeTaxProfile?.hsnSac
-  ).length
-  const detailProduct = detailQuery.data?.product ?? null
-  const categoryOptions = mastersQuery.data?.categories.map((category) => category.name) ?? []
-  const brandOptions = mastersQuery.data?.brands.map((brand) => brand.name) ?? []
+    (product) => product.activeTaxProfile?.hsnSac,
+  ).length;
+  const detailProduct = detailQuery.data?.product ?? null;
+  const selectedFormProduct = selectedProductId
+    ? (products.find((product) => product.id === selectedProductId) ?? null)
+    : null;
+  const categoryOptions =
+    mastersQuery.data?.categories.map((category) => category.name) ?? [];
+  const brandOptions =
+    mastersQuery.data?.brands.map((brand) => brand.name) ?? [];
   const hsnSacOptions =
     mastersQuery.data?.hsnSacCodes.filter((code) =>
-      formState.itemType === "SERVICE" ? code.codeType === "SAC" : code.codeType === "HSN"
-    ) ?? []
-  const uqcOptions = mastersQuery.data?.uqcCodes ?? []
-  const cessRuleOptions = taxRulesQuery.data?.cessRules ?? []
-  const warehouseOptions = warehousesQuery.data?.warehouses ?? []
+      formState.itemType === "SERVICE"
+        ? code.codeType === "SAC"
+        : code.codeType === "HSN",
+    ) ?? [];
+  const uqcOptions = mastersQuery.data?.uqcCodes ?? [];
+  const cessRuleOptions = taxRulesQuery.data?.cessRules ?? [];
+  const warehouseOptions = warehousesQuery.data?.warehouses ?? [];
   const defaultWarehouse =
     warehouseOptions.find(
       (warehouse) =>
-        warehouse.status.toLowerCase() === "active" && warehouse.warehouseCode === "MAIN"
+        warehouse.status.toLowerCase() === "active" &&
+        warehouse.warehouseCode === "MAIN",
     ) ??
-    warehouseOptions.find((warehouse) => warehouse.status.toLowerCase() === "active") ??
-    null
+    warehouseOptions.find(
+      (warehouse) => warehouse.status.toLowerCase() === "active",
+    ) ??
+    null;
   const gstRateOptions = Array.from(
-    new Set([
-      ...(settingsQuery.data?.gstRateSettings.enabledGstSlabs ?? [5, 12, 18, 28]).map(
-        String
-      ),
-      formState.gstRate,
-    ].filter(Boolean))
+    new Set(
+      [
+        ...(
+          settingsQuery.data?.gstRateSettings.enabledGstSlabs ?? [5, 12, 18, 28]
+        ).map(String),
+        formState.gstRate,
+      ].filter(Boolean),
+    ),
   ).map((slab) => ({
     value: slab,
-    label: `${slab}% GST`,
-  }))
+    label: `${formatPercent(slab)} GST`,
+  }));
   const selectedProductIdsSet = React.useMemo(
     () => new Set(selectedProductIds),
-    [selectedProductIds]
-  )
+    [selectedProductIds],
+  );
   const selectedProducts = React.useMemo(
     () => products.filter((product) => selectedProductIdsSet.has(product.id)),
-    [products, selectedProductIdsSet]
-  )
+    [products, selectedProductIdsSet],
+  );
   const selectedArchivableProducts = selectedProducts.filter(
-    (product) => product.status !== "ARCHIVED"
-  )
-  const canBulkMarkActive = selectedProducts.some((product) => product.status !== "ACTIVE")
+    (product) => product.status !== "ARCHIVED",
+  );
+  const canBulkMarkActive = selectedProducts.some(
+    (product) => product.status !== "ACTIVE",
+  );
   const canBulkMarkInactive = selectedProducts.some(
-    (product) => product.status !== "INACTIVE"
-  )
-  const visibleProductIds = sortedProducts.map((product) => product.id)
+    (product) => product.status !== "INACTIVE",
+  );
+  const visibleProductIds = sortedProducts.map((product) => product.id);
   const visibleProductColumnSet = React.useMemo(
     () => new Set(visibleProductColumns),
-    [visibleProductColumns]
-  )
-  const productTableColumnCount = visibleProductColumns.length + 2
+    [visibleProductColumns],
+  );
+  const productTableColumnCount = visibleProductColumns.length + 2;
   const allVisibleProductsSelected =
     visibleProductIds.length > 0 &&
-    visibleProductIds.every((productId) => selectedProductIdsSet.has(productId))
+    visibleProductIds.every((productId) =>
+      selectedProductIdsSet.has(productId),
+    );
   const someVisibleProductsSelected =
-    visibleProductIds.some((productId) => selectedProductIdsSet.has(productId)) &&
-    !allVisibleProductsSelected
+    visibleProductIds.some((productId) =>
+      selectedProductIdsSet.has(productId),
+    ) && !allVisibleProductsSelected;
 
   const upsertMutation = useMutation({
     mutationFn: (payload: {
-      mode: SheetMode
-      productId?: string
-      form: ProductFormState
+      mode: SheetMode;
+      productId?: string;
+      form: ProductFormState;
+      product?: ProductListItem | null;
     }) => {
       if (payload.mode === "edit" && payload.productId) {
-        return updateProduct(payload.productId, buildUpdatePayload(payload.form), accessToken)
+        return saveProductEdit(
+          payload.productId,
+          payload.form,
+          payload.product,
+          accessToken,
+        );
       }
 
-      return createProduct(buildCreatePayload(payload.form), accessToken)
+      return createProduct(buildCreatePayload(payload.form), accessToken);
     },
     onSuccess: async (response) => {
       toast.success(
         sheetMode === "edit" ? "Product updated" : "Product created",
-        { description: `${response.product.name} is ready for transaction resolution.` }
-      )
-      await queryClient.invalidateQueries({ queryKey: ["products"] })
-      closeSheet()
+        {
+          description: `${response.product.name} is ready for transaction resolution.`,
+        },
+      );
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      closeSheet();
     },
     onError: (error) => {
-      toast.error(
-        "Product save failed",
-        {
-          description:
-            error instanceof Error ?
-              error.message
+      toast.error("Product save failed", {
+        description:
+          error instanceof Error
+            ? error.message
             : "Check the product details and try again.",
-        }
-      )
+      });
     },
-  })
+  });
 
   const createCategoryMutation = useMutation({
     mutationFn: (name: string) => createProductCategory(name, accessToken),
     onSuccess: async (response) => {
-      setFormState((current) => ({ ...current, categoryId: response.category.name }))
-      await queryClient.invalidateQueries({ queryKey: ["products", "masters"] })
+      setFormState((current) => ({
+        ...current,
+        categoryId: response.category.name,
+      }));
+      await queryClient.invalidateQueries({
+        queryKey: ["products", "masters"],
+      });
     },
     onError: (error) => {
       toast.error("Category save failed", {
         description:
-          error instanceof Error ? error.message : "Unable to create product category.",
-      })
+          error instanceof Error
+            ? error.message
+            : "Unable to create product category.",
+      });
     },
-  })
+  });
 
   const createBrandMutation = useMutation({
     mutationFn: (name: string) => createProductBrand(name, accessToken),
     onSuccess: async (response) => {
-      setFormState((current) => ({ ...current, brandId: response.brand.name }))
-      await queryClient.invalidateQueries({ queryKey: ["products", "masters"] })
+      setFormState((current) => ({ ...current, brandId: response.brand.name }));
+      await queryClient.invalidateQueries({
+        queryKey: ["products", "masters"],
+      });
     },
     onError: (error) => {
       toast.error("Brand save failed", {
         description:
-          error instanceof Error ? error.message : "Unable to create product brand.",
-      })
+          error instanceof Error
+            ? error.message
+            : "Unable to create product brand.",
+      });
     },
-  })
+  });
+
+  const uploadImageMutation = useMutation({
+    mutationFn: (file: File) => uploadProductImage(file, accessToken),
+    onSuccess: (response) => {
+      setFormState((current) => ({
+        ...current,
+        images: [response.image],
+      }));
+      toast.success("Product image uploaded", {
+        description: "The image will be attached when you save the product.",
+      });
+    },
+    onError: (error) => {
+      toast.error("Image upload failed", {
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to upload product image.",
+      });
+    },
+  });
 
   const archiveMutation = useMutation({
     mutationFn: (productId: string) => archiveProduct(productId, accessToken),
     onSuccess: async () => {
       toast.success("Product archived", {
         description: "The product is hidden from normal selection.",
-      })
-      await queryClient.invalidateQueries({ queryKey: ["products"] })
-      setPendingArchive(null)
+      });
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      setPendingArchive(null);
     },
     onError: (error) => {
-      toast.error(
-        "Archive failed",
-        {
-          description:
-            error instanceof Error ? error.message : "Unable to archive this product.",
-        }
-      )
+      toast.error("Archive failed", {
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to archive this product.",
+      });
     },
-  })
+  });
 
   const bulkStatusMutation = useMutation({
     mutationFn: async (status: ProductStatus) => {
       await Promise.all(
         selectedProducts.map((product) =>
-          updateProduct(product.id, { status }, accessToken)
-        )
-      )
+          updateProduct(product.id, { status }, accessToken),
+        ),
+      );
     },
     onSuccess: async (_, status) => {
       toast.success("Products updated", {
         description: `${selectedProducts.length} product${selectedProducts.length === 1 ? "" : "s"} marked ${statusLabels[status].toLowerCase()}.`,
-      })
-      await queryClient.invalidateQueries({ queryKey: ["products"] })
-      setSelectedProductIds([])
+      });
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      setSelectedProductIds([]);
     },
     onError: (error) => {
       toast.error("Bulk update failed", {
         description:
-          error instanceof Error ? error.message : "Unable to update selected products.",
-      })
+          error instanceof Error
+            ? error.message
+            : "Unable to update selected products.",
+      });
     },
-  })
+  });
 
   const bulkArchiveMutation = useMutation({
     mutationFn: async () => {
       await Promise.all(
         selectedArchivableProducts.map((product) =>
-          archiveProduct(product.id, accessToken)
-        )
-      )
+          archiveProduct(product.id, accessToken),
+        ),
+      );
     },
     onSuccess: async () => {
       toast.success("Products archived", {
         description: `${selectedArchivableProducts.length} product${selectedArchivableProducts.length === 1 ? "" : "s"} moved out of normal selection.`,
-      })
-      await queryClient.invalidateQueries({ queryKey: ["products"] })
-      setSelectedProductIds([])
+      });
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      setSelectedProductIds([]);
+      setBulkArchiveOpen(false);
     },
     onError: (error) => {
       toast.error("Bulk archive failed", {
         description:
-          error instanceof Error ? error.message : "Unable to archive selected products.",
-      })
+          error instanceof Error
+            ? error.message
+            : "Unable to archive selected products.",
+      });
     },
-  })
+  });
 
   function openCreateSheet() {
-    setSheetMode("create")
-    setSelectedProductId(null)
+    setSheetMode("create");
+    setSelectedProductId(null);
     setFormState({
       ...emptyForm,
       sku: generateProductSku(emptyForm.itemType),
       defaultWarehouseId: defaultWarehouse?.id ?? "",
-    })
-    setFormErrors({})
+    });
+    setFormErrors({});
   }
 
   function openEditSheet(product: ProductListItem) {
-    setSheetMode("edit")
-    setSelectedProductId(product.id)
-    setFormState(createFormFromProduct(product))
-    setFormErrors({})
+    setSheetMode("edit");
+    setSelectedProductId(product.id);
+    setFormState(createFormFromProduct(product));
+    setFormErrors({});
   }
 
   function closeSheet() {
-    setSheetMode(null)
-    setSelectedProductId(null)
-    setFormState(emptyForm)
-    setFormErrors({})
+    setSheetMode(null);
+    setSelectedProductId(null);
+    setFormState(emptyForm);
+    setFormErrors({});
   }
 
-  function updateForm<K extends keyof ProductFormState>(key: K, value: ProductFormState[K]) {
+  function updateForm<K extends keyof ProductFormState>(
+    key: K,
+    value: ProductFormState[K],
+  ) {
     setFormState((current) => {
-      const next = { ...current, [key]: value }
+      const next = { ...current, [key]: value };
 
       if (key === "itemType") {
-        next.hsnSac = ""
-        next.trackInventory = value === "GOODS"
-        next.baseUnit = value === "SERVICE" ? "NOS" : "PCS"
-        next.gstUqc = value === "SERVICE" ? "NOS" : "PCS"
-        next.defaultWarehouseId = value === "GOODS" ? current.defaultWarehouseId || defaultWarehouse?.id || "" : ""
+        next.hsnSac = "";
+        next.trackInventory = value === "GOODS";
+        next.baseUnit = value === "SERVICE" ? "NOS" : "PCS";
+        next.gstUqc = value === "SERVICE" ? "NOS" : "PCS";
+        next.defaultWarehouseId =
+          value === "GOODS"
+            ? current.defaultWarehouseId || defaultWarehouse?.id || ""
+            : "";
 
         if (sheetMode === "create") {
-          next.sku = generateProductSku(value as ProductItemType)
+          next.sku = generateProductSku(value as ProductItemType);
         }
       }
 
       if (key === "trackInventory") {
-        next.defaultWarehouseId = value ? current.defaultWarehouseId || defaultWarehouse?.id || "" : ""
+        next.defaultWarehouseId = value
+          ? current.defaultWarehouseId || defaultWarehouse?.id || ""
+          : "";
       }
 
-      return next
-    })
+      return next;
+    });
 
-    setFormErrors((current) => ({ ...current, [key]: undefined }))
+    setFormErrors((current) => ({ ...current, [key]: undefined }));
   }
 
   function generateBarcodeForProduct() {
-    updateForm("barcode", generateEan13Barcode())
+    updateForm("barcode", generateEan13Barcode());
     toast.success("Barcode generated", {
       description: "A valid EAN-13 barcode value was added to this product.",
-    })
+    });
   }
 
-  function handlePrimaryBarcodeKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    const submitKey = getBarcodeSubmitKeyFromKeyboardEventKey(event.key)
+  function handlePrimaryBarcodeKeyDown(
+    event: React.KeyboardEvent<HTMLInputElement>,
+  ) {
+    const submitKey = getBarcodeSubmitKeyFromKeyboardEventKey(event.key);
 
     if (!submitKey) {
-      return
+      return;
     }
 
-    const scannerSettings = readBarcodeScannerSettings()
+    const scannerSettings = readBarcodeScannerSettings();
 
     if (
       !scannerSettings.enabled ||
       scannerSettings.submitKey === "none" ||
       scannerSettings.submitKey !== submitKey
     ) {
-      return
+      return;
     }
 
-    const barcode = event.currentTarget.value.trim()
+    const barcode = event.currentTarget.value.trim();
 
     if (barcode.length < scannerSettings.minLength) {
-      return
+      return;
     }
 
-    event.preventDefault()
-    updateForm("barcode", barcode)
+    event.preventDefault();
+    updateForm("barcode", barcode);
     toast.success("Barcode captured", {
       description: "Scanner input was accepted for this product.",
-    })
+    });
   }
 
   function submitForm(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const errors = validateProductForm(formState, sheetMode ?? "create")
+    event.preventDefault();
+    const errors = validateProductForm(formState, sheetMode ?? "create");
 
     if (Object.keys(errors).length > 0) {
-      setFormErrors(errors)
-      return
+      setFormErrors(errors);
+      return;
     }
 
     upsertMutation.mutate({
       mode: sheetMode ?? "create",
       productId: selectedProductId ?? undefined,
       form: formState,
-    })
+      product: selectedFormProduct,
+    });
   }
 
   function handleProductsTableScroll(event: React.UIEvent<HTMLDivElement>) {
-    const target = event.currentTarget
+    const target = event.currentTarget;
     const remainingScroll =
-      target.scrollHeight - target.scrollTop - target.clientHeight
+      target.scrollHeight - target.scrollTop - target.clientHeight;
 
     if (
       remainingScroll < 160 &&
       productsQuery.hasNextPage &&
       !productsQuery.isFetchingNextPage
     ) {
-      void productsQuery.fetchNextPage()
+      void productsQuery.fetchNextPage();
     }
   }
 
   function handleSortChange(nextSortBy: ProductSortBy) {
     setSortDir((currentSortDir) =>
-      sortBy === nextSortBy && currentSortDir === "asc" ? "desc" : "asc"
-    )
-    setSortBy(nextSortBy)
+      sortBy === nextSortBy && currentSortDir === "asc" ? "desc" : "asc",
+    );
+    setSortBy(nextSortBy);
   }
 
   function toggleProductSelection(product: ProductListItem) {
     setSelectedProductIds((current) =>
-      current.includes(product.id) ?
-        current.filter((productId) => productId !== product.id)
-      : [...current, product.id]
-    )
+      current.includes(product.id)
+        ? current.filter((productId) => productId !== product.id)
+        : [...current, product.id],
+    );
   }
 
   function toggleAllVisibleProducts() {
     setSelectedProductIds((current) => {
       if (allVisibleProductsSelected) {
-        return current.filter((productId) => !visibleProductIds.includes(productId))
+        return current.filter(
+          (productId) => !visibleProductIds.includes(productId),
+        );
       }
 
-      return Array.from(new Set([...current, ...visibleProductIds]))
-    })
+      return Array.from(new Set([...current, ...visibleProductIds]));
+    });
   }
 
   function toggleProductColumn(columnKey: ProductColumnKey) {
     setVisibleProductColumns((current) => {
       if (current.includes(columnKey)) {
-        return current.length === 1 ?
-            current
-          : current.filter((key) => key !== columnKey)
+        return current.length === 1
+          ? current
+          : current.filter((key) => key !== columnKey);
       }
 
-      const next = [...current, columnKey]
+      const next = [...current, columnKey];
       return productTableColumns
         .map((column) => column.key)
-        .filter((key) => next.includes(key))
-    })
+        .filter((key) => next.includes(key));
+    });
   }
 
   function handleProductExport(format: ProductExportFormat) {
     if (sortedProducts.length === 0) {
       toast.error("No products to export", {
         description: "Adjust the filters or add products before exporting.",
-      })
-      return
+      });
+      return;
     }
 
     if (format === "pdf") {
-      const didOpen = printProductsPdf(sortedProducts)
+      const didOpen = printProductsPdf(sortedProducts);
 
       if (!didOpen) {
-        toast.error("Allow pop-ups to export the product PDF.")
+        toast.error("Allow pop-ups to export the product PDF.");
       }
 
-      return
+      return;
     }
 
-    const fileDate = new Date().toISOString().slice(0, 10)
-    const extension = format === "excel" ? "xls" : "csv"
+    const fileDate = new Date().toISOString().slice(0, 10);
+    const extension = format === "excel" ? "xls" : "csv";
     const contentType =
-      format === "excel" ? "application/vnd.ms-excel;charset=utf-8" : "text/csv;charset=utf-8"
+      format === "excel"
+        ? "application/vnd.ms-excel;charset=utf-8"
+        : "text/csv;charset=utf-8";
 
     downloadTextFile(
       `products-${fileDate}.${extension}`,
       buildProductsCsv(sortedProducts),
-      contentType
-    )
+      contentType,
+    );
     toast.success("Product export ready", {
       description: `${sortedProducts.length} loaded product${sortedProducts.length === 1 ? "" : "s"} exported.`,
-    })
+    });
   }
 
   return (
@@ -766,7 +871,11 @@ export function ProductsPage() {
               </p>
             </div>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Button type="button" className="h-8 rounded-lg" onClick={openCreateSheet}>
+              <Button
+                type="button"
+                className="h-8 rounded-lg"
+                onClick={openCreateSheet}
+              >
                 <PlusIcon className="size-4" />
                 Add Product
               </Button>
@@ -813,7 +922,10 @@ export function ProductsPage() {
                 <Input
                   value={filters.search}
                   onChange={(event) =>
-                    setFilters((current) => ({ ...current, search: event.target.value }))
+                    setFilters((current) => ({
+                      ...current,
+                      search: event.target.value,
+                    }))
                   }
                   placeholder="Search product, SKU, barcode, HSN/SAC, supplier code..."
                   className="h-7 rounded-md pl-7 text-xs"
@@ -828,14 +940,21 @@ export function ProductsPage() {
                   }))
                 }
               >
-                <SelectTrigger size="sm" className="w-full justify-between sm:w-32">
+                <SelectTrigger
+                  size="sm"
+                  className="w-full justify-between sm:w-32"
+                >
                   <SelectDisplayValue
                     value={filters.itemType}
                     options={itemTypeFilterOptions}
                     placeholder="Type"
                   />
                 </SelectTrigger>
-                <SelectContent align="start" sideOffset={6} className="min-w-32">
+                <SelectContent
+                  align="start"
+                  sideOffset={6}
+                  className="min-w-32"
+                >
                   {itemTypeFilterOptions.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
@@ -852,14 +971,21 @@ export function ProductsPage() {
                   }))
                 }
               >
-                <SelectTrigger size="sm" className="w-full justify-between sm:w-32">
+                <SelectTrigger
+                  size="sm"
+                  className="w-full justify-between sm:w-32"
+                >
                   <SelectDisplayValue
                     value={filters.status}
                     options={statusFilterOptions}
                     placeholder="Status"
                   />
                 </SelectTrigger>
-                <SelectContent align="start" sideOffset={6} className="min-w-32">
+                <SelectContent
+                  align="start"
+                  sideOffset={6}
+                  className="min-w-32"
+                >
                   {statusFilterOptions.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
@@ -921,15 +1047,21 @@ export function ProductsPage() {
                   <DropdownMenuGroup>
                     <DropdownMenuLabel>Export loaded rows</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => handleProductExport("csv")}>
+                    <DropdownMenuItem
+                      onClick={() => handleProductExport("csv")}
+                    >
                       <FileSpreadsheetIcon />
                       CSV
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleProductExport("excel")}>
+                    <DropdownMenuItem
+                      onClick={() => handleProductExport("excel")}
+                    >
                       <FileSpreadsheetIcon />
                       Excel
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleProductExport("pdf")}>
+                    <DropdownMenuItem
+                      onClick={() => handleProductExport("pdf")}
+                    >
                       <FileTextIcon />
                       PDF
                     </DropdownMenuItem>
@@ -947,7 +1079,8 @@ export function ProductsPage() {
           {selectedProducts.length > 0 ? (
             <div className="flex flex-col gap-2 border-b border-border bg-muted/20 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-5 lg:px-6">
               <div className="text-sm">
-                <span className="font-medium">{selectedProducts.length}</span> selected
+                <span className="font-medium">{selectedProducts.length}</span>{" "}
+                selected
                 <span className="ml-2 text-muted-foreground">
                   {selectedArchivableProducts.length} archivable
                 </span>
@@ -966,7 +1099,9 @@ export function ProductsPage() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={!canBulkMarkInactive || bulkStatusMutation.isPending}
+                  disabled={
+                    !canBulkMarkInactive || bulkStatusMutation.isPending
+                  }
                   onClick={() => bulkStatusMutation.mutate("INACTIVE")}
                 >
                   Mark inactive
@@ -979,7 +1114,7 @@ export function ProductsPage() {
                     selectedArchivableProducts.length === 0 ||
                     bulkArchiveMutation.isPending
                   }
-                  onClick={() => bulkArchiveMutation.mutate()}
+                  onClick={() => setBulkArchiveOpen(true)}
                 >
                   Archive selected
                 </Button>
@@ -1063,7 +1198,7 @@ export function ProductsPage() {
                     onSort={handleSortChange}
                     className="text-right"
                   >
-                    Retail price
+                    Final price
                   </SortableProductsTableHead>
                 ) : null}
                 {visibleProductColumnSet.has("inventory") ? (
@@ -1090,7 +1225,7 @@ export function ProductsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {productsQuery.isLoading ?
+              {productsQuery.isLoading ? (
                 Array.from({ length: 5 }).map((_, index) => (
                   <TableRow key={index}>
                     <TableCell colSpan={productTableColumnCount}>
@@ -1098,135 +1233,170 @@ export function ProductsPage() {
                     </TableCell>
                   </TableRow>
                 ))
-              : sortedProducts.length === 0 ?
+              ) : sortedProducts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={productTableColumnCount} className="py-12 text-center">
+                  <TableCell
+                    colSpan={productTableColumnCount}
+                    className="py-12 text-center"
+                  >
                     <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
                       <PackageIcon className="size-8 text-muted-foreground" />
                       <p className="font-medium">No products found</p>
                       <p className="text-sm text-muted-foreground">
-                        Add products with GST and price defaults before creating sales or
-                        purchase documents.
+                        Add products with GST and price defaults before creating
+                        sales or purchase documents.
                       </p>
-                      <Button onClick={openCreateSheet} size="sm" className="mt-2">
+                      <Button
+                        onClick={openCreateSheet}
+                        size="sm"
+                        className="mt-2"
+                      >
                         Add first product
                       </Button>
                     </div>
                   </TableCell>
                 </TableRow>
-              : sortedProducts.map((product) => {
-                  const isSelected = selectedProductIdsSet.has(product.id)
+              ) : (
+                sortedProducts.map((product) => {
+                  const isSelected = selectedProductIdsSet.has(product.id);
 
                   return (
-                  <TableRow key={product.id} data-state={isSelected ? "selected" : undefined}>
-                    <TableCell className="pl-3">
-                      <SelectionCheckbox
-                        checked={isSelected}
-                        label={`Select ${product.name}`}
-                        onCheckedChange={() => toggleProductSelection(product)}
-                      />
-                    </TableCell>
-                    {visibleProductColumnSet.has("product") ? (
-                      <TableCell>
-                        <div className="min-w-0 space-y-1">
+                    <TableRow
+                      key={product.id}
+                      data-state={isSelected ? "selected" : undefined}
+                    >
+                      <TableCell className="pl-3">
+                        <SelectionCheckbox
+                          checked={isSelected}
+                          label={`Select ${product.name}`}
+                          onCheckedChange={() =>
+                            toggleProductSelection(product)
+                          }
+                        />
+                      </TableCell>
+                      {visibleProductColumnSet.has("product") ? (
+                        <TableCell>
                           <div className="flex min-w-0 items-center gap-2">
-                            <span className="truncate font-medium">{product.name}</span>
-                            <Badge variant="outline" className="shrink-0">
-                              {itemTypeLabels[product.itemType]}
-                            </Badge>
+                            <ProductImageThumb
+                              image={product.primaryImage}
+                              label={product.name}
+                            />
+                            <div className="min-w-0 space-y-1">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="truncate font-medium">
+                                  {product.name}
+                                </span>
+                                <Badge variant="outline" className="shrink-0">
+                                  {itemTypeLabels[product.itemType]}
+                                </Badge>
+                              </div>
+                              <p className="truncate font-mono text-xs tracking-[0.14em] text-muted-foreground">
+                                {product.sku}
+                              </p>
+                            </div>
                           </div>
-                          <p className="truncate font-mono text-xs tracking-[0.14em] text-muted-foreground">
-                            {product.sku}
-                          </p>
-                        </div>
-                      </TableCell>
-                    ) : null}
-                    {visibleProductColumnSet.has("hsn") ? (
-                      <TableCell>
-                        <div className="space-y-1 text-sm">
-                          <p className="truncate font-mono">
-                            {product.activeTaxProfile?.hsnSac ?? "Not mapped"}
-                          </p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {product.activeTaxProfile ?
-                              taxabilityLabels[product.activeTaxProfile.taxability]
-                            : "Tax profile missing"}
-                          </p>
-                        </div>
-                      </TableCell>
-                    ) : null}
-                    {visibleProductColumnSet.has("gst") ? (
-                      <TableCell>
-                        <span className="font-mono text-sm">
-                          {product.activeTaxProfile ? `${product.activeTaxProfile.gstRate}%` : "-"}
-                        </span>
-                      </TableCell>
-                    ) : null}
-                    {visibleProductColumnSet.has("unit") ? (
-                      <TableCell>
-                        <div className="space-y-1 text-sm">
-                          <p>{product.unitProfile?.baseUnit ?? "PCS"}</p>
-                          <p className="text-xs text-muted-foreground">
-                            UQC {product.unitProfile?.gstUqc ?? "-"}
-                          </p>
-                        </div>
-                      </TableCell>
-                    ) : null}
-                    {visibleProductColumnSet.has("price") ? (
-                      <TableCell className="text-right font-mono">
-                        {formatCurrency(product.activePrice?.price ?? "0")}
-                      </TableCell>
-                    ) : null}
-                    {visibleProductColumnSet.has("inventory") ? (
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "gap-1.5",
-                            product.inventoryProfile?.trackInventory &&
-                              "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-                          )}
-                        >
-                          <BoxesIcon className="size-3.5" />
-                          {product.inventoryProfile?.trackInventory ? "Tracked" : "Not tracked"}
-                        </Badge>
-                      </TableCell>
-                    ) : null}
-                    {visibleProductColumnSet.has("status") ? (
-                      <TableCell>
-                        <StatusBadge status={product.status} />
-                      </TableCell>
-                    ) : null}
-                    <TableCell className="pr-3 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger render={<Button variant="ghost" size="icon" />}>
-                          <MoreHorizontalIcon className="size-4" />
-                          <span className="sr-only">Open product actions</span>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setDetailProductId(product.id)}>
-                            <EyeIcon />
-                            View
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openEditSheet(product)}>
-                            <PencilLineIcon />
-                            Edit product
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onClick={() => setPendingArchive(product)}
+                        </TableCell>
+                      ) : null}
+                      {visibleProductColumnSet.has("hsn") ? (
+                        <TableCell>
+                          <div className="space-y-1 text-sm">
+                            <p className="truncate font-mono">
+                              {product.activeTaxProfile?.hsnSac ?? "Not mapped"}
+                            </p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {product.activeTaxProfile
+                                ? taxabilityLabels[
+                                    product.activeTaxProfile.taxability
+                                  ]
+                                : "Tax profile missing"}
+                            </p>
+                          </div>
+                        </TableCell>
+                      ) : null}
+                      {visibleProductColumnSet.has("gst") ? (
+                        <TableCell>
+                          <span className="font-mono text-sm">
+                            {product.activeTaxProfile
+                              ? formatPercent(product.activeTaxProfile.gstRate)
+                              : "-"}
+                          </span>
+                        </TableCell>
+                      ) : null}
+                      {visibleProductColumnSet.has("unit") ? (
+                        <TableCell>
+                          <div className="space-y-1 text-sm">
+                            <p>{product.unitProfile?.baseUnit ?? "PCS"}</p>
+                            <p className="text-xs text-muted-foreground">
+                              UQC {product.unitProfile?.gstUqc ?? "-"}
+                            </p>
+                          </div>
+                        </TableCell>
+                      ) : null}
+                      {visibleProductColumnSet.has("price") ? (
+                        <TableCell className="text-right font-mono">
+                          {formatCurrency(product.activePrice?.price ?? "0")}
+                        </TableCell>
+                      ) : null}
+                      {visibleProductColumnSet.has("inventory") ? (
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "gap-1.5",
+                              product.inventoryProfile?.trackInventory &&
+                                "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+                            )}
                           >
-                            <ArchiveIcon />
-                            Archive
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                  )
+                            <BoxesIcon className="size-3.5" />
+                            {product.inventoryProfile?.trackInventory
+                              ? "Tracked"
+                              : "Not tracked"}
+                          </Badge>
+                        </TableCell>
+                      ) : null}
+                      {visibleProductColumnSet.has("status") ? (
+                        <TableCell>
+                          <StatusBadge status={product.status} />
+                        </TableCell>
+                      ) : null}
+                      <TableCell className="pr-3 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={<Button variant="ghost" size="icon" />}
+                          >
+                            <MoreHorizontalIcon className="size-4" />
+                            <span className="sr-only">
+                              Open product actions
+                            </span>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => setDetailProductId(product.id)}
+                            >
+                              <EyeIcon />
+                              View
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => openEditSheet(product)}
+                            >
+                              <PencilLineIcon />
+                              Edit product
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={() => setPendingArchive(product)}
+                            >
+                              <ArchiveIcon />
+                              Archive
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
                 })
-              }
+              )}
             </TableBody>
           </Table>
           {productsQuery.isFetchingNextPage ? (
@@ -1260,6 +1430,7 @@ export function ProductsPage() {
         warehouseOptions={warehouseOptions}
         gstRateOptions={gstRateOptions}
         pending={upsertMutation.isPending}
+        uploadingImage={uploadImageMutation.isPending}
         creatingBrand={createBrandMutation.isPending}
         creatingCategory={createCategoryMutation.isPending}
         onClose={closeSheet}
@@ -1268,338 +1439,254 @@ export function ProductsPage() {
         onCreateBrand={(name) => createBrandMutation.mutate(name)}
         onCreateCategory={(name) => createCategoryMutation.mutate(name)}
         onGenerateBarcode={generateBarcodeForProduct}
+        onImageUpload={(file) => uploadImageMutation.mutate(file)}
         onBarcodeKeyDown={handlePrimaryBarcodeKeyDown}
       />
 
-      <Dialog
+      <ProductDetailDialog
         open={Boolean(detailProductId)}
+        loading={detailQuery.isLoading}
+        product={detailProduct}
+        warehouses={warehouseOptions}
         onOpenChange={(open) => !open && setDetailProductId(null)}
-      >
-        <DialogContent className="max-h-[calc(100vh-2rem)] max-w-5xl gap-0 overflow-hidden p-0">
-          <DialogHeader className="border-b border-border px-5 py-3 pr-12">
-            <DialogTitle>Product details</DialogTitle>
-            <DialogDescription>
-              Full product defaults resolved for sales, purchase, tax and stock flows.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="app-scrollbar max-h-[calc(100vh-8.5rem)] overflow-y-auto px-5 py-4">
-            {detailQuery.isLoading || !detailProduct ?
-            <div className="space-y-3">
-              <Skeleton className="h-16 w-full" />
-              <Skeleton className="h-32 w-full" />
-            </div>
-          : <ProductDetailView product={detailProduct} warehouses={warehouseOptions} />}
-          </div>
-        </DialogContent>
-      </Dialog>
+      />
 
-      <Dialog open={Boolean(pendingArchive)} onOpenChange={(open) => !open && setPendingArchive(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Archive product?</DialogTitle>
-            <DialogDescription>
-              Used products are never hard-deleted. This will hide{" "}
-              <span className="font-medium text-foreground">{pendingArchive?.name}</span>{" "}
-              from normal product selection.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPendingArchive(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={archiveMutation.isPending}
-              onClick={() => pendingArchive && archiveMutation.mutate(pendingArchive.id)}
-            >
-              {archiveMutation.isPending ? <Spinner /> : null}
-              {archiveMutation.isPending ? "" : "Archive"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ProductArchiveDialog
+        open={Boolean(pendingArchive)}
+        product={pendingArchive}
+        pending={archiveMutation.isPending}
+        onCancel={() => setPendingArchive(null)}
+        onConfirm={() =>
+          pendingArchive && archiveMutation.mutate(pendingArchive.id)
+        }
+      />
+
+      <BulkProductArchiveDialog
+        open={bulkArchiveOpen}
+        products={selectedArchivableProducts}
+        pending={bulkArchiveMutation.isPending}
+        selectedCount={selectedProducts.length}
+        onCancel={() => setBulkArchiveOpen(false)}
+        onConfirm={() => bulkArchiveMutation.mutate()}
+      />
     </div>
-  )
+  );
 }
 
-function ProductDetailView({
+function ProductArchiveDialog({
+  onCancel,
+  onConfirm,
+  open,
+  pending,
   product,
-  warehouses,
 }: {
-  product: ProductDetail
-  warehouses: Array<{ id: string; name: string; warehouseCode: string }>
-}) {
-  const taxProfile = product.activeTaxProfile
-  const unit = product.units[0] ?? null
-  const price = product.activePrice
-  const inventory = product.inventoryProfile
-  const defaultWarehouse =
-    inventory?.defaultWarehouseId ?
-      warehouses.find((warehouse) => warehouse.id === inventory.defaultWarehouseId)
-    : null
-  const taxPreview = getProductTaxPreview(price?.price ?? "0", getProductMarginPercent(price), taxProfile?.gstRate ?? "0", price?.taxMode ?? "EXCLUSIVE")
-
-  return (
-    <div className="space-y-3">
-      <div className="rounded-2xl border border-border bg-muted/20 p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-lg font-semibold">{product.name}</h2>
-              <StatusBadge status={product.status} />
-              <Badge variant="outline" className="bg-background">
-                {itemTypeLabels[product.itemType]}
-              </Badge>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span className="font-mono tracking-[0.14em]">{product.sku}</span>
-              {product.primaryBarcode?.barcode ?
-                <>
-                  <span>·</span>
-                  <span className="font-mono">{product.primaryBarcode.barcode}</span>
-                </>
-              : null}
-            </div>
-            {product.description ?
-              <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-                {product.description}
-              </p>
-            : null}
-          </div>
-          <div className="grid min-w-56 gap-2 rounded-xl border border-border bg-background p-3 text-sm">
-            <CompactRow label="Manufacturer" value={product.manufacturer ?? "-"} />
-            <CompactRow label="Model" value={product.modelNumber ?? "-"} />
-            <CompactRow label="Category" value={product.categoryId ?? "-"} />
-            <CompactRow label="Brand" value={product.brandId ?? "-"} />
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-3 lg:grid-cols-2">
-        <ProductDetailSection
-          icon={<ReceiptTextIcon className="size-4" />}
-          title="Tax defaults"
-          rows={[
-            ["HSN/SAC", taxProfile?.hsnSac ?? "-"],
-            ["Taxability", taxProfile ? taxabilityLabels[taxProfile.taxability] : "-"],
-            ["GST rate", taxProfile ? `${taxProfile.gstRate}%` : "-"],
-            ["Cess rule", taxProfile?.cessRuleId ?? "-"],
-            ["Effective from", taxProfile?.effectiveFrom ?? "-"],
-            ["Effective to", taxProfile?.effectiveTo ?? "-"],
-            ["Tax status", taxProfile ? statusLabels[taxProfile.status] : "-"],
-          ]}
-        />
-        <ProductDetailSection
-          icon={<TagsIcon className="size-4" />}
-          title="Retail price"
-          rows={[
-            ["Price type", price?.priceType ?? "-"],
-            ["Retail price", formatCurrency(price?.price ?? "0")],
-            ["Margin", `${getProductMarginPercent(price)}%`],
-            ["Tax mode", price?.taxMode ?? "-"],
-            ["Currency", price?.currency ?? "INR"],
-            ["Minimum quantity", price?.minimumQuantity ?? "-"],
-            ["Effective from", price?.effectiveFrom ?? "-"],
-            ["Effective to", price?.effectiveTo ?? "-"],
-            ["Price status", price ? statusLabels[price.status] : "-"],
-          ]}
-        />
-        <ProductDetailSection
-          icon={<BoxesIcon className="size-4" />}
-          title="Unit and inventory"
-          rows={[
-            ["Base unit", unit?.baseUnit ?? "-"],
-            ["Secondary unit", unit?.secondaryUnit ?? "-"],
-            ["Conversion factor", unit?.conversionFactor ?? "-"],
-            ["GST UQC", unit?.gstUqc ?? "-"],
-            ["Track inventory", inventory?.trackInventory ? "Yes" : "No"],
-            [
-              "Default warehouse",
-              defaultWarehouse ?
-                `${defaultWarehouse.name} (${defaultWarehouse.warehouseCode})`
-              : inventory?.defaultWarehouseId ?? "-",
-            ],
-            ["Reorder level", inventory?.reorderLevel ?? "0"],
-            ["Minimum stock", inventory?.minimumStock ?? "0"],
-            ["Maximum stock", inventory?.maximumStock ?? "0"],
-            ["Batch tracking", inventory?.batchTracking ? "Yes" : "No"],
-            ["Serial tracking", inventory?.serialTracking ? "Yes" : "No"],
-          ]}
-        />
-        <ProductDetailSection
-          icon={<BarcodeIcon className="size-4" />}
-          title="Barcodes and links"
-          rows={[
-            ["Primary barcode", product.primaryBarcode?.barcode ?? "-"],
-            ["Barcode count", product.barcodes.length.toString()],
-            ["Supplier links", product.suppliers.length.toString()],
-            ["Tax profiles", product.taxProfiles.length.toString()],
-            ["Price profiles", product.prices.length.toString()],
-          ]}
-        />
-      </div>
-
-      <div className="rounded-2xl border border-border p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <ReceiptTextIcon className="size-4 text-muted-foreground" />
-          <h3 className="text-sm font-medium">GST calculation preview</h3>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-5">
-          <ProductPreviewMetric
-            label="Margin"
-            value={formatCurrency(taxPreview.marginAmount)}
-          />
-          <ProductPreviewMetric
-            label="Rate after margin"
-            value={formatCurrency(taxPreview.rateAfterMargin)}
-          />
-          <ProductPreviewMetric
-            label="CGST + SGST"
-            value={`${formatCurrency(taxPreview.cgst)} + ${formatCurrency(taxPreview.sgst)}`}
-          />
-          <ProductPreviewMetric label="IGST" value={formatCurrency(taxPreview.igst)} />
-          <ProductPreviewMetric
-            label="Final rate"
-            value={formatCurrency(taxPreview.finalRate)}
-            highlight
-          />
-        </div>
-      </div>
-
-      <div className="grid gap-3 xl:grid-cols-3">
-        <ProductCollectionCard
-          title="Tax profile history"
-          emptyText="No tax profiles added."
-          rows={product.taxProfiles.map((profile) => ({
-            title: `${profile.hsnSac ?? "-"} · ${profile.gstRate}%`,
-            description: `${taxabilityLabels[profile.taxability]} · ${profile.effectiveFrom}${profile.effectiveTo ? ` to ${profile.effectiveTo}` : ""}`,
-            status: statusLabels[profile.status],
-          }))}
-        />
-        <ProductCollectionCard
-          title="Price history"
-          emptyText="No price profiles added."
-          rows={product.prices.map((profile) => ({
-            title: `${profile.priceType} · ${formatCurrency(profile.price)}`,
-            description: `${getProductMarginPercent(profile)}% margin · ${profile.taxMode} · min ${profile.minimumQuantity}`,
-            status: statusLabels[profile.status],
-          }))}
-        />
-        <ProductCollectionCard
-          title="Barcodes and suppliers"
-          emptyText="No barcode or supplier mappings."
-          rows={[
-            ...product.barcodes.map((barcode) => ({
-              title: barcode.barcode,
-              description: `${barcode.barcodeType ?? "Barcode"}${barcode.isPrimary ? " · Primary" : ""}`,
-              status: statusLabels[barcode.status],
-            })),
-            ...product.suppliers.map((supplier) => ({
-              title: supplier.supplierName,
-              description: `Code ${supplier.supplierItemCode ?? "-"} · price ${supplier.purchasePrice ? formatCurrency(supplier.purchasePrice) : "-"}`,
-              status: supplier.isPreferred ? "Preferred" : statusLabels[supplier.status],
-            })),
-          ]}
-        />
-      </div>
-    </div>
-  )
-}
-
-function ProductDetailSection({
-  icon,
-  rows,
-  title,
-}: {
-  icon: React.ReactNode
-  rows: Array<[string, string]>
-  title: string
+  onCancel: () => void;
+  onConfirm: () => void;
+  open: boolean;
+  pending: boolean;
+  product: ProductListItem | null;
 }) {
   return (
-    <div className="rounded-2xl border border-border p-4">
-      <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-        {icon}
-        {title}
-      </div>
-      <div className="grid gap-2">
-        {rows.map(([label, value]) => (
-          <CompactRow key={label} label={label} value={value} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function ProductCollectionCard({
-  emptyText,
-  rows,
-  title,
-}: {
-  emptyText: string
-  rows: Array<{ description: string; status: string; title: string }>
-  title: string
-}) {
-  return (
-    <div className="rounded-2xl border border-border p-4">
-      <h3 className="mb-3 text-sm font-medium">{title}</h3>
-      {rows.length === 0 ?
-        <p className="text-sm text-muted-foreground">{emptyText}</p>
-      : <div className="space-y-2">
-          {rows.map((row, index) => (
-            <div
-              key={`${row.title}-${index}`}
-              className="rounded-xl border border-border bg-muted/20 px-3 py-2"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{row.title}</p>
-                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                    {row.description}
-                  </p>
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onCancel()}>
+      <DialogContent className="max-w-lg p-0">
+        <DialogHeader className="border-b border-border px-5 py-4 pr-12">
+          <DialogTitle>Archive product</DialogTitle>
+          <DialogDescription>
+            Archive removes the product from normal selection without deleting
+            historical invoices, stock movements or reports.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 px-5 py-4">
+          <div className="rounded-2xl border border-border bg-muted/20 p-4">
+            <div className="flex items-start gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground">
+                <PackageIcon className="size-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
+                  {product?.name ?? "Selected product"}
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span className="font-mono tracking-[0.14em]">
+                    {product?.sku ?? "-"}
+                  </span>
+                  {product?.activeTaxProfile?.hsnSac ? (
+                    <>
+                      <span>·</span>
+                      <span>HSN {product.activeTaxProfile.hsnSac}</span>
+                    </>
+                  ) : null}
+                  {product ? (
+                    <>
+                      <span>·</span>
+                      <span>{statusLabels[product.status]}</span>
+                    </>
+                  ) : null}
                 </div>
-                <span className="shrink-0 rounded-full bg-background px-2 py-0.5 text-[10px] text-muted-foreground">
-                  {row.status}
-                </span>
               </div>
             </div>
-          ))}
+          </div>
+          <div className="grid gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+            <p className="font-medium">What changes after archive?</p>
+            <p>
+              The product will be hidden from add-product pickers and normal
+              billing flows.
+            </p>
+            <p>
+              Existing invoices, purchases, inventory ledgers and reports stay
+              unchanged.
+            </p>
+          </div>
         </div>
-      }
-    </div>
-  )
+        <DialogFooter className="border-t border-border px-5 py-3">
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button variant="destructive" disabled={pending} onClick={onConfirm}>
+            {pending ? <Spinner /> : null}
+            {pending ? "" : "Archive product"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
-function CompactRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid grid-cols-[8rem_minmax(0,1fr)] items-start gap-3 text-sm">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="min-w-0 break-words text-right font-medium">{value}</span>
-    </div>
-  )
-}
-
-function ProductPreviewMetric({
-  highlight,
-  label,
-  value,
+function BulkProductArchiveDialog({
+  onCancel,
+  onConfirm,
+  open,
+  pending,
+  products,
+  selectedCount,
 }: {
-  highlight?: boolean
-  label: string
-  value: string
+  onCancel: () => void;
+  onConfirm: () => void;
+  open: boolean;
+  pending: boolean;
+  products: ProductListItem[];
+  selectedCount: number;
+}) {
+  const previewProducts = products.slice(0, 4);
+  const remainingCount = Math.max(products.length - previewProducts.length, 0);
+  const skippedCount = Math.max(selectedCount - products.length, 0);
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onCancel()}>
+      <DialogContent className="max-w-xl p-0">
+        <DialogHeader className="border-b border-border px-5 py-4 pr-12">
+          <DialogTitle>Archive selected products</DialogTitle>
+          <DialogDescription>
+            Review the products before moving them out of normal product
+            selection.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 px-5 py-4">
+          <div className="grid gap-3 rounded-2xl border border-border bg-muted/20 p-4 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">Selected</span>
+              <span className="font-medium">{selectedCount}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">Will archive</span>
+              <span className="font-medium">{products.length}</span>
+            </div>
+            {skippedCount > 0 ? (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Already archived</span>
+                <span className="font-medium">{skippedCount}</span>
+              </div>
+            ) : null}
+          </div>
+          {products.length > 0 ? (
+            <div className="overflow-hidden rounded-2xl border border-border">
+              <div className="border-b border-border bg-muted/20 px-3 py-2 text-xs font-medium text-muted-foreground">
+                Products affected
+              </div>
+              <div className="divide-y divide-border">
+                {previewProducts.map((product) => (
+                  <div
+                    key={product.id}
+                    className="flex items-center justify-between gap-3 px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {product.name}
+                      </p>
+                      <p className="truncate font-mono text-[11px] tracking-[0.14em] text-muted-foreground">
+                        {product.sku}
+                      </p>
+                    </div>
+                    <StatusBadge status={product.status} />
+                  </div>
+                ))}
+                {remainingCount > 0 ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">
+                    +{remainingCount} more product
+                    {remainingCount === 1 ? "" : "s"}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+              No selected product is eligible for archive.
+            </div>
+          )}
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+            Historical transactions are preserved. Only future selection lists
+            and active product workflows are affected.
+          </div>
+        </div>
+        <DialogFooter className="border-t border-border px-5 py-3">
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={pending || products.length === 0}
+            onClick={onConfirm}
+          >
+            {pending ? <Spinner /> : null}
+            {pending ? "" : "Archive products"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ProductImageThumb({
+  image,
+  label,
+  size = "sm",
+}: {
+  image: ProductImage | null;
+  label: string;
+  size?: "sm" | "lg";
 }) {
   return (
     <div
+      aria-label={image ? `${label} image` : `${label} image placeholder`}
       className={cn(
-        "rounded-xl border border-border bg-background px-3 py-2",
-        highlight && "border-emerald-200 bg-emerald-50 text-emerald-800"
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted/30 text-muted-foreground",
+        size === "lg" ? "size-20 rounded-2xl" : "size-9",
       )}
+      role="img"
     >
-      <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-        {label}
-      </p>
-      <p className="mt-1 truncate font-mono text-sm font-medium">{value}</p>
+      {image ? (
+        <Image
+          src={image.publicUrl}
+          alt={label}
+          width={size === "lg" ? 80 : 36}
+          height={size === "lg" ? 80 : 36}
+          className="size-full object-cover"
+        />
+      ) : (
+        <PackageIcon className={size === "lg" ? "size-8" : "size-4"} />
+      )}
     </div>
-  )
+  );
 }
 
 function StatusBadge({ status }: { status: ProductStatus }) {
@@ -1610,12 +1697,12 @@ function StatusBadge({ status }: { status: ProductStatus }) {
         status === "ACTIVE" &&
           "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
         status === "ARCHIVED" &&
-          "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+          "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
       )}
     >
       {statusLabels[status]}
     </Badge>
-  )
+  );
 }
 
 function SortableProductsTableHead({
@@ -1626,18 +1713,19 @@ function SortableProductsTableHead({
   sortDir,
   sortKey,
 }: {
-  children: React.ReactNode
-  className?: string
-  onSort: (sortBy: ProductSortBy) => void
-  sortBy: ProductSortBy
-  sortDir: ProductSortDir
-  sortKey: ProductSortBy
+  children: React.ReactNode;
+  className?: string;
+  onSort: (sortBy: ProductSortBy) => void;
+  sortBy: ProductSortBy;
+  sortDir: ProductSortDir;
+  sortKey: ProductSortBy;
 }) {
-  const isActive = sortBy === sortKey
-  const SortIcon =
-    !isActive ? ArrowUpDownIcon
-    : sortDir === "asc" ? ArrowUpIcon
-    : ArrowDownIcon
+  const isActive = sortBy === sortKey;
+  const SortIcon = !isActive
+    ? ArrowUpDownIcon
+    : sortDir === "asc"
+      ? ArrowUpIcon
+      : ArrowDownIcon;
 
   return (
     <TableHead className={className}>
@@ -1646,7 +1734,7 @@ function SortableProductsTableHead({
         className={cn(
           "flex max-w-full items-center gap-1 rounded-md text-left transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           className?.includes("text-right") && "ml-auto text-right",
-          isActive ? "text-primary" : "text-foreground"
+          isActive ? "text-primary" : "text-foreground",
         )}
         onClick={() => onSort(sortKey)}
       >
@@ -1654,12 +1742,12 @@ function SortableProductsTableHead({
         <SortIcon
           className={cn(
             "size-3 shrink-0",
-            !isActive && "text-muted-foreground/70"
+            !isActive && "text-muted-foreground/70",
           )}
         />
       </button>
     </TableHead>
-  )
+  );
 }
 
 function SelectionCheckbox({
@@ -1669,11 +1757,11 @@ function SelectionCheckbox({
   label,
   onCheckedChange,
 }: {
-  checked: boolean
-  indeterminate?: boolean
-  disabled?: boolean
-  label: string
-  onCheckedChange: () => void
+  checked: boolean;
+  indeterminate?: boolean;
+  disabled?: boolean;
+  label: string;
+  onCheckedChange: () => void;
 }) {
   return (
     <button
@@ -1685,7 +1773,8 @@ function SelectionCheckbox({
       onClick={onCheckedChange}
       className={cn(
         "flex size-4 items-center justify-center rounded-sm border border-input bg-background text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40",
-        (checked || indeterminate) && "border-primary bg-primary text-primary-foreground"
+        (checked || indeterminate) &&
+          "border-primary bg-primary text-primary-foreground",
       )}
     >
       {checked ? (
@@ -1694,7 +1783,7 @@ function SelectionCheckbox({
         <MinusIcon className="size-3" />
       ) : null}
     </button>
-  )
+  );
 }
 
 function ProductTopMetric({
@@ -1703,10 +1792,10 @@ function ProductTopMetric({
   value,
   tone,
 }: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  tone?: "success"
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  tone?: "success";
 }) {
   return (
     <div className="rounded-lg border border-border bg-background p-2.5">
@@ -1716,7 +1805,7 @@ function ProductTopMetric({
           className={cn(
             "flex size-6 items-center justify-center rounded-md border border-border text-muted-foreground",
             tone === "success" &&
-              "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+              "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
           )}
         >
           {icon}
@@ -1724,131 +1813,141 @@ function ProductTopMetric({
       </div>
       <p className="mt-1 text-xl font-semibold tracking-tight">{value}</p>
     </div>
-  )
+  );
 }
 
 function sortProducts(
   products: ProductListItem[],
   sortBy: ProductSortBy,
-  sortDir: ProductSortDir
+  sortDir: ProductSortDir,
 ) {
   return [...products].sort((first, second) => {
-    const firstValue = getProductSortValue(first, sortBy)
-    const secondValue = getProductSortValue(second, sortBy)
+    const firstValue = getProductSortValue(first, sortBy);
+    const secondValue = getProductSortValue(second, sortBy);
 
     if (typeof firstValue === "number" && typeof secondValue === "number") {
-      return sortDir === "asc" ? firstValue - secondValue : secondValue - firstValue
+      return sortDir === "asc"
+        ? firstValue - secondValue
+        : secondValue - firstValue;
     }
 
-    const result = String(firstValue).localeCompare(String(secondValue), "en-IN", {
-      numeric: true,
-      sensitivity: "base",
-    })
+    const result = String(firstValue).localeCompare(
+      String(secondValue),
+      "en-IN",
+      {
+        numeric: true,
+        sensitivity: "base",
+      },
+    );
 
-    return sortDir === "asc" ? result : -result
-  })
+    return sortDir === "asc" ? result : -result;
+  });
 }
 
 function getProductSortValue(product: ProductListItem, sortBy: ProductSortBy) {
   switch (sortBy) {
     case "name":
-      return product.name
+      return product.name;
     case "sku":
-      return product.sku
+      return product.sku;
     case "itemType":
-      return itemTypeLabels[product.itemType]
+      return itemTypeLabels[product.itemType];
     case "tax":
-      return product.activeTaxProfile?.hsnSac ?? ""
+      return product.activeTaxProfile?.hsnSac ?? "";
     case "gst":
-      return Number(product.activeTaxProfile?.gstRate ?? 0)
+      return Number(product.activeTaxProfile?.gstRate ?? 0);
     case "unit":
-      return product.unitProfile?.baseUnit ?? "PCS"
+      return product.unitProfile?.baseUnit ?? "PCS";
     case "price":
-      return Number(product.activePrice?.price ?? 0)
+      return Number(product.activePrice?.price ?? 0);
     case "inventory":
-      return product.inventoryProfile?.trackInventory ? 1 : 0
+      return product.inventoryProfile?.trackInventory ? 1 : 0;
     case "status":
-      return statusLabels[product.status]
+      return statusLabels[product.status];
     default:
-      return product.name
+      return product.name;
   }
 }
 
 function generateProductSku(itemType: ProductItemType) {
-  const prefix = itemType === "SERVICE" ? "SRV" : "PRD"
-  const datePart = new Date()
-    .toISOString()
-    .slice(2, 10)
-    .replaceAll("-", "")
-  const randomPart = Math.floor(Math.random() * 9000 + 1000)
+  const prefix = itemType === "SERVICE" ? "SRV" : "PRD";
+  const datePart = new Date().toISOString().slice(2, 10).replaceAll("-", "");
+  const randomPart = Math.floor(Math.random() * 9000 + 1000);
 
-  return `${prefix}-${datePart}-${randomPart}`
+  return `${prefix}-${datePart}-${randomPart}`;
 }
 
 function generateEan13Barcode() {
   const body = `890${Math.floor(Math.random() * 1_000_000_000)
     .toString()
-    .padStart(9, "0")}`
+    .padStart(9, "0")}`;
 
-  return `${body}${getEan13CheckDigit(body)}`
+  return `${body}${getEan13CheckDigit(body)}`;
 }
 
 function getEan13CheckDigit(firstTwelveDigits: string) {
   const total = firstTwelveDigits
     .split("")
     .map((digit) => Number(digit))
-    .reduce((sum, digit, index) => sum + digit * (index % 2 === 0 ? 1 : 3), 0)
+    .reduce((sum, digit, index) => sum + digit * (index % 2 === 0 ? 1 : 3), 0);
 
-  return String((10 - (total % 10)) % 10)
+  return String((10 - (total % 10)) % 10);
 }
 
 function validateProductForm(form: ProductFormState, mode: SheetMode) {
-  const errors: ProductFormErrors = {}
+  const errors: ProductFormErrors = {};
 
   if (!form.name.trim()) {
-    errors.name = "Product name is required."
+    errors.name = "Product name is required.";
   }
 
   if (!form.sku.trim()) {
-    errors.sku = "SKU is required."
+    errors.sku = "SKU is required.";
   }
 
   if (mode === "create") {
     if (form.taxability === "TAXABLE" && !form.hsnSac.trim()) {
-      errors.hsnSac = "HSN/SAC is required for taxable products."
+      errors.hsnSac = "HSN/SAC is required for taxable products.";
     }
 
     if (!/^\d+(\.\d{1,2})?$/.test(form.gstRate.trim())) {
-      errors.gstRate = "Enter a valid GST rate."
+      errors.gstRate = "Enter a valid GST rate.";
     }
 
-  if (!form.effectiveFrom) {
-    errors.effectiveFrom = "Effective date is required."
-  } else if (form.effectiveTo && form.effectiveTo < form.effectiveFrom) {
-    errors.effectiveTo = "Effective-to cannot be before effective-from."
-  }
+    if (!form.effectiveFrom) {
+      errors.effectiveFrom = "Effective date is required.";
+    } else if (form.effectiveTo && form.effectiveTo < form.effectiveFrom) {
+      errors.effectiveTo = "Effective-to cannot be before effective-from.";
+    }
 
     if (!form.baseUnit.trim()) {
-      errors.baseUnit = "Base unit is required."
+      errors.baseUnit = "Base unit is required.";
     }
 
     if (!/^\d+(\.\d{1,2})?$/.test(form.price.trim())) {
-      errors.price = "Enter a valid price."
+      errors.price = "Enter a valid price.";
     }
 
     if (!/^\d+(\.\d{1,2})?$/.test(form.marginPercent.trim())) {
-      errors.marginPercent = "Enter a valid margin."
+      errors.marginPercent = "Enter a valid margin.";
     }
 
     if (form.trackInventory && !form.defaultWarehouseId.trim()) {
-      errors.defaultWarehouseId = "Choose the default warehouse."
+      errors.defaultWarehouseId = "Choose the default warehouse.";
     }
   }
 
-  return errors
+  return errors;
 }
 
 function buildCreatePayload(form: ProductFormState): CreateProductPayload {
+  const finalRetailPrice = getProductTaxPreview(
+    form.price,
+    form.marginPercent,
+    form.gstRate,
+    form.taxMode,
+  ).finalRate.toFixed(2);
+
   return {
     name: form.name.trim(),
     itemType: form.itemType,
@@ -1859,11 +1958,13 @@ function buildCreatePayload(form: ProductFormState): CreateProductPayload {
     manufacturer: form.manufacturer.trim() || null,
     modelNumber: form.modelNumber.trim() || null,
     status: form.status,
+    imageIds: form.images.map((image) => image.id),
     taxProfile: {
       taxability: form.taxability,
       hsnSac: form.hsnSac.trim() || null,
       gstRate: form.gstRate,
-      cessRuleId: form.taxability === "TAXABLE" ? form.cessRuleId.trim() || null : null,
+      cessRuleId:
+        form.taxability === "TAXABLE" ? form.cessRuleId.trim() || null : null,
       effectiveFrom: form.effectiveFrom,
       effectiveTo: form.effectiveTo || null,
       status: "ACTIVE",
@@ -1875,9 +1976,9 @@ function buildCreatePayload(form: ProductFormState): CreateProductPayload {
     },
     price: {
       priceType: "RETAIL",
-      price: form.price,
+      price: finalRetailPrice,
       marginPercent: form.marginPercent || "0",
-      taxMode: form.taxMode,
+      taxMode: "INCLUSIVE",
       currency: "INR",
       minimumQuantity: "1",
       effectiveFrom: form.effectiveFrom,
@@ -1885,18 +1986,26 @@ function buildCreatePayload(form: ProductFormState): CreateProductPayload {
     },
     inventoryProfile: {
       trackInventory: form.trackInventory,
-      defaultWarehouseId: form.trackInventory ? form.defaultWarehouseId || null : null,
+      defaultWarehouseId: form.trackInventory
+        ? form.defaultWarehouseId || null
+        : null,
       reorderLevel: form.reorderLevel || "0",
       minimumStock: form.minimumStock || "0",
       maximumStock: form.maximumStock || "0",
       batchTracking: form.batchTracking,
       serialTracking: form.serialTracking,
     },
-    barcodes:
-      form.barcode.trim() ?
-        [{ barcode: form.barcode.trim(), isPrimary: true, status: "ACTIVE" }]
+    barcodes: form.barcode.trim()
+      ? [
+          {
+            barcode: form.barcode.trim(),
+            barcodeType: defaultBarcodeType,
+            isPrimary: true,
+            status: "ACTIVE",
+          },
+        ]
       : [],
-  }
+  };
 }
 
 function buildUpdatePayload(form: ProductFormState): UpdateProductPayload {
@@ -1910,18 +2019,193 @@ function buildUpdatePayload(form: ProductFormState): UpdateProductPayload {
     manufacturer: form.manufacturer.trim() || null,
     modelNumber: form.modelNumber.trim() || null,
     status: form.status,
+    imageIds: form.images.map((image) => image.id),
+  };
+}
+
+async function saveProductEdit(
+  productId: string,
+  form: ProductFormState,
+  product: ProductListItem | null | undefined,
+  accessToken: string,
+) {
+  let response = await updateProduct(
+    productId,
+    buildUpdatePayload(form),
+    accessToken,
+  );
+  const taxProfilePayload = buildTaxProfilePayload(form);
+  const unitProfilePayload = buildUnitProfilePayload(form);
+  const pricePayload = buildPricePayload(form);
+  const inventoryProfilePayload = buildInventoryProfilePayload(form);
+  const barcodePayload = buildBarcodePayload(form);
+
+  response = product?.activeTaxProfile
+    ? await updateProductTaxProfile(
+        productId,
+        product.activeTaxProfile.id,
+        taxProfilePayload,
+        accessToken,
+      )
+    : await createProductTaxProfile(productId, taxProfilePayload, accessToken);
+
+  response = product?.unitProfile
+    ? await updateProductUnitProfile(
+        productId,
+        product.unitProfile.id,
+        unitProfilePayload,
+        accessToken,
+      )
+    : await createProductUnitProfile(
+        productId,
+        unitProfilePayload,
+        accessToken,
+      );
+
+  response = product?.activePrice
+    ? await updateProductPriceProfile(
+        productId,
+        product.activePrice.id,
+        pricePayload,
+        accessToken,
+      )
+    : await createProductPriceProfile(productId, pricePayload, accessToken);
+
+  response = await updateProductInventoryProfile(
+    productId,
+    inventoryProfilePayload,
+    accessToken,
+  );
+
+  if (barcodePayload) {
+    response = product?.primaryBarcode
+      ? await updateProductBarcode(
+          productId,
+          product.primaryBarcode.id,
+          barcodePayload,
+          accessToken,
+        )
+      : await createProductBarcode(productId, barcodePayload, accessToken);
+  } else if (product?.primaryBarcode) {
+    response = await deleteProductBarcode(
+      productId,
+      product.primaryBarcode.id,
+      accessToken,
+    );
   }
+
+  return response;
+}
+
+function buildTaxProfilePayload(
+  form: ProductFormState,
+): NonNullable<CreateProductPayload["taxProfile"]> {
+  return {
+    taxability: form.taxability,
+    hsnSac: form.hsnSac.trim() || null,
+    gstRate: form.gstRate,
+    cessRuleId:
+      form.taxability === "TAXABLE" ? form.cessRuleId.trim() || null : null,
+    effectiveFrom: form.effectiveFrom,
+    effectiveTo: form.effectiveTo || null,
+    status: "ACTIVE",
+  };
+}
+
+function buildUnitProfilePayload(
+  form: ProductFormState,
+): NonNullable<CreateProductPayload["unitProfile"]> {
+  return {
+    baseUnit: form.baseUnit.trim().toUpperCase(),
+    gstUqc: form.gstUqc.trim().toUpperCase() || null,
+    conversionFactor: form.conversionFactor || "1",
+  };
+}
+
+function buildPricePayload(
+  form: ProductFormState,
+): NonNullable<CreateProductPayload["price"]> {
+  const finalRetailPrice = getProductTaxPreview(
+    form.price,
+    form.marginPercent,
+    form.gstRate,
+    form.taxMode,
+  ).finalRate.toFixed(2);
+
+  return {
+    priceType: "RETAIL",
+    price: finalRetailPrice,
+    marginPercent: form.marginPercent || "0",
+    taxMode: "INCLUSIVE",
+    currency: "INR",
+    minimumQuantity: "1",
+    effectiveFrom: form.effectiveFrom,
+    status: "ACTIVE",
+  };
+}
+
+function buildInventoryProfilePayload(
+  form: ProductFormState,
+): NonNullable<CreateProductPayload["inventoryProfile"]> {
+  return {
+    trackInventory: form.trackInventory,
+    defaultWarehouseId: form.trackInventory
+      ? form.defaultWarehouseId || null
+      : null,
+    reorderLevel: form.reorderLevel || "0",
+    minimumStock: form.minimumStock || "0",
+    maximumStock: form.maximumStock || "0",
+    batchTracking: form.batchTracking,
+    serialTracking: form.serialTracking,
+  };
+}
+
+function buildBarcodePayload(
+  form: ProductFormState,
+): NonNullable<CreateProductPayload["barcodes"]>[number] | null {
+  const barcode = form.barcode.trim();
+
+  if (!barcode) {
+    return null;
+  }
+
+  return {
+    barcode,
+    barcodeType: defaultBarcodeType,
+    isPrimary: true,
+    status: "ACTIVE",
+  };
+}
+
+function getEditableBasePrice(product: ProductListItem) {
+  const price = Number(product.activePrice?.price ?? 0);
+  const marginPercent = Number(getProductMarginPercent(product.activePrice));
+  const gstRate = Number(product.activeTaxProfile?.gstRate ?? 0);
+
+  if (!Number.isFinite(price) || price <= 0) {
+    return "0";
+  }
+
+  const marginDivisor =
+    1 + (Number.isFinite(marginPercent) ? marginPercent : 0) / 100;
+  const taxDivisor =
+    product.activePrice?.taxMode === "EXCLUSIVE"
+      ? 1 + (Number.isFinite(gstRate) ? gstRate : 0) / 100
+      : 1;
+  const basePrice = price / marginDivisor / taxDivisor;
+
+  return formatPlainDecimal(basePrice, 2);
 }
 
 function getProductTaxPreview(
   price: string,
   marginPercent: string,
   gstRate: string,
-  taxMode: "EXCLUSIVE" | "INCLUSIVE"
+  taxMode: "EXCLUSIVE" | "INCLUSIVE",
 ) {
-  const parsedPrice = Number(price || 0)
-  const parsedMargin = Number(marginPercent || 0)
-  const parsedGstRate = Number(gstRate || 0)
+  const parsedPrice = Number(price || 0);
+  const parsedMargin = Number(marginPercent || 0);
+  const parsedGstRate = Number(gstRate || 0);
 
   if (
     !Number.isFinite(parsedPrice) ||
@@ -1935,21 +2219,22 @@ function getProductTaxPreview(
       sgst: 0,
       igst: 0,
       finalRate: 0,
-    }
+    };
   }
 
-  const marginAmount = (parsedPrice * parsedMargin) / 100
-  const rateAfterMargin = parsedPrice + marginAmount
+  const marginAmount = (parsedPrice * parsedMargin) / 100;
+  const rateAfterMargin = parsedPrice + marginAmount;
   const taxableValue =
-    taxMode === "INCLUSIVE" && parsedGstRate > 0 ?
-      rateAfterMargin / (1 + parsedGstRate / 100)
-    : rateAfterMargin
+    taxMode === "INCLUSIVE" && parsedGstRate > 0
+      ? rateAfterMargin / (1 + parsedGstRate / 100)
+      : rateAfterMargin;
   const igst =
-    taxMode === "INCLUSIVE" ?
-      rateAfterMargin - taxableValue
-    : taxableValue * (parsedGstRate / 100)
-  const halfTax = igst / 2
-  const finalRate = taxMode === "INCLUSIVE" ? rateAfterMargin : taxableValue + igst
+    taxMode === "INCLUSIVE"
+      ? rateAfterMargin - taxableValue
+      : taxableValue * (parsedGstRate / 100);
+  const halfTax = igst / 2;
+  const finalRate =
+    taxMode === "INCLUSIVE" ? rateAfterMargin : taxableValue + igst;
 
   return {
     marginAmount,
@@ -1958,7 +2243,7 @@ function getProductTaxPreview(
     sgst: halfTax,
     igst,
     finalRate,
-  }
+  };
 }
 
 function formatCurrency(value: string | number) {
@@ -1966,7 +2251,46 @@ function formatCurrency(value: string | number) {
     style: "currency",
     currency: "INR",
     maximumFractionDigits: 2,
-  }).format(Number(value || 0))
+  }).format(Number(value || 0));
+}
+
+function formatCompactDecimal(
+  value: string | number | null | undefined,
+  maximumFractionDigits = 6,
+) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+
+  const number = Number(value ?? 0);
+
+  if (!Number.isFinite(number)) {
+    return "-";
+  }
+
+  return new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits,
+  }).format(number);
+}
+
+function formatPlainDecimal(value: number, maximumFractionDigits = 2) {
+  if (!Number.isFinite(value)) {
+    return "0";
+  }
+
+  return value.toFixed(maximumFractionDigits).replace(/\.?0+$/, "");
+}
+
+function formatPercent(value: string | number | null | undefined) {
+  const number = Number(value ?? 0);
+
+  if (!Number.isFinite(number)) {
+    return "-";
+  }
+
+  return `${new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: 2,
+  }).format(number)}%`;
 }
 
 function buildProductsCsv(products: ProductListItem[]) {
@@ -1979,7 +2303,7 @@ function buildProductsCsv(products: ProductListItem[]) {
       "HSN/SAC",
       "GST Rate",
       "Unit",
-      "Retail Price",
+      "Final Price",
       "Margin %",
       "Barcode",
       "Inventory",
@@ -1990,38 +2314,44 @@ function buildProductsCsv(products: ProductListItem[]) {
       itemTypeLabels[product.itemType],
       statusLabels[product.status],
       product.activeTaxProfile?.hsnSac ?? "",
-      product.activeTaxProfile?.gstRate ? `${product.activeTaxProfile.gstRate}%` : "",
+      product.activeTaxProfile?.gstRate
+        ? formatPercent(product.activeTaxProfile.gstRate)
+        : "",
       product.unitProfile?.baseUnit ?? "PCS",
       product.activePrice?.price ?? "0",
-      getProductMarginPercent(product.activePrice),
+      formatPercent(getProductMarginPercent(product.activePrice)),
       product.primaryBarcode?.barcode ?? "",
       product.inventoryProfile?.trackInventory ? "Tracked" : "Not tracked",
     ]),
-  ]
+  ];
 
-  return rows.map((row) => row.map(escapeCsvCell).join(",")).join("\r\n")
+  return rows.map((row) => row.map(escapeCsvCell).join(",")).join("\r\n");
 }
 
 function escapeCsvCell(value: string) {
-  const escaped = value.replaceAll('"', '""')
-  return /[",\r\n]/.test(escaped) ? `"${escaped}"` : escaped
+  const escaped = value.replaceAll('"', '""');
+  return /[",\r\n]/.test(escaped) ? `"${escaped}"` : escaped;
 }
 
-function downloadTextFile(fileName: string, content: string, contentType: string) {
-  const blob = new Blob([content], { type: contentType })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement("a")
-  anchor.href = url
-  anchor.download = fileName
-  anchor.click()
-  URL.revokeObjectURL(url)
+function downloadTextFile(
+  fileName: string,
+  content: string,
+  contentType: string,
+) {
+  const blob = new Blob([content], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 function printProductsPdf(products: ProductListItem[]) {
-  const printWindow = window.open("", "_blank", "noopener,noreferrer")
+  const printWindow = window.open("", "_blank", "noopener,noreferrer");
 
   if (!printWindow) {
-    return false
+    return false;
   }
 
   const rows = products
@@ -2032,14 +2362,14 @@ function printProductsPdf(products: ProductListItem[]) {
           <td>${escapeHtml(product.sku)}</td>
           <td>${escapeHtml(itemTypeLabels[product.itemType])}</td>
           <td>${escapeHtml(product.activeTaxProfile?.hsnSac ?? "-")}</td>
-          <td>${escapeHtml(product.activeTaxProfile?.gstRate ? `${product.activeTaxProfile.gstRate}%` : "-")}</td>
+          <td>${escapeHtml(product.activeTaxProfile?.gstRate ? formatPercent(product.activeTaxProfile.gstRate) : "-")}</td>
           <td>${escapeHtml(product.activePrice?.price ?? "0")}</td>
-          <td>${escapeHtml(getProductMarginPercent(product.activePrice))}%</td>
+          <td>${escapeHtml(formatPercent(getProductMarginPercent(product.activePrice)))}</td>
           <td>${escapeHtml(statusLabels[product.status])}</td>
         </tr>
-      `
+      `,
     )
-    .join("")
+    .join("");
 
   printWindow.document.write(`
     <!doctype html>
@@ -2066,7 +2396,7 @@ function printProductsPdf(products: ProductListItem[]) {
               <th>Type</th>
               <th>HSN/SAC</th>
               <th>GST</th>
-              <th>Retail price</th>
+              <th>Final price</th>
               <th>Margin</th>
               <th>Status</th>
             </tr>
@@ -2075,11 +2405,11 @@ function printProductsPdf(products: ProductListItem[]) {
         </table>
       </body>
     </html>
-  `)
-  printWindow.document.close()
-  printWindow.focus()
-  printWindow.print()
-  return true
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+  return true;
 }
 
 function escapeHtml(value: string) {
@@ -2088,5 +2418,5 @@ function escapeHtml(value: string) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;")
+    .replaceAll("'", "&#039;");
 }
