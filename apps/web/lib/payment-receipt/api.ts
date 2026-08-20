@@ -101,8 +101,11 @@ export type ReceivablePayableResponse = {
 
 export type AgingReportResponse = {
   entryType: "receivable" | "payable"
-  buckets: Array<{
-    bucket: "current" | "1_30" | "31_60" | "61_90" | "90_plus"
+  granularity: "day" | "month"
+  periods: Array<{
+    periodStart: string
+    periodEnd: string
+    label: string
     count: number
     outstanding: string
   }>

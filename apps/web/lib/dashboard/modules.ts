@@ -34,29 +34,19 @@ const featureCategories: SidebarFeatureCategory[] = [
     title: "Purchases",
     items: [
       { module: "purchases", title: "Purchases", url: "/purchases" },
-      { module: "purchases", title: "Purchase Returns", url: "/purchase-returns" },
-      { module: "purchases", title: "Debit Notes", url: "/debit-notes" },
       { module: "expenses", title: "Expenses", url: "#" },
     ],
   },
   {
     title: "Money",
-    items: [
-      { module: "accounting", title: "Receipts", url: "/receipts" },
-      { module: "accounting", title: "Payments", url: "/payments" },
-      { module: "accounting", title: "Receivables", url: "/receivables" },
-      { module: "accounting", title: "Payables", url: "/payables" },
-      { module: "accounting", title: "Payment Reports", url: "/payment-reports" },
-      {
-        module: "accounting",
-        title: "Bank Reconciliation",
-        url: "/bank-reconciliation",
-      },
-    ],
+    items: [{ module: "accounting", title: "Money", url: "/money" }],
   },
   {
     title: "Compliance",
-    items: [{ module: "gstr", title: "GST Returns", url: "#" }],
+    items: [
+      { module: "gstr", title: "GST Returns", url: "#" },
+      { module: "accounting", title: "Payment Reports", url: "/payment-reports" },
+    ],
   },
   {
     title: "Inventory",

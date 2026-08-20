@@ -149,6 +149,21 @@ type BankDocumentCandidate = {
   referenceNumber: string | null
 }
 
+type AgingGranularity = "day" | "month"
+
+type AgingReportEntryRow = {
+  periodDate: string
+  outstanding: string
+}
+
+type AgingReportPeriod = {
+  periodStart: string
+  periodEnd: string
+  label: string
+  count: number
+  outstanding: string
+}
+
 const customerAdvanceAccount = {
   accountCode: "2120",
   accountName: "Customer Advances",
@@ -1329,54 +1344,36 @@ async function listReceivablePayableEntries(
 }
 
 async function getAgingReport(businessId: string, query: AgingReportQueryInput) {
-  const rows = await sql<
-    Array<{ bucket: string; count: number; outstanding: string }>
-  >`
-    with open_entries as (
-      select
-        case
-          when entry.due_date is null or entry.due_date::date >= current_date then 'current'
-          when current_date - entry.due_date::date between 1 and 30 then '1_30'
-          when current_date - entry.due_date::date between 31 and 60 then '31_60'
-          when current_date - entry.due_date::date between 61 and 90 then '61_90'
-          else '90_plus'
-        end as bucket,
-        entry.outstanding_amount
-      from public.receivable_payable_entries entry
-      inner join public.vouchers voucher
-        on voucher.id = entry.voucher_id
-      where entry.business_id = ${businessId}
-        and entry.entry_type = ${query.entryType}
-        and entry.status in ('open', 'partially_settled')
-        and entry.outstanding_amount > 0
-        and (${query.from ?? null}::text is null or voucher.voucher_date >= ${query.from ?? null}::text)
-        and (${query.to ?? null}::text is null or voucher.voucher_date <= ${query.to ?? null}::text)
-    )
+  const rows = await sql<AgingReportEntryRow[]>`
     select
-      bucket,
-      count(*)::int as count,
-      coalesce(sum(outstanding_amount), 0)::text as outstanding
-    from open_entries
-    group by bucket
+      coalesce(entry.due_date, voucher.voucher_date)::date::text as "periodDate",
+      entry.outstanding_amount::text as outstanding
+    from public.receivable_payable_entries entry
+    inner join public.vouchers voucher
+      on voucher.id = entry.voucher_id
+    where entry.business_id = ${businessId}
+      and entry.entry_type = ${query.entryType}
+      and entry.status in ('open', 'partially_settled')
+      and entry.outstanding_amount > 0
+      and (${query.from ?? null}::text is null or coalesce(entry.due_date, voucher.voucher_date)::date >= ${query.from ?? null}::date)
+      and (${query.to ?? null}::text is null or coalesce(entry.due_date, voucher.voucher_date)::date <= ${query.to ?? null}::date)
+    order by coalesce(entry.due_date, voucher.voucher_date)::date asc
   `
-  const bucketOrder = ["current", "1_30", "31_60", "61_90", "90_plus"]
-  const byBucket = new Map(rows.map((row) => [row.bucket, row]))
-  const buckets = bucketOrder.map((bucket) => ({
-    bucket,
-    count: byBucket.get(bucket)?.count ?? 0,
-    outstanding: byBucket.get(bucket)?.outstanding ?? "0.00",
-  }))
-  const totalOutstanding = buckets.reduce(
-    (total, bucket) => total + toCents(bucket.outstanding),
+  const range = resolveAgingReportRange(query, rows)
+  const granularity = resolveAgingGranularity(range.from, range.to)
+  const periods = buildAgingReportPeriods(rows, range, granularity)
+  const totalOutstanding = periods.reduce(
+    (total, period) => total + toCents(period.outstanding),
     0
   )
 
   return {
     entryType: query.entryType,
-    buckets,
+    granularity,
+    periods,
     totals: {
       outstanding: formatCents(totalOutstanding),
-      count: buckets.reduce((total, bucket) => total + bucket.count, 0),
+      count: periods.reduce((total, period) => total + period.count, 0),
     },
   }
 }
@@ -1445,6 +1442,148 @@ async function getCashFlowReport(
       net: formatCents(receiptTotal - paymentTotal),
     },
   }
+}
+
+function resolveAgingReportRange(
+  query: AgingReportQueryInput,
+  rows: AgingReportEntryRow[]
+) {
+  const rowDates = rows
+    .map((row) => row.periodDate)
+    .filter(Boolean)
+    .sort()
+  const today = formatDateOnly(new Date())
+  const from = query.from ?? rowDates[0] ?? query.to ?? today
+  const to = query.to ?? rowDates[rowDates.length - 1] ?? query.from ?? today
+
+  return from <= to ? { from, to } : { from: to, to: from }
+}
+
+function resolveAgingGranularity(from: string, to: string): AgingGranularity {
+  return differenceInCalendarDays(from, to) <= 31 ? "day" : "month"
+}
+
+function buildAgingReportPeriods(
+  rows: AgingReportEntryRow[],
+  range: { from: string; to: string },
+  granularity: AgingGranularity
+): AgingReportPeriod[] {
+  const aggregateByPeriod = new Map<string, { count: number; outstandingCents: number }>()
+
+  for (const row of rows) {
+    const periodKey = getAgingPeriodKey(row.periodDate, granularity)
+    const current = aggregateByPeriod.get(periodKey) ?? {
+      count: 0,
+      outstandingCents: 0,
+    }
+
+    current.count += 1
+    current.outstandingCents += toCents(row.outstanding)
+    aggregateByPeriod.set(periodKey, current)
+  }
+
+  return getAgingPeriodKeys(range, granularity).map((periodKey) => {
+    const aggregate = aggregateByPeriod.get(periodKey)
+    const periodBounds = getAgingPeriodBounds(periodKey, range, granularity)
+
+    return {
+      periodStart: periodBounds.start,
+      periodEnd: periodBounds.end,
+      label: formatAgingPeriodLabel(periodKey, granularity),
+      count: aggregate?.count ?? 0,
+      outstanding: formatCents(aggregate?.outstandingCents ?? 0),
+    }
+  })
+}
+
+function getAgingPeriodKeys(
+  range: { from: string; to: string },
+  granularity: AgingGranularity
+) {
+  const keys: string[] = []
+  let cursor =
+    granularity === "day" ? parseDateOnly(range.from) : startOfMonth(parseDateOnly(range.from))
+  const end = parseDateOnly(range.to)
+
+  while (cursor <= end) {
+    keys.push(formatDateOnly(cursor))
+    cursor = granularity === "day" ? addDays(cursor, 1) : addMonths(cursor, 1)
+  }
+
+  return keys
+}
+
+function getAgingPeriodKey(dateValue: string, granularity: AgingGranularity) {
+  const date = parseDateOnly(dateValue)
+  return formatDateOnly(granularity === "day" ? date : startOfMonth(date))
+}
+
+function getAgingPeriodBounds(
+  periodKey: string,
+  range: { from: string; to: string },
+  granularity: AgingGranularity
+) {
+  if (granularity === "day") {
+    return { start: periodKey, end: periodKey }
+  }
+
+  const periodStart = parseDateOnly(periodKey)
+  const periodEnd = addDays(addMonths(periodStart, 1), -1)
+  const rangeStart = parseDateOnly(range.from)
+  const rangeEnd = parseDateOnly(range.to)
+
+  return {
+    start: formatDateOnly(periodStart < rangeStart ? rangeStart : periodStart),
+    end: formatDateOnly(periodEnd > rangeEnd ? rangeEnd : periodEnd),
+  }
+}
+
+function formatAgingPeriodLabel(periodKey: string, granularity: AgingGranularity) {
+  const date = parseDateOnly(periodKey)
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: granularity === "day" ? "2-digit" : undefined,
+    month: "short",
+    year: granularity === "month" ? "numeric" : undefined,
+    timeZone: "UTC",
+  }).format(date)
+}
+
+function differenceInCalendarDays(from: string, to: string) {
+  const fromTime = parseDateOnly(from).getTime()
+  const toTime = parseDateOnly(to).getTime()
+  const dayMs = 24 * 60 * 60 * 1000
+
+  return Math.abs(Math.round((toTime - fromTime) / dayMs)) + 1
+}
+
+function parseDateOnly(value: string) {
+  const [year = "0", month = "1", day = "1"] = value.split("-")
+  return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+}
+
+function formatDateOnly(date: Date) {
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0")
+  const day = String(date.getUTCDate()).padStart(2, "0")
+
+  return `${year}-${month}-${day}`
+}
+
+function addDays(date: Date, days: number) {
+  const nextDate = new Date(date)
+  nextDate.setUTCDate(nextDate.getUTCDate() + days)
+  return nextDate
+}
+
+function addMonths(date: Date, months: number) {
+  const nextDate = new Date(date)
+  nextDate.setUTCMonth(nextDate.getUTCMonth() + months)
+  return nextDate
+}
+
+function startOfMonth(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1))
 }
 
 async function listBankReconciliationItems(
@@ -1645,11 +1784,13 @@ async function exportAgingReport(
 
   return createCsvExport(
     `${query.entryType}-aging-${new Date().toISOString().slice(0, 10)}.csv`,
-    ["Bucket", "Count", "Outstanding"],
-    report.buckets.map((bucket) => [
-      bucket.bucket,
-      String(bucket.count),
-      bucket.outstanding,
+    ["Period", "Period Start", "Period End", "Count", "Outstanding"],
+    report.periods.map((period) => [
+      period.label,
+      period.periodStart,
+      period.periodEnd,
+      String(period.count),
+      period.outstanding,
     ])
   )
 }

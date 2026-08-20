@@ -53,6 +53,8 @@ const pathModuleMap: Array<{
   },
   {
     test: (pathname) =>
+      pathname === "/money" ||
+      pathname.startsWith("/money/") ||
       pathname === "/receipts" ||
       pathname.startsWith("/receipts/") ||
       pathname === "/payments" ||

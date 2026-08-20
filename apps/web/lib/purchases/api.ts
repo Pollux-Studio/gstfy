@@ -93,6 +93,7 @@ export async function listPurchaseBills(
   accessToken: string,
   filters: {
     search?: string
+    status?: PurchaseBillStatus
     page?: number
     limit?: number
   } = {}
@@ -101,6 +102,10 @@ export async function listPurchaseBills(
 
   if (filters.search?.trim()) {
     query.set("search", filters.search.trim())
+  }
+
+  if (filters.status) {
+    query.set("status", filters.status)
   }
 
   if (filters.page) {

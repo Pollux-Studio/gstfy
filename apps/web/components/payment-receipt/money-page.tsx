@@ -4,22 +4,30 @@ import * as React from "react"
 import Link from "next/link"
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
+  ArrowDownIcon,
   ArrowDownLeftIcon,
+  ArrowDownUpIcon,
+  ArrowLeftIcon,
+  ArrowUpIcon,
   ArrowUpRightIcon,
   BadgeIndianRupeeIcon,
   BanIcon,
   CalendarIcon,
   CreditCardIcon,
   DownloadIcon,
+  EyeIcon,
   LandmarkIcon,
+  MoreHorizontalIcon,
   PlusIcon,
   ReceiptTextIcon,
+  RotateCcwIcon,
   SearchIcon,
   Trash2Icon,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import {
   Dialog,
   DialogContent,
@@ -28,8 +36,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import {
   Select,
   SelectContent,
@@ -40,7 +68,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -76,9 +103,27 @@ import {
   type ReceivablePayableEntry,
   type UnallocatedTreatment,
 } from "@/lib/payment-receipt/api"
+import { cn } from "@/lib/utils"
 
 type MoneyMode = "receipt" | "payment"
 type OutstandingMode = "receivable" | "payable"
+type MoneyDocumentSortKey =
+  | "number"
+  | "party"
+  | "date"
+  | "method"
+  | "amount"
+  | "unallocated"
+  | "status"
+type OutstandingSortKey =
+  | "party"
+  | "voucher"
+  | "date"
+  | "original"
+  | "settled"
+  | "outstanding"
+  | "status"
+type SortDirection = "asc" | "desc"
 
 type MoneyFormState = {
   partyId: string
@@ -134,6 +179,12 @@ const outstandingStatusOptions = [
   { value: "partially_settled", label: "Part settled" },
   { value: "settled", label: "Settled" },
 ] as const
+const moneyDocumentTableClass =
+  "w-full table-fixed text-xs [&_td]:min-w-0 [&_td]:overflow-hidden [&_td]:px-2 [&_td]:py-2 [&_th]:h-8 [&_th]:min-w-0 [&_th]:px-2"
+const outstandingTableClass =
+  "w-full table-fixed text-xs [&_td]:min-w-0 [&_td]:overflow-hidden [&_td]:px-2 [&_td]:py-2 [&_th]:h-8 [&_th]:min-w-0 [&_th]:px-2"
+const stickyTableHeadClass =
+  "sticky top-0 z-20 bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/80"
 
 export function MoneyDocumentsPage({ mode }: { mode: MoneyMode }) {
   const accessToken = getStoredAuthSession()?.session.accessToken ?? ""
@@ -141,6 +192,8 @@ export function MoneyDocumentsPage({ mode }: { mode: MoneyMode }) {
   const [search, setSearch] = React.useState("")
   const [status, setStatus] = React.useState<(typeof statusOptions)[number]["value"]>("all")
   const [paymentMethod, setPaymentMethod] = React.useState<"all" | PaymentMethod>("all")
+  const [sortKey, setSortKey] = React.useState<MoneyDocumentSortKey>("date")
+  const [sortDirection, setSortDirection] = React.useState<SortDirection>("desc")
   const [createOpen, setCreateOpen] = React.useState(false)
   const [reversingDocument, setReversingDocument] = React.useState<MoneyDocument | null>(null)
   const [deletingDocument, setDeletingDocument] = React.useState<MoneyDocument | null>(null)
@@ -181,7 +234,59 @@ export function MoneyDocumentsPage({ mode }: { mode: MoneyMode }) {
     [documentsQuery.data?.pages]
   )
   const totalCount = documentsQuery.data?.pages[0]?.pagination.total ?? documents.length
+  const tableDocuments = documents
   const totals = React.useMemo(() => getDocumentTotals(documents), [documents])
+  const sortedDocuments = React.useMemo(() => {
+    return [...tableDocuments].sort((first, second) => {
+      const direction = sortDirection === "asc" ? 1 : -1
+
+      if (sortKey === "number") {
+        return (
+          getDocumentNumber(mode, first).localeCompare(
+            getDocumentNumber(mode, second),
+            undefined,
+            { sensitivity: "base" }
+          ) * direction
+        )
+      }
+
+      if (sortKey === "party") {
+        return (
+          first.partyNameSnapshot.localeCompare(second.partyNameSnapshot, undefined, {
+            sensitivity: "base",
+          }) * direction
+        )
+      }
+
+      if (sortKey === "date") {
+        return (
+          getDocumentDate(mode, first).localeCompare(getDocumentDate(mode, second)) *
+          direction
+        )
+      }
+
+      if (sortKey === "method") {
+        return (
+          paymentMethodLabel(first.paymentMethod).localeCompare(
+            paymentMethodLabel(second.paymentMethod),
+            undefined,
+            { sensitivity: "base" }
+          ) * direction
+        )
+      }
+
+      if (sortKey === "status") {
+        return first.status.localeCompare(second.status) * direction
+      }
+
+      const firstValue =
+        sortKey === "amount" ? first.amount : first.unallocatedAmount
+      const secondValue =
+        sortKey === "amount" ? second.amount : second.unallocatedAmount
+
+      return (Number(firstValue) - Number(secondValue)) * direction
+    })
+  }, [mode, sortDirection, sortKey, tableDocuments])
 
   const reverseMutation = useMutation({
     mutationFn: async (input: { id: string; reason: string }) => {
@@ -236,46 +341,60 @@ export function MoneyDocumentsPage({ mode }: { mode: MoneyMode }) {
     }
   }
 
+  function toggleSort(nextKey: MoneyDocumentSortKey) {
+    if (nextKey === sortKey) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"))
+      return
+    }
+
+    setSortKey(nextKey)
+    setSortDirection(nextKey === "date" ? "desc" : "asc")
+  }
+
   return (
     <main className="min-w-0 space-y-5 p-4 sm:p-6">
-      <MoneyHeader mode={mode} onCreate={() => setCreateOpen(true)} />
+      <Button
+        nativeButton={false}
+        render={<Link href="/money" />}
+        variant="ghost"
+        size="sm"
+        className="-ml-2 h-7 w-fit gap-1.5 text-muted-foreground"
+      >
+        <ArrowLeftIcon className="size-3.5" />
+        Back to Money overview
+      </Button>
 
-      <section className="grid gap-3 md:grid-cols-3">
-        <MetricCard
-          label={mode === "receipt" ? "Received" : "Paid"}
-          value={formatCurrency(totals.amount)}
-          icon={<BadgeIndianRupeeIcon className="size-4" />}
-        />
-        <MetricCard
-          label="Allocated"
-          value={formatCurrency(totals.allocated)}
-          icon={<ReceiptTextIcon className="size-4" />}
-        />
-        <MetricCard
-          label="Unallocated"
-          value={formatCurrency(totals.unallocated)}
-          icon={<LandmarkIcon className="size-4" />}
-        />
-      </section>
+      <MoneyHeader
+        mode={mode}
+        totals={totals}
+        loading={documentsQuery.isLoading}
+        onCreate={() => setCreateOpen(true)}
+      />
 
-      <section className="rounded-2xl border bg-card">
-        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="font-medium">
-              {mode === "receipt" ? "Receipt register" : "Payment register"}
+      <section className="overflow-hidden rounded-2xl border bg-card">
+        <div className="flex flex-col gap-3 border-b px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold">
+              {mode === "receipt" ? "Money in history" : "Money out history"}
             </h2>
-            <p className="text-sm text-muted-foreground">
-              Drafts can be edited. Posted entries affect accounting and allocations.
+            <p className="text-xs text-muted-foreground">
+              {mode === "receipt" ?
+                "Customer collections, allocations, and pending unapplied amounts."
+              : "Supplier payments, allocations, and pending unapplied amounts."}
             </p>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="relative">
               <SearchIcon className="absolute top-2 left-2.5 size-4 text-muted-foreground" />
               <Input
-                className="h-8 w-full pl-8 sm:w-64"
+                className="h-8 w-full pl-8 sm:w-72"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search number or party"
+                placeholder={
+                  mode === "receipt" ?
+                    "Search receipt or customer"
+                  : "Search payment or supplier"
+                }
               />
             </div>
             <Select
@@ -333,28 +452,81 @@ export function MoneyDocumentsPage({ mode }: { mode: MoneyMode }) {
 
         {documentsQuery.isLoading ? (
           <MoneyTableSkeleton />
-        ) : documents.length === 0 ? (
+        ) : tableDocuments.length === 0 ? (
           <EmptyMoneyState mode={mode} onCreate={() => setCreateOpen(true)} />
         ) : (
           <>
-            <div className="app-scrollbar max-h-[35rem] overflow-auto" onScroll={handleScroll}>
-              <Table>
+            <div className="app-scrollbar max-h-[28rem] overflow-auto" onScroll={handleScroll}>
+              <table data-slot="table" className={cn("caption-bottom", moneyDocumentTableClass)}>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Number</TableHead>
-                    <TableHead>Party</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Method</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead className="text-right">Unallocated</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
+                    <SortableMoneyHead
+                      label="Number"
+                      sortKey="number"
+                      activeSortKey={sortKey}
+                      sortDirection={sortDirection}
+                      className="w-[13%]"
+                      onSort={toggleSort}
+                    />
+                    <SortableMoneyHead
+                      label={mode === "receipt" ? "Customer" : "Supplier"}
+                      sortKey="party"
+                      activeSortKey={sortKey}
+                      sortDirection={sortDirection}
+                      className="w-[22%]"
+                      onSort={toggleSort}
+                    />
+                    <SortableMoneyHead
+                      label="Date"
+                      sortKey="date"
+                      activeSortKey={sortKey}
+                      sortDirection={sortDirection}
+                      className="w-[11%]"
+                      onSort={toggleSort}
+                    />
+                    <SortableMoneyHead
+                      label="Method"
+                      sortKey="method"
+                      activeSortKey={sortKey}
+                      sortDirection={sortDirection}
+                      className="w-[12%]"
+                      onSort={toggleSort}
+                    />
+                    <SortableMoneyHead
+                      label={mode === "receipt" ? "Received" : "Paid"}
+                      sortKey="amount"
+                      activeSortKey={sortKey}
+                      sortDirection={sortDirection}
+                      className="w-[12%] text-right"
+                      align="right"
+                      onSort={toggleSort}
+                    />
+                    <SortableMoneyHead
+                      label="Unallocated"
+                      sortKey="unallocated"
+                      activeSortKey={sortKey}
+                      sortDirection={sortDirection}
+                      className="w-[12%] text-right"
+                      align="right"
+                      onSort={toggleSort}
+                    />
+                    <SortableMoneyHead
+                      label="Status"
+                      sortKey="status"
+                      activeSortKey={sortKey}
+                      sortDirection={sortDirection}
+                      className="w-[9%]"
+                      onSort={toggleSort}
+                    />
+                    <TableHead className={cn(stickyTableHeadClass, "w-[9%] pr-3 text-right")}>
+                      Action
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {documents.map((document) => (
+                  {sortedDocuments.map((document) => (
                     <TableRow key={document.id}>
-                      <TableCell className="font-mono text-xs">
+                      <TableCell className="w-[13%] font-mono text-[11px]">
                         <Link
                           className="underline-offset-4 hover:underline"
                           href={`/${mode === "receipt" ? "receipts" : "payments"}/${document.id}`}
@@ -362,59 +534,95 @@ export function MoneyDocumentsPage({ mode }: { mode: MoneyMode }) {
                           {getDocumentNumber(mode, document)}
                         </Link>
                       </TableCell>
-                      <TableCell>
-                        <div className="max-w-[220px] truncate font-medium">
+                      <TableCell className="w-[22%]">
+                        <div className="truncate font-medium">
                           {document.partyNameSnapshot}
                         </div>
-                        <div className="text-xs text-muted-foreground">
+                        <div className="truncate text-[11px] text-muted-foreground">
                           {document.referenceNumber || "No reference"}
                         </div>
                       </TableCell>
-                      <TableCell>{formatDate(getDocumentDate(mode, document))}</TableCell>
-                      <TableCell>{paymentMethodLabel(document.paymentMethod)}</TableCell>
-                      <AmountCell value={document.amount} />
-                      <AmountCell value={document.unallocatedAmount} />
-                      <TableCell>
+                      <TableCell className="w-[11%]">{formatDate(getDocumentDate(mode, document))}</TableCell>
+                      <TableCell className="w-[12%]">{paymentMethodLabel(document.paymentMethod)}</TableCell>
+                      <AmountCell
+                        value={document.amount}
+                        className={mode === "receipt" ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}
+                      />
+                      <AmountCell
+                        value={document.unallocatedAmount}
+                        className={
+                          Number(document.unallocatedAmount) > 0 ?
+                            "text-amber-700 dark:text-amber-300"
+                          : "text-muted-foreground"
+                        }
+                      />
+                      <TableCell className="w-[9%]">
                         <MoneyStatusBadge status={document.status} />
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Link
-                            className="inline-flex h-8 items-center rounded-md px-2 text-sm hover:bg-muted"
-                            href={`/${mode === "receipt" ? "receipts" : "payments"}/${document.id}`}
+                      <TableCell className="w-[9%] pr-3 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                className="ml-auto aria-expanded:bg-muted"
+                              />
+                            }
                           >
-                            View
-                          </Link>
-                          {document.status === "draft" ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setDeletingDocument(document)}
+                            <MoreHorizontalIcon className="size-4" />
+                            <span className="sr-only">
+                              Open {mode} actions for {getDocumentNumber(mode, document)}
+                            </span>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" sideOffset={8} className="w-40">
+                            <DropdownMenuItem
+                              render={
+                                <Link
+                                  href={`/${mode === "receipt" ? "receipts" : "payments"}/${document.id}`}
+                                />
+                              }
                             >
-                              Delete
-                            </Button>
-                          ) : document.status === "posted" ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setReversingDocument(document)}
-                            >
-                              Reverse
-                            </Button>
-                          ) : null}
-                        </div>
+                              <EyeIcon className="text-muted-foreground" />
+                              <span>View</span>
+                            </DropdownMenuItem>
+                            {document.status === "draft" ? (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => setDeletingDocument(document)}
+                                >
+                                  <Trash2Icon className="text-muted-foreground" />
+                                  <span>Delete</span>
+                                </DropdownMenuItem>
+                              </>
+                            ) : null}
+                            {document.status === "posted" ? (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onClick={() => setReversingDocument(document)}
+                                >
+                                  <RotateCcwIcon className="text-muted-foreground" />
+                                  <span>Reverse</span>
+                                </DropdownMenuItem>
+                              </>
+                            ) : null}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
+              </table>
             </div>
             <ListFooter
               loading={documentsQuery.isFetchingNextPage}
               hasMore={Boolean(documentsQuery.hasNextPage)}
-              loaded={documents.length}
+              loaded={tableDocuments.length}
               total={totalCount}
               noun={mode === "receipt" ? "receipts" : "payments"}
             />
@@ -530,6 +738,8 @@ export function OutstandingPage({ mode }: { mode: OutstandingMode }) {
   const [search, setSearch] = React.useState("")
   const [status, setStatus] =
     React.useState<(typeof outstandingStatusOptions)[number]["value"]>("all")
+  const [sortKey, setSortKey] = React.useState<OutstandingSortKey>("date")
+  const [sortDirection, setSortDirection] = React.useState<SortDirection>("desc")
   const [prefill, setPrefill] =
     React.useState<{ partyId: string; entry: ReceivablePayableEntry } | null>(null)
 
@@ -555,9 +765,52 @@ export function OutstandingPage({ mode }: { mode: OutstandingMode }) {
     enabled: accessToken.length > 0,
   })
 
-  const entries = entriesQuery.data?.pages.flatMap((page) => page.entries) ?? []
+  const entries = React.useMemo(
+    () => entriesQuery.data?.pages.flatMap((page) => page.entries) ?? [],
+    [entriesQuery.data?.pages]
+  )
   const firstPage = entriesQuery.data?.pages[0]
   const totalCount = firstPage?.pagination.total ?? entries.length
+  const sortedEntries = React.useMemo(() => {
+    return [...entries].sort((first, second) => {
+      const direction = sortDirection === "asc" ? 1 : -1
+
+      if (sortKey === "party") {
+        return (
+          first.partyNameSnapshot.localeCompare(second.partyNameSnapshot, undefined, {
+            sensitivity: "base",
+          }) * direction
+        )
+      }
+
+      if (sortKey === "voucher") {
+        return (
+          first.voucherNumber.localeCompare(second.voucherNumber, undefined, {
+            sensitivity: "base",
+          }) * direction
+        )
+      }
+
+      if (sortKey === "date") {
+        return first.voucherDate.localeCompare(second.voucherDate) * direction
+      }
+
+      if (sortKey === "status") {
+        return first.status.localeCompare(second.status) * direction
+      }
+
+      const firstValue =
+        sortKey === "original" ? first.originalAmount
+        : sortKey === "settled" ? first.settledAmount
+        : first.outstandingAmount
+      const secondValue =
+        sortKey === "original" ? second.originalAmount
+        : sortKey === "settled" ? second.settledAmount
+        : second.outstandingAmount
+
+      return (Number(firstValue) - Number(secondValue)) * direction
+    })
+  }, [entries, sortDirection, sortKey])
   const exportMutation = useMutation({
     mutationFn: () =>
       mode === "receivable" ?
@@ -578,27 +831,38 @@ export function OutstandingPage({ mode }: { mode: OutstandingMode }) {
     }
   }
 
+  function toggleSort(nextKey: OutstandingSortKey) {
+    if (nextKey === sortKey) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"))
+      return
+    }
+
+    setSortKey(nextKey)
+    setSortDirection(nextKey === "date" || nextKey === "outstanding" ? "desc" : "asc")
+  }
+
   return (
     <main className="min-w-0 space-y-5 p-4 sm:p-6">
-      <OutstandingHeader mode={mode} />
+      <Button
+        nativeButton={false}
+        render={<Link href="/money" />}
+        variant="ghost"
+        size="sm"
+        className="-ml-2 h-7 w-fit gap-1.5 text-muted-foreground"
+      >
+        <ArrowLeftIcon className="size-3.5" />
+        Back to Money overview
+      </Button>
 
-      <section className="grid gap-3 md:grid-cols-3">
-        <MetricCard
-          label="Original"
-          value={formatCurrency(firstPage?.totals.original ?? "0")}
-          icon={<ReceiptTextIcon className="size-4" />}
-        />
-        <MetricCard
-          label="Settled"
-          value={formatCurrency(firstPage?.totals.settled ?? "0")}
-          icon={<BadgeIndianRupeeIcon className="size-4" />}
-        />
-        <MetricCard
-          label="Outstanding"
-          value={formatCurrency(firstPage?.totals.outstanding ?? "0")}
-          icon={<LandmarkIcon className="size-4" />}
-        />
-      </section>
+      <OutstandingHeader
+        mode={mode}
+        totals={{
+          original: firstPage?.totals.original ?? "0",
+          settled: firstPage?.totals.settled ?? "0",
+          outstanding: firstPage?.totals.outstanding ?? "0",
+        }}
+        loading={entriesQuery.isLoading}
+      />
 
       <section className="rounded-2xl border bg-card">
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -656,61 +920,152 @@ export function OutstandingPage({ mode }: { mode: OutstandingMode }) {
         {entriesQuery.isLoading ? (
           <MoneyTableSkeleton />
         ) : entries.length === 0 ? (
-          <div className="p-10 text-center text-sm text-muted-foreground">
-            No {mode === "receivable" ? "receivables" : "payables"} found.
-          </div>
+          <EmptyOutstandingState mode={mode} />
         ) : (
           <>
-            <div className="app-scrollbar max-h-[35rem] overflow-auto" onScroll={handleScroll}>
-              <Table>
+            <div className="app-scrollbar max-h-[28rem] overflow-auto" onScroll={handleScroll}>
+              <table data-slot="table" className={cn("caption-bottom", outstandingTableClass)}>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Party</TableHead>
-                    <TableHead>Voucher</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Original</TableHead>
-                    <TableHead className="text-right">Settled</TableHead>
-                    <TableHead className="text-right">Outstanding</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
+                    <SortableOutstandingHead
+                      label="Party"
+                      sortKey="party"
+                      activeSortKey={sortKey}
+                      sortDirection={sortDirection}
+                      className="w-[24%]"
+                      onSort={toggleSort}
+                    />
+                    <SortableOutstandingHead
+                      label="Voucher"
+                      sortKey="voucher"
+                      activeSortKey={sortKey}
+                      sortDirection={sortDirection}
+                      className="w-[15%]"
+                      onSort={toggleSort}
+                    />
+                    <SortableOutstandingHead
+                      label="Date"
+                      sortKey="date"
+                      activeSortKey={sortKey}
+                      sortDirection={sortDirection}
+                      className="w-[11%]"
+                      onSort={toggleSort}
+                    />
+                    <SortableOutstandingHead
+                      label="Original"
+                      sortKey="original"
+                      activeSortKey={sortKey}
+                      sortDirection={sortDirection}
+                      className="w-[12%] text-right"
+                      align="right"
+                      onSort={toggleSort}
+                    />
+                    <SortableOutstandingHead
+                      label="Settled"
+                      sortKey="settled"
+                      activeSortKey={sortKey}
+                      sortDirection={sortDirection}
+                      className="w-[12%] text-right"
+                      align="right"
+                      onSort={toggleSort}
+                    />
+                    <SortableOutstandingHead
+                      label="Outstanding"
+                      sortKey="outstanding"
+                      activeSortKey={sortKey}
+                      sortDirection={sortDirection}
+                      className="w-[13%] text-right"
+                      align="right"
+                      onSort={toggleSort}
+                    />
+                    <SortableOutstandingHead
+                      label="Status"
+                      sortKey="status"
+                      activeSortKey={sortKey}
+                      sortDirection={sortDirection}
+                      className="w-[8%]"
+                      onSort={toggleSort}
+                    />
+                    <TableHead className={cn(stickyTableHeadClass, "w-[5%] pr-3 text-right")}>
+                      Action
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {entries.map((entry) => (
+                  {sortedEntries.map((entry) => (
                     <TableRow key={entry.id}>
-                      <TableCell>
-                        <div className="max-w-[240px] truncate font-medium">
+                      <TableCell className="w-[24%]">
+                        <div className="truncate font-medium">
                           {entry.partyNameSnapshot}
                         </div>
+                        <div className="truncate text-[11px] text-muted-foreground">
+                          {mode === "receivable" ? "Customer due" : "Supplier due"}
+                        </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="font-mono text-xs">{entry.voucherNumber}</div>
-                        <div className="text-xs text-muted-foreground">{entry.voucherType}</div>
+                      <TableCell className="w-[15%]">
+                        <div className="truncate font-mono text-[11px]">{entry.voucherNumber}</div>
+                        <div className="truncate text-[11px] text-muted-foreground">{entry.voucherType}</div>
                       </TableCell>
-                      <TableCell>{formatDate(entry.voucherDate)}</TableCell>
-                      <AmountCell value={entry.originalAmount} />
-                      <AmountCell value={entry.settledAmount} />
-                      <AmountCell value={entry.outstandingAmount} />
-                      <TableCell>
+                      <TableCell className="w-[11%]">{formatDate(entry.voucherDate)}</TableCell>
+                      <OutstandingAmountCell
+                        value={entry.originalAmount}
+                        className="w-[12%] text-muted-foreground"
+                      />
+                      <OutstandingAmountCell
+                        value={entry.settledAmount}
+                        className={
+                          mode === "receivable" ?
+                            "w-[12%] text-emerald-700 dark:text-emerald-300"
+                          : "w-[12%] text-red-700 dark:text-red-300"
+                        }
+                      />
+                      <OutstandingAmountCell
+                        value={entry.outstandingAmount}
+                        className={
+                          Number(entry.outstandingAmount) > 0 ?
+                            "w-[13%] text-amber-700 dark:text-amber-300"
+                          : "w-[13%] text-muted-foreground"
+                        }
+                      />
+                      <TableCell className="w-[8%]">
                         <OutstandingStatusBadge status={entry.status} />
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          disabled={!entry.partyId || Number(entry.outstandingAmount) <= 0}
-                          onClick={() =>
-                            entry.partyId && setPrefill({ partyId: entry.partyId, entry })
-                          }
-                        >
-                          {mode === "receivable" ? "Receive" : "Pay"}
-                        </Button>
+                      <TableCell className="w-[5%] pr-3 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                className="ml-auto aria-expanded:bg-muted"
+                              />
+                            }
+                          >
+                            <MoreHorizontalIcon className="size-4" />
+                            <span className="sr-only">
+                              Open {mode} action for {entry.voucherNumber}
+                            </span>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" sideOffset={8} className="w-44">
+                            <DropdownMenuItem
+                              disabled={!entry.partyId || Number(entry.outstandingAmount) <= 0}
+                              onClick={() =>
+                                entry.partyId && setPrefill({ partyId: entry.partyId, entry })
+                              }
+                            >
+                              {mode === "receivable" ?
+                                <ArrowDownLeftIcon className="text-muted-foreground" />
+                              : <ArrowUpRightIcon className="text-muted-foreground" />}
+                              <span>{mode === "receivable" ? "Record receipt" : "Record payment"}</span>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
+              </table>
             </div>
             <ListFooter
               loading={entriesQuery.isFetchingNextPage}
@@ -923,14 +1278,11 @@ function MoneyCreateDialog({
             </Select>
           </Field>
 
-          <Field>
-            <FieldLabel>Date</FieldLabel>
-            <Input
-              type="date"
-              value={form.documentDate}
-              onChange={(event) => updateForm("documentDate", event.target.value)}
-            />
-          </Field>
+          <MoneyDatePicker
+            label={mode === "receipt" ? "Receipt date" : "Payment date"}
+            value={form.documentDate}
+            onChange={(value) => updateForm("documentDate", value)}
+          />
 
           <Field>
             <FieldLabel>Method</FieldLabel>
@@ -1066,7 +1418,7 @@ function MoneyCreateDialog({
             onClick={() => createAndPostMutation.mutate()}
           >
             {createAndPostMutation.isPending ? <Spinner className="size-4" /> : null}
-            Create & post
+            {mode === "receipt" ? "Record receipt" : "Record payment"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1074,79 +1426,280 @@ function MoneyCreateDialog({
   )
 }
 
-function MoneyHeader({ mode, onCreate }: { mode: MoneyMode; onCreate: () => void }) {
-  const isReceipt = mode === "receipt"
-
-  return (
-    <section className="rounded-2xl border bg-card p-5">
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-2">
-          <Badge variant="outline" className="gap-1.5">
-            {isReceipt ? <ArrowDownLeftIcon className="size-3.5" /> : <ArrowUpRightIcon className="size-3.5" />}
-            {isReceipt ? "Customer money in" : "Supplier money out"}
-          </Badge>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {isReceipt ? "Receipts" : "Payments"}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {isReceipt ?
-                "Record money received and settle customer invoices."
-              : "Record money paid and settle supplier bills."}
-            </p>
-          </div>
-        </div>
-        <Button onClick={onCreate}>
-          <PlusIcon className="size-4" />
-          {isReceipt ? "New receipt" : "New payment"}
-        </Button>
-      </div>
-    </section>
-  )
-}
-
-function OutstandingHeader({ mode }: { mode: OutstandingMode }) {
-  const isReceivable = mode === "receivable"
-
-  return (
-    <section className="rounded-2xl border bg-card p-5">
-      <div className="space-y-2">
-        <Badge variant="outline" className="gap-1.5">
-          <CalendarIcon className="size-3.5" />
-          {isReceivable ? "Customer collection queue" : "Supplier payment queue"}
-        </Badge>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {isReceivable ? "Receivables" : "Payables"}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {isReceivable ?
-              "Track open customer balances created by posted sales."
-            : "Track open supplier balances created by posted purchases."}
-          </p>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function MetricCard({
+function MoneyDatePicker({
   label,
   value,
-  icon,
+  onChange,
 }: {
   label: string
   value: string
+  onChange: (value: string) => void
+}) {
+  const [open, setOpen] = React.useState(false)
+  const selectedDate = parseDateValue(value)
+
+  return (
+    <Field>
+      <FieldLabel>{label}</FieldLabel>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          type="button"
+          className={cn(
+            "flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 dark:bg-input/30 dark:hover:bg-input/50",
+            !value && "text-muted-foreground"
+          )}
+        >
+          <span className="truncate">
+            {value ? formatDate(value) : "Choose date"}
+          </span>
+          <CalendarIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            captionLayout="dropdown"
+            onSelect={(date) => {
+              if (!date) {
+                return
+              }
+
+              onChange(formatDateForInput(date))
+              setOpen(false)
+            }}
+          />
+        </PopoverContent>
+      </Popover>
+    </Field>
+  )
+}
+
+function MoneyHeader({
+  mode,
+  totals,
+  loading,
+  onCreate,
+}: {
+  mode: MoneyMode
+  totals: { amount: number; allocated: number; unallocated: number }
+  loading: boolean
+  onCreate: () => void
+}) {
+  const isReceipt = mode === "receipt"
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border bg-card text-card-foreground">
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_26rem]">
+        <div className="p-4 sm:p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="gap-1.5 bg-background">
+              {isReceipt ?
+                <ArrowDownLeftIcon className="size-3.5" />
+              : <ArrowUpRightIcon className="size-3.5" />}
+              {isReceipt ? "Money in" : "Money out"}
+            </Badge>
+            <Badge
+              variant="outline"
+              className={cn(
+                "gap-1.5",
+                isReceipt ?
+                  "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+              )}
+            >
+              <span className="size-1.5 rounded-full bg-current" />
+              {isReceipt ? "Customer collections" : "Supplier payments"}
+            </Badge>
+          </div>
+          <div className="mt-3 max-w-2xl space-y-1.5">
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+              {isReceipt ? "Money in" : "Money out"}
+            </h1>
+            <p className="max-w-xl text-sm leading-5 text-muted-foreground">
+              {isReceipt ?
+                "Track customer payments received against sales invoices and keep unapplied money visible."
+              : "Track supplier payments made against purchase bills and keep unapplied money visible."}
+            </p>
+            <Button
+              onClick={onCreate}
+              className={cn(
+                "mt-3 h-8 w-fit gap-2",
+                isReceipt && "bg-blue-600 text-white hover:bg-blue-700"
+              )}
+            >
+              <PlusIcon className="size-4" />
+              {isReceipt ? "New receipt" : "New payment"}
+            </Button>
+          </div>
+        </div>
+        <div className="border-t border-border bg-muted/10 p-4 sm:p-5 lg:border-l lg:border-t-0">
+          <div className="grid gap-2">
+            <MoneyOverviewMetric
+              label={isReceipt ? "Received" : "Paid"}
+              value={formatCurrency(totals.amount)}
+              loading={loading}
+              tone={isReceipt ? "positive" : "danger"}
+              icon={<BadgeIndianRupeeIcon className="size-4" />}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <MoneyOverviewMetric
+                label="Allocated"
+                value={formatCurrency(totals.allocated)}
+                loading={loading}
+                tone="info"
+                icon={<ReceiptTextIcon className="size-4" />}
+                compact
+              />
+              <MoneyOverviewMetric
+                label="Unallocated"
+                value={formatCurrency(totals.unallocated)}
+                loading={loading}
+                tone="warning"
+                icon={<LandmarkIcon className="size-4" />}
+                compact
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function MoneyOverviewMetric({
+  label,
+  value,
+  loading,
+  tone,
+  icon,
+  compact = false,
+}: {
+  label: string
+  value: string
+  loading: boolean
+  tone: "positive" | "danger" | "warning" | "info"
   icon: React.ReactNode
+  compact?: boolean
 }) {
   return (
-    <div className="rounded-2xl border bg-card p-4">
+    <div
+      className={cn(
+        "rounded-2xl border bg-background p-3",
+        tone === "positive" && "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/60 dark:bg-emerald-950/20",
+        tone === "danger" && "border-red-200 bg-red-50/60 dark:border-red-900/60 dark:bg-red-950/20",
+        tone === "warning" && "border-amber-200 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/20",
+        tone === "info" && "border-blue-200 bg-blue-50/60 dark:border-blue-900/60 dark:bg-blue-950/20"
+      )}
+    >
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">{label}</p>
-        <span className="rounded-full bg-muted p-2 text-muted-foreground">{icon}</span>
+        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+        <span
+          className={cn(
+            "rounded-full border bg-background p-1.5",
+            tone === "positive" && "text-emerald-700 dark:text-emerald-300",
+            tone === "danger" && "text-red-700 dark:text-red-300",
+            tone === "warning" && "text-amber-700 dark:text-amber-300",
+            tone === "info" && "text-blue-700 dark:text-blue-300"
+          )}
+        >
+          {icon}
+        </span>
       </div>
-      <p className="mt-3 font-mono text-2xl font-semibold">{value}</p>
+      {loading ?
+        <Skeleton className={cn("mt-2 h-5", compact ? "w-20" : "w-28")} />
+      : <p
+          className={cn(
+            "mt-2 truncate font-mono font-semibold",
+            compact ? "text-sm" : "text-lg",
+            tone === "positive" && "text-emerald-700 dark:text-emerald-300",
+            tone === "danger" && "text-red-700 dark:text-red-300",
+            tone === "warning" && "text-amber-700 dark:text-amber-300",
+            tone === "info" && "text-blue-700 dark:text-blue-300"
+          )}
+        >
+          {value}
+        </p>}
     </div>
+  )
+}
+
+function OutstandingHeader({
+  mode,
+  totals,
+  loading,
+}: {
+  mode: OutstandingMode
+  totals: { original: string; settled: string; outstanding: string }
+  loading: boolean
+}) {
+  const isReceivable = mode === "receivable"
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border bg-card text-card-foreground">
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_26rem]">
+        <div className="p-4 sm:p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="gap-1.5 bg-background">
+              {isReceivable ?
+                <ArrowDownLeftIcon className="size-3.5" />
+              : <ArrowUpRightIcon className="size-3.5" />}
+              {isReceivable ? "Receivables" : "Payables"}
+            </Badge>
+            <Badge
+              variant="outline"
+              className={cn(
+                "gap-1.5",
+                isReceivable ?
+                  "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+                : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+              )}
+            >
+              <span className="size-1.5 rounded-full bg-current" />
+              {isReceivable ? "Customer dues" : "Supplier dues"}
+            </Badge>
+          </div>
+          <div className="mt-3 max-w-2xl space-y-1.5">
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+              {isReceivable ? "Receivables" : "Payables"}
+            </h1>
+            <p className="max-w-xl text-sm leading-5 text-muted-foreground">
+              {isReceivable ?
+                "Track unpaid customer invoices, part payments, and pending collection work."
+              : "Track unpaid supplier bills, part payments, and pending payout work."}
+            </p>
+          </div>
+        </div>
+        <div className="border-t border-border bg-muted/10 p-4 sm:p-5 lg:border-l lg:border-t-0">
+          <div className="grid gap-2">
+            <MoneyOverviewMetric
+              label="Original"
+              value={formatCurrency(totals.original)}
+              loading={loading}
+              tone="info"
+              icon={<ReceiptTextIcon className="size-4" />}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <MoneyOverviewMetric
+                label="Settled"
+                value={formatCurrency(totals.settled)}
+                loading={loading}
+                tone={isReceivable ? "positive" : "danger"}
+                icon={<BadgeIndianRupeeIcon className="size-4" />}
+                compact
+              />
+              <MoneyOverviewMetric
+                label="Outstanding"
+                value={formatCurrency(totals.outstanding)}
+                loading={loading}
+                tone="warning"
+                icon={<LandmarkIcon className="size-4" />}
+                compact
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -1162,32 +1715,67 @@ function MoneyStatusBadge({ status }: { status: MoneyDocument["status"] }) {
 }
 
 function OutstandingStatusBadge({ status }: { status: string }) {
-  const isOpen = status === "open" || status === "partially_settled"
+  const statusClassName =
+    status === "open" ?
+      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+    : status === "partially_settled" ?
+      "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+    : status === "settled" ?
+      "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300"
+    : status === "cancelled" ?
+      "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+    : "border-border bg-muted/40 text-muted-foreground"
 
   return (
-    <Badge variant={isOpen ? "outline" : "default"} className="capitalize">
+    <Badge variant="outline" className={cn("capitalize", statusClassName)}>
       {status.replaceAll("_", " ")}
     </Badge>
   )
 }
 
 function EmptyMoneyState({ mode, onCreate }: { mode: MoneyMode; onCreate: () => void }) {
+  const isReceipt = mode === "receipt"
+
   return (
-    <div className="flex flex-col items-center gap-3 p-10 text-center">
-      <div className="rounded-full bg-muted p-3 text-muted-foreground">
-        <CreditCardIcon className="size-5" />
-      </div>
-      <div>
-        <p className="font-medium">No {mode === "receipt" ? "receipts" : "payments"} yet</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Create one when money actually moves. Allocation can happen during posting.
-        </p>
-      </div>
-      <Button onClick={onCreate}>
-        <PlusIcon className="size-4" />
-        Create {mode}
-      </Button>
-    </div>
+    <Empty className="min-h-[22rem] border-0 p-6">
+      <EmptyHeader>
+        <EmptyMedia variant="icon" className="text-muted-foreground">
+          <CreditCardIcon className="size-4" />
+        </EmptyMedia>
+        <EmptyTitle>No {isReceipt ? "receipts" : "payments"} yet</EmptyTitle>
+        <EmptyDescription>
+          {isReceipt ?
+            "Record customer money received and allocate it to open invoices, advances, or unapplied receipts."
+          : "Record supplier money paid and allocate it to open bills, advances, or unapplied payments."}
+        </EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button onClick={onCreate} className={isReceipt ? "bg-blue-600 text-white hover:bg-blue-700" : undefined}>
+          <PlusIcon className="size-4" />
+          {isReceipt ? "Record receipt" : "Record payment"}
+        </Button>
+      </EmptyContent>
+    </Empty>
+  )
+}
+
+function EmptyOutstandingState({ mode }: { mode: OutstandingMode }) {
+  const isReceivable = mode === "receivable"
+
+  return (
+    <Empty className="min-h-[22rem] border-0 p-6">
+      <EmptyHeader>
+        <EmptyMedia variant="icon" className="text-muted-foreground">
+          <LandmarkIcon className="size-4" />
+        </EmptyMedia>
+        <EmptyTitle>No {isReceivable ? "receivables" : "payables"} found</EmptyTitle>
+        <EmptyDescription>
+          {isReceivable ?
+            "Receivables appear automatically when posted sales invoices still have customer dues."
+          : "Payables appear automatically when posted purchase bills still have supplier dues."}
+        </EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   )
 }
 
@@ -1232,8 +1820,108 @@ function ListFooter({
   )
 }
 
-function AmountCell({ value }: { value: string }) {
-  return <TableCell className="text-right font-mono tabular-nums">{formatCurrency(value)}</TableCell>
+function SortableOutstandingHead({
+  label,
+  sortKey,
+  activeSortKey,
+  sortDirection,
+  align = "left",
+  className,
+  onSort,
+}: {
+  label: string
+  sortKey: OutstandingSortKey
+  activeSortKey: OutstandingSortKey
+  sortDirection: SortDirection
+  align?: "left" | "right"
+  className?: string
+  onSort: (sortKey: OutstandingSortKey) => void
+}) {
+  const isActive = sortKey === activeSortKey
+  const Icon =
+    isActive ? (sortDirection === "asc" ? ArrowUpIcon : ArrowDownIcon) : ArrowDownUpIcon
+
+  return (
+    <TableHead className={cn(stickyTableHeadClass, className)}>
+      <button
+        type="button"
+        className={cn(
+          "inline-flex max-w-full items-center gap-1 rounded-md transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          align === "right" && "ml-auto justify-end text-right",
+          isActive ? "text-primary" : "text-foreground"
+        )}
+        onClick={() => onSort(sortKey)}
+      >
+        <span className="truncate">{label}</span>
+        <Icon
+          className={cn(
+            "size-3 shrink-0",
+            !isActive && "text-muted-foreground/70"
+          )}
+        />
+      </button>
+    </TableHead>
+  )
+}
+
+function SortableMoneyHead({
+  label,
+  sortKey,
+  activeSortKey,
+  sortDirection,
+  align = "left",
+  className,
+  onSort,
+}: {
+  label: string
+  sortKey: MoneyDocumentSortKey
+  activeSortKey: MoneyDocumentSortKey
+  sortDirection: SortDirection
+  align?: "left" | "right"
+  className?: string
+  onSort: (sortKey: MoneyDocumentSortKey) => void
+}) {
+  const isActive = sortKey === activeSortKey
+  const Icon =
+    isActive ? (sortDirection === "asc" ? ArrowUpIcon : ArrowDownIcon) : ArrowDownUpIcon
+
+  return (
+    <TableHead className={cn(stickyTableHeadClass, className)}>
+      <button
+        type="button"
+        className={cn(
+          "inline-flex max-w-full items-center gap-1 rounded-md transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          align === "right" && "ml-auto justify-end text-right",
+          isActive ? "text-primary" : "text-foreground"
+        )}
+        onClick={() => onSort(sortKey)}
+      >
+        <span className="truncate">{label}</span>
+        <Icon
+          className={cn(
+            "size-3 shrink-0",
+            !isActive && "text-muted-foreground/70"
+          )}
+        />
+      </button>
+    </TableHead>
+  )
+}
+
+function AmountCell({ value, className }: { value: string; className?: string }) {
+  return (
+    <TableCell className={cn("w-[12%] text-right font-mono tabular-nums", className)}>
+      {formatCurrency(value)}
+    </TableCell>
+  )
+}
+
+function OutstandingAmountCell({ value, className }: { value: string; className?: string }) {
+  return (
+    <TableCell className={cn("text-right font-mono tabular-nums", className)}>
+      {formatCurrency(value)}
+    </TableCell>
+  )
 }
 
 function createEmptyForm(): MoneyFormState {
@@ -1335,6 +2023,28 @@ function formatDate(value: string) {
     month: "short",
     year: "numeric",
   }).format(new Date(Number(year), Number(month) - 1, Number(day)))
+}
+
+function parseDateValue(value: string) {
+  if (!value) {
+    return undefined
+  }
+
+  const [year, month, day] = value.split("-").map(Number)
+  if (!year || !month || !day) {
+    return undefined
+  }
+
+  const date = new Date(year, month - 1, day)
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+
+function formatDateForInput(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+
+  return `${year}-${month}-${day}`
 }
 
 function capitalize(value: string) {

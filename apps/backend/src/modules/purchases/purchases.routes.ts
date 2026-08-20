@@ -1,11 +1,14 @@
-import { and, desc, eq, ilike, or, sql as drizzleSql, type SQL } from "drizzle-orm"
+import { and, desc, eq, ilike, inArray, or, sql as drizzleSql, type SQL } from "drizzle-orm"
 import type { FastifyInstance } from "fastify"
 
 import { db } from "../../db/client.js"
 import {
+  itemInventoryProfiles,
+  items,
   purchaseBillLines,
   purchaseBillPayments,
   purchaseBills,
+  warehouses,
 } from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
 import {
@@ -159,6 +162,11 @@ export async function registerPurchasesRoutes(app: FastifyInstance) {
 }
 
 async function createPurchaseBill(access: BusinessAccess, body: CreatePurchaseBillInput) {
+  const warehouseId = await resolvePurchaseWarehouseId(
+    access.business.id,
+    body.warehouseId,
+    body.lines
+  )
   const posted = body.status === "posted" ? await postPurchaseBill(access, body) : null
   const context =
     posted?.context ??
@@ -166,7 +174,7 @@ async function createPurchaseBill(access: BusinessAccess, body: CreatePurchaseBi
       transactionDate: body.billDate,
       gstRegistrationId: body.gstRegistrationId,
       branchId: body.branchId,
-      warehouseId: body.warehouseId,
+      warehouseId,
       placeOfSupplyStateCode: body.placeOfSupplyStateCode,
     })
   const calculated =
@@ -222,11 +230,16 @@ async function createPurchaseBill(access: BusinessAccess, body: CreatePurchaseBi
 }
 
 async function postPurchaseBill(access: BusinessAccess, body: CreatePurchaseBillInput) {
+  const warehouseId = await resolvePurchaseWarehouseId(
+    access.business.id,
+    body.warehouseId,
+    body.lines
+  )
   const context = await resolveTransactionContext(access, {
     transactionDate: body.billDate,
     gstRegistrationId: body.gstRegistrationId,
     branchId: body.branchId,
-    warehouseId: body.warehouseId,
+    warehouseId,
     placeOfSupplyStateCode: body.placeOfSupplyStateCode,
   })
   const calculated = await calculateTransactionLines(
@@ -372,6 +385,76 @@ function calculateItcEligibleAmount(
   }, 0)
 
   return formatCents(eligibleTax)
+}
+
+async function resolvePurchaseWarehouseId(
+  businessId: string,
+  requestedWarehouseId: string | null | undefined,
+  lines: CreatePurchaseBillInput["lines"]
+) {
+  if (requestedWarehouseId) {
+    return requestedWarehouseId
+  }
+
+  const itemIds = Array.from(
+    new Set(lines.map((line) => line.itemId).filter((itemId): itemId is string => Boolean(itemId)))
+  )
+
+  if (itemIds.length === 0) {
+    return null
+  }
+
+  const productRows = await db
+    .select({
+      itemId: items.id,
+      trackInventory: itemInventoryProfiles.trackInventory,
+      defaultWarehouseId: itemInventoryProfiles.defaultWarehouseId,
+    })
+    .from(items)
+    .leftJoin(
+      itemInventoryProfiles,
+      and(
+        eq(itemInventoryProfiles.businessId, businessId),
+        eq(itemInventoryProfiles.itemId, items.id)
+      )
+    )
+    .where(
+      and(
+        eq(items.businessId, businessId),
+        eq(items.itemType, "GOODS"),
+        inArray(items.id, itemIds)
+      )
+    )
+
+  const trackedProducts = productRows.filter((product) => product.trackInventory !== false)
+
+  if (trackedProducts.length === 0) {
+    return null
+  }
+
+  const preferredWarehouseId =
+    trackedProducts.find((product) => product.defaultWarehouseId)?.defaultWarehouseId ?? null
+
+  if (preferredWarehouseId) {
+    const preferredWarehouse = await db.query.warehouses.findFirst({
+      where: and(
+        eq(warehouses.businessId, businessId),
+        eq(warehouses.id, preferredWarehouseId),
+        eq(warehouses.status, "active")
+      ),
+    })
+
+    if (preferredWarehouse) {
+      return preferredWarehouse.id
+    }
+  }
+
+  const defaultWarehouse = await db.query.warehouses.findFirst({
+    where: and(eq(warehouses.businessId, businessId), eq(warehouses.status, "active")),
+    orderBy: [desc(warehouses.createdAt)],
+  })
+
+  return defaultWarehouse?.id ?? null
 }
 
 function resolveCounterpartyName(

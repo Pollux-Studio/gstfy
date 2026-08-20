@@ -5,8 +5,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import {
-  ArrowDownLeftIcon as ArrowDownLeftSidebarIcon,
-  ArrowUpRightIcon as ArrowUpRightSidebarIcon,
+  BadgeIndianRupeeIcon,
+  BarChart3Icon,
   BriefcaseBusinessIcon,
   Building2Icon,
   CreditCardIcon,
@@ -181,30 +181,34 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       items: [
         ...category.items
           .filter((item) => canViewModule(activeBusinessMembership, item.module))
-          .map((item) => ({
-            title: item.title,
-            url: item.url,
-            isActive:
-              item.url !== "#" &&
-              (pathname === item.url || pathname.startsWith(`${item.url}/`)),
-            disabled: item.url === "#",
-            icon:
-              item.module === "invoices" ? <CreditCardIcon /> :
-              item.module === "pos" ? <Building2Icon /> :
-              item.module === "purchases" ? <ShoppingCartIcon /> :
-              item.module === "expenses" ? <HandCoinsIcon /> :
-              item.title === "Receipts" ? <ArrowDownLeftSidebarIcon /> :
-              item.title === "Payments" ? <ArrowUpRightSidebarIcon /> :
-              item.title === "Receivables" ? <ReceiptTextIcon /> :
-              item.title === "Payables" ? <HandCoinsIcon /> :
-              item.module === "gstr" ? <ReceiptTextIcon /> :
-              item.title === "Products" ? <PackageIcon /> :
-              item.module === "inventory" ? <WarehouseIcon /> :
-              item.module === "parties" ? <UsersIcon /> :
-              item.module === "reports" ? <FileChartColumnIcon /> :
-              item.module === "accounting" ? <NotebookTextIcon /> :
-              undefined,
-          })),
+          .map((item) => {
+            const isMoneyEntry = item.title === "Money" && item.url === "/money"
+
+            return {
+              title: item.title,
+              url: item.url,
+              isActive:
+                item.url !== "#" &&
+                (isMoneyEntry ?
+                  isMoneyPath(pathname)
+                : pathname === item.url || pathname.startsWith(`${item.url}/`)),
+              disabled: item.url === "#",
+              icon:
+                item.module === "invoices" ? <CreditCardIcon /> :
+                item.module === "pos" ? <Building2Icon /> :
+                item.module === "purchases" ? <ShoppingCartIcon /> :
+                item.module === "expenses" ? <HandCoinsIcon /> :
+                item.title === "Money" ? <BadgeIndianRupeeIcon /> :
+                item.module === "gstr" ? <ReceiptTextIcon /> :
+                item.title === "Payment Reports" ? <BarChart3Icon /> :
+                item.title === "Products" ? <PackageIcon /> :
+                item.module === "inventory" ? <WarehouseIcon /> :
+                item.module === "parties" ? <UsersIcon /> :
+                item.module === "reports" ? <FileChartColumnIcon /> :
+                item.module === "accounting" ? <NotebookTextIcon /> :
+                undefined,
+            }
+          }),
         ...(category.title === "Contacts" && canManageBusinessWorkspace ?
           [
             {
@@ -350,4 +354,21 @@ function getUserDisplayName(email?: string | null, phone?: string | null) {
   }
 
   return "GSTFY User"
+}
+
+function isMoneyPath(pathname: string) {
+  return (
+    pathname === "/money" ||
+    pathname.startsWith("/money/") ||
+    pathname === "/receipts" ||
+    pathname.startsWith("/receipts/") ||
+    pathname === "/payments" ||
+    pathname.startsWith("/payments/") ||
+    pathname === "/receivables" ||
+    pathname.startsWith("/receivables/") ||
+    pathname === "/payables" ||
+    pathname.startsWith("/payables/") ||
+    pathname === "/bank-reconciliation" ||
+    pathname.startsWith("/bank-reconciliation/")
+  )
 }

@@ -23,6 +23,7 @@ export type AdjustmentListRow = {
   adjustmentDate: string
   sourceDocumentType: "sales_invoice" | "purchase_bill"
   sourceDocumentId: string | null
+  sourceSnapshot: unknown
   status: AdjustmentStatus
   partyId: string | null
   partySnapshot: unknown

@@ -350,6 +350,7 @@ async function listAdjustments(
       adjustmentDate: adjustmentDocuments.adjustmentDate,
       sourceDocumentType: adjustmentDocuments.sourceDocumentType,
       sourceDocumentId: adjustmentDocuments.sourceDocumentId,
+      sourceSnapshot: adjustmentDocuments.sourceSnapshot,
       status: adjustmentDocuments.status,
       partyId: adjustmentDocuments.partyId,
       partySnapshot: adjustmentDocuments.partySnapshot,
