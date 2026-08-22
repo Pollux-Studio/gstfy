@@ -20,6 +20,7 @@ import {
   payments as paymentDocuments,
   purchaseBills,
   receipts,
+  receivablePayableAdjustmentEffects,
   receivablePayableEntries,
   salesInvoices,
   vouchers,
@@ -96,8 +97,11 @@ type ReceivablePayableListRow = {
   partySnapshot: unknown
   entryType: string
   originalAmount: string
+  adjustmentAmount: string
+  effectiveAmount: string
   settledAmount: string
   outstandingAmount: string
+  excessSettledAmount: string
   dueDate: string | null
   status: string
   createdAt: Date
@@ -1277,8 +1281,11 @@ async function listReceivablePayableEntries(
       entry.party_snapshot as "partySnapshot",
       entry.entry_type as "entryType",
       entry.original_amount::text as "originalAmount",
+      entry.adjustment_amount::text as "adjustmentAmount",
+      entry.effective_amount::text as "effectiveAmount",
       entry.settled_amount::text as "settledAmount",
       entry.outstanding_amount::text as "outstandingAmount",
+      entry.excess_settled_amount::text as "excessSettledAmount",
       entry.due_date as "dueDate",
       entry.status,
       entry.created_at as "createdAt",
@@ -2976,20 +2983,59 @@ async function refreshTransactionDocumentSettlements(
     )
   }
 
+  const adjustmentRows = await db
+    .select({
+      receivablePayableEntryId:
+        receivablePayableAdjustmentEffects.receivablePayableEntryId,
+      amount: receivablePayableAdjustmentEffects.amount,
+    })
+    .from(receivablePayableAdjustmentEffects)
+    .where(
+      and(
+        eq(receivablePayableAdjustmentEffects.businessId, businessId),
+        eq(receivablePayableAdjustmentEffects.status, "active"),
+        inArray(receivablePayableAdjustmentEffects.receivablePayableEntryId, uniqueIds)
+      )
+    )
+
+  const adjustedByEntryId = new Map<string, number>()
+
+  for (const row of adjustmentRows) {
+    adjustedByEntryId.set(
+      row.receivablePayableEntryId,
+      (adjustedByEntryId.get(row.receivablePayableEntryId) ?? 0) + toCents(row.amount)
+    )
+  }
+
   for (const row of rows) {
     const originalAmount = toCents(row.originalAmount)
-    const settledAmount = Math.min(allocatedByEntryId.get(row.id) ?? 0, originalAmount)
-    const outstandingAmount = originalAmount - settledAmount
+    const adjustmentAmount = Math.min(
+      adjustedByEntryId.get(row.id) ?? 0,
+      originalAmount
+    )
+    const effectiveAmount = Math.max(originalAmount - adjustmentAmount, 0)
+    const settledAmount = Math.min(
+      allocatedByEntryId.get(row.id) ?? 0,
+      effectiveAmount
+    )
+    const excessSettledAmount = Math.max(
+      (allocatedByEntryId.get(row.id) ?? 0) - effectiveAmount,
+      0
+    )
+    const outstandingAmount = effectiveAmount - settledAmount
     const status =
-      outstandingAmount === 0 ? "settled"
-      : settledAmount > 0 ? "partially_settled"
+      effectiveAmount === 0 || outstandingAmount === 0 ? "settled"
+      : settledAmount > 0 || adjustmentAmount > 0 ? "partially_settled"
       : "open"
 
     await db
       .update(receivablePayableEntries)
       .set({
+        adjustmentAmount: formatCents(adjustmentAmount),
+        effectiveAmount: formatCents(effectiveAmount),
         settledAmount: formatCents(settledAmount),
         outstandingAmount: formatCents(outstandingAmount),
+        excessSettledAmount: formatCents(excessSettledAmount),
         status,
         updatedAt: new Date(),
       })

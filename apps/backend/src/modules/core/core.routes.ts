@@ -24,9 +24,11 @@ import {
   ledgerAccounts,
   paymentAllocations,
   postingIdempotencyKeys,
+  receivablePayableAdjustmentEffects,
   receivablePayableEntries,
   vouchers,
   warehouses,
+  type VoucherRecord,
 } from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
 import { requirePrimaryBusinessAccess } from "../businesses/business-access.js"
@@ -51,6 +53,7 @@ import {
 } from "./core.validation.js"
 
 type BusinessAccess = Awaited<ReturnType<typeof requirePrimaryBusinessAccess>>
+type CoreDbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 type PostVoucherResult = {
   voucher: {
@@ -67,6 +70,16 @@ type PostVoucherResult = {
     receivablePayableEntries: number
     paymentAllocations: number
   }
+}
+
+type PostVoucherOptions = {
+  beforePost?: (tx: CoreDbTransaction) => Promise<void>
+  afterPost?: (context: {
+    tx: CoreDbTransaction
+    voucher: VoucherRecord
+    result: PostVoucherResult
+    postedAt: Date
+  }) => Promise<void>
 }
 
 export async function registerCoreRoutes(app: FastifyInstance) {
@@ -137,7 +150,11 @@ function createPaginationMeta(page: number, limit: number, total: number) {
   }
 }
 
-export async function postVoucher(access: BusinessAccess, input: PostVoucherInput) {
+export async function postVoucher(
+  access: BusinessAccess,
+  input: PostVoucherInput,
+  options: PostVoucherOptions = {}
+) {
   const idempotencyKey = input.idempotencyKey
 
   if (!idempotencyKey) {
@@ -191,6 +208,7 @@ export async function postVoucher(access: BusinessAccess, input: PostVoucherInpu
     await assertContextBelongsToBusiness(access.business.id, input)
     await assertAccountingPeriodIsOpen(access.business.id, input)
     await assertEffectReferencesBelongToBusiness(access.business.id, input)
+    await options.beforePost?.(tx)
 
     const voucherNumber = await allocateVoucherNumber(access.business.id, input)
     const postedAt = new Date()
@@ -327,8 +345,11 @@ export async function postVoucher(access: BusinessAccess, input: PostVoucherInpu
             partySnapshot: entry.partySnapshot ?? null,
             entryType: entry.entryType,
             originalAmount,
+            adjustmentAmount: "0.00",
+            effectiveAmount: originalAmount,
             settledAmount: "0.00",
             outstandingAmount: originalAmount,
+            excessSettledAmount: "0.00",
             dueDate: entry.dueDate ?? null,
             status: "open",
           }
@@ -380,6 +401,8 @@ export async function postVoucher(access: BusinessAccess, input: PostVoucherInpu
         paymentAllocations: input.paymentAllocations.length,
       },
     }
+
+    await options.afterPost?.({ tx, voucher, result, postedAt })
 
     await tx.insert(auditLogs).values({
       businessId: access.business.id,
@@ -517,6 +540,7 @@ export async function postVoucher(access: BusinessAccess, input: PostVoucherInpu
         .select({
           id: receivablePayableEntries.id,
           originalAmount: receivablePayableEntries.originalAmount,
+          voucherId: receivablePayableEntries.voucherId,
         })
         .from(receivablePayableEntries)
         .where(
@@ -554,20 +578,60 @@ export async function postVoucher(access: BusinessAccess, input: PostVoucherInpu
         )
       }
 
+      const adjustmentRows = await tx
+        .select({
+          receivablePayableEntryId:
+            receivablePayableAdjustmentEffects.receivablePayableEntryId,
+          amount: receivablePayableAdjustmentEffects.amount,
+        })
+        .from(receivablePayableAdjustmentEffects)
+        .where(
+          and(
+            eq(receivablePayableAdjustmentEffects.businessId, businessId),
+            eq(receivablePayableAdjustmentEffects.status, "active"),
+            inArray(receivablePayableAdjustmentEffects.receivablePayableEntryId, entryIds)
+          )
+        )
+
+      const adjustedByEntryId = new Map<string, number>()
+
+      for (const row of adjustmentRows) {
+        adjustedByEntryId.set(
+          row.receivablePayableEntryId,
+          (adjustedByEntryId.get(row.receivablePayableEntryId) ?? 0) +
+            toCents(row.amount)
+        )
+      }
+
       for (const row of rows) {
         const originalAmount = toCents(row.originalAmount)
-        const settledAmount = Math.min(allocatedByEntryId.get(row.id) ?? 0, originalAmount)
-        const outstandingAmount = originalAmount - settledAmount
+        const adjustmentAmount = Math.min(
+          adjustedByEntryId.get(row.id) ?? 0,
+          originalAmount
+        )
+        const effectiveAmount = Math.max(originalAmount - adjustmentAmount, 0)
+        const settledAmount = Math.min(
+          allocatedByEntryId.get(row.id) ?? 0,
+          effectiveAmount
+        )
+        const excessSettledAmount = Math.max(
+          (allocatedByEntryId.get(row.id) ?? 0) - effectiveAmount,
+          0
+        )
+        const outstandingAmount = effectiveAmount - settledAmount
         const status =
-          outstandingAmount === 0 ? "settled"
-          : settledAmount > 0 ? "partially_settled"
+          effectiveAmount === 0 || outstandingAmount === 0 ? "settled"
+          : settledAmount > 0 || adjustmentAmount > 0 ? "partially_settled"
           : "open"
 
         await tx
           .update(receivablePayableEntries)
           .set({
+            adjustmentAmount: formatCents(adjustmentAmount),
+            effectiveAmount: formatCents(effectiveAmount),
             settledAmount: formatCents(settledAmount),
             outstandingAmount: formatCents(outstandingAmount),
+            excessSettledAmount: formatCents(excessSettledAmount),
             status,
             updatedAt: new Date(),
           })

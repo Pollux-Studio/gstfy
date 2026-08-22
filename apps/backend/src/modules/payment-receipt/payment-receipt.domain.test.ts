@@ -5,6 +5,7 @@ import assert from "node:assert/strict"
 
 import {
   buildMoneyOperationRequestHash,
+  calculateAdjustedSettlement,
   calculateOutstandingCents,
   validateAllocationLimits,
 } from "./payment-receipt.domain.js"
@@ -13,6 +14,40 @@ test("settlement outstanding uses active allocations only", () => {
   assert.equal(calculateOutstandingCents(50_000, 40_000), 10_000)
   assert.equal(calculateOutstandingCents(50_000, 50_000), 0)
   assert.equal(calculateOutstandingCents(50_000, 70_000), 0)
+})
+
+test("adjusted settlement reduces effective receivable before outstanding", () => {
+  assert.deepEqual(
+    calculateAdjustedSettlement({
+      originalAmountCents: 100_000,
+      activeAllocationCents: 20_000,
+      activeAdjustmentCents: 30_000,
+    }),
+    {
+      adjustmentCents: 30_000,
+      effectiveAmountCents: 70_000,
+      settledAmountCents: 20_000,
+      excessSettledAmountCents: 0,
+      outstandingAmountCents: 50_000,
+    }
+  )
+})
+
+test("adjusted settlement exposes excess paid amount after credit note", () => {
+  assert.deepEqual(
+    calculateAdjustedSettlement({
+      originalAmountCents: 100_000,
+      activeAllocationCents: 100_000,
+      activeAdjustmentCents: 30_000,
+    }),
+    {
+      adjustmentCents: 30_000,
+      effectiveAmountCents: 70_000,
+      settledAmountCents: 70_000,
+      excessSettledAmountCents: 30_000,
+      outstandingAmountCents: 0,
+    }
+  )
 })
 
 test("allocation limit validation rejects non-positive amounts", () => {

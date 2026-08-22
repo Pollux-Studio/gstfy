@@ -91,6 +91,7 @@ export async function listSalesInvoices(
   accessToken: string,
   filters: {
     search?: string
+    status?: SalesInvoiceStatus
     page?: number
     limit?: number
   } = {}
@@ -99,6 +100,10 @@ export async function listSalesInvoices(
 
   if (filters.search?.trim()) {
     query.set("search", filters.search.trim())
+  }
+
+  if (filters.status) {
+    query.set("status", filters.status)
   }
 
   if (filters.page) {

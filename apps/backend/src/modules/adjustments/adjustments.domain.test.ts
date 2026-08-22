@@ -6,6 +6,8 @@ import {
   buildAdjustmentOperationRequestHash,
   calculateReturnableQuantity,
   formatQuantity,
+  resolveAdjustmentFinancialDirection,
+  resolveAdjustmentIssuerContext,
 } from "./adjustments.domain.js"
 
 test("calculateReturnableQuantity subtracts previous valid returns", () => {
@@ -53,4 +55,86 @@ test("buildAdjustmentOperationRequestHash ignores idempotency key", () => {
   })
 
   assert.equal(left, right)
+})
+
+test("customer debit note increases receivable and output tax", () => {
+  assert.deepEqual(
+    resolveAdjustmentIssuerContext({
+      type: "DEBIT_NOTE",
+      sourceDocumentType: "sales_invoice",
+      issuerType: "GSTFY_BUSINESS",
+      documentDirection: "outgoing",
+      sourcePartyRole: "customer",
+    }),
+    {
+      valid: true,
+      reason: null,
+      context: {
+        issuerType: "GSTFY_BUSINESS",
+        documentDirection: "outgoing",
+        sourcePartyRole: "customer",
+      },
+    }
+  )
+  assert.deepEqual(
+    resolveAdjustmentFinancialDirection({
+      type: "DEBIT_NOTE",
+      sourceDocumentType: "sales_invoice",
+    }),
+    {
+      arApEntryType: "receivable",
+      arApEffect: "increase",
+      taxKind: "output",
+      taxSide: "credit",
+    }
+  )
+})
+
+test("supplier debit note increases payable and input tax", () => {
+  assert.deepEqual(
+    resolveAdjustmentIssuerContext({
+      type: "DEBIT_NOTE",
+      sourceDocumentType: "purchase_bill",
+      issuerType: "SUPPLIER",
+      documentDirection: "incoming",
+      sourcePartyRole: "supplier",
+    }),
+    {
+      valid: true,
+      reason: null,
+      context: {
+        issuerType: "SUPPLIER",
+        documentDirection: "incoming",
+        sourcePartyRole: "supplier",
+      },
+    }
+  )
+  assert.deepEqual(
+    resolveAdjustmentFinancialDirection({
+      type: "DEBIT_NOTE",
+      sourceDocumentType: "purchase_bill",
+    }),
+    {
+      arApEntryType: "payable",
+      arApEffect: "increase",
+      taxKind: "input",
+      taxSide: "debit",
+    }
+  )
+})
+
+test("debit note context rejects wrong issuer direction for purchase source", () => {
+  const result = resolveAdjustmentIssuerContext({
+    type: "DEBIT_NOTE",
+    sourceDocumentType: "purchase_bill",
+    issuerType: "GSTFY_BUSINESS",
+    documentDirection: "outgoing",
+    sourcePartyRole: "supplier",
+  })
+
+  assert.equal(result.valid, false)
+  assert.equal(
+    result.reason,
+    "Supplier debit notes must be incoming supplier-issued documents."
+  )
 })

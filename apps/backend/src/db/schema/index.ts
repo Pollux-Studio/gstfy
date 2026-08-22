@@ -899,7 +899,16 @@ export const receivablePayableEntries = pgTable(
     settledAmount: numeric("settled_amount", { precision: 14, scale: 2 })
       .notNull()
       .default("0"),
+    adjustmentAmount: numeric("adjustment_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    effectiveAmount: numeric("effective_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
     outstandingAmount: numeric("outstanding_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    excessSettledAmount: numeric("excess_settled_amount", { precision: 14, scale: 2 })
       .notNull()
       .default("0"),
     dueDate: text("due_date"),
@@ -1692,7 +1701,7 @@ export const adjustmentDocuments = pgTable(
     status: text("status").notNull().default("draft"),
     issuerType: text("issuer_type").notNull().default("GSTFY_BUSINESS"),
     documentDirection: text("document_direction").notNull().default("outgoing"),
-    sourcePartyRole: text("source_party_role"),
+    sourcePartyRole: text("source_party_role").notNull(),
     adjustmentContext: text("adjustment_context").notNull().default("goods_related"),
     subtotal: numeric("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
     discountTotal: numeric("discount_total", { precision: 14, scale: 2 })
@@ -1717,6 +1726,15 @@ export const adjustmentDocuments = pgTable(
       .notNull()
       .default("0"),
     grandTotal: numeric("grand_total", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    settlementEffectAmount: numeric("settlement_effect_amount", {
+      precision: 14,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    excessCreditAmount: numeric("excess_credit_amount", { precision: 14, scale: 2 })
       .notNull()
       .default("0"),
     partySnapshot: jsonb("party_snapshot"),
@@ -1867,6 +1885,1325 @@ export const adjustmentDocumentLines = pgTable(
       foreignColumns: [warehouses.id, warehouses.businessId],
       name: "adjustment_document_lines_warehouse_business_fk",
     }),
+  })
+)
+
+export const receivablePayableAdjustmentEffects = pgTable(
+  "receivable_payable_adjustment_effects",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    adjustmentDocumentId: uuid("adjustment_document_id")
+      .notNull()
+      .references(() => adjustmentDocuments.id, { onDelete: "restrict" }),
+    adjustmentVoucherId: uuid("adjustment_voucher_id").references(
+      () => vouchers.id,
+      { onDelete: "restrict" }
+    ),
+    sourceVoucherId: uuid("source_voucher_id")
+      .notNull()
+      .references(() => vouchers.id, { onDelete: "restrict" }),
+    receivablePayableEntryId: uuid("receivable_payable_entry_id")
+      .notNull()
+      .references(() => receivablePayableEntries.id, { onDelete: "restrict" }),
+    effectKind: text("effect_kind").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    status: text("status").notNull().default("active"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    reversedBy: uuid("reversed_by").references(() => users.id, { onDelete: "set null" }),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }),
+    reversalReason: text("reversal_reason"),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("rp_adjustment_effects_business_id_idx").on(
+      table.businessId
+    ),
+    adjustmentDocumentIndex: index(
+      "rp_adjustment_effects_adjustment_document_id_idx"
+    ).on(table.adjustmentDocumentId),
+    targetEntryIndex: index("rp_adjustment_effects_target_entry_id_idx").on(
+      table.receivablePayableEntryId
+    ),
+    documentBusinessFk: foreignKey({
+      columns: [table.adjustmentDocumentId, table.businessId],
+      foreignColumns: [adjustmentDocuments.id, adjustmentDocuments.businessId],
+      name: "rp_adjustment_effects_document_business_fk",
+    }),
+    adjustmentVoucherBusinessFk: foreignKey({
+      columns: [table.adjustmentVoucherId, table.businessId],
+      foreignColumns: [vouchers.id, vouchers.businessId],
+      name: "rp_adjustment_effects_adjustment_voucher_business_fk",
+    }),
+    sourceVoucherBusinessFk: foreignKey({
+      columns: [table.sourceVoucherId, table.businessId],
+      foreignColumns: [vouchers.id, vouchers.businessId],
+      name: "rp_adjustment_effects_source_voucher_business_fk",
+    }),
+    targetEntryBusinessFk: foreignKey({
+      columns: [table.receivablePayableEntryId, table.businessId],
+      foreignColumns: [receivablePayableEntries.id, receivablePayableEntries.businessId],
+      name: "rp_adjustment_effects_target_entry_business_fk",
+    }),
+  })
+)
+
+export const purchaseTaxRecords = pgTable(
+  "purchase_tax_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    sourceType: text("source_type").notNull(),
+    purchaseBillId: uuid("purchase_bill_id").references(() => purchaseBills.id, {
+      onDelete: "restrict",
+    }),
+    adjustmentDocumentId: uuid("adjustment_document_id").references(
+      () => adjustmentDocuments.id,
+      { onDelete: "restrict" }
+    ),
+    voucherId: uuid("voucher_id")
+      .notNull()
+      .references(() => vouchers.id, { onDelete: "restrict" }),
+    supplierId: uuid("supplier_id").references(() => parties.id, {
+      onDelete: "set null",
+    }),
+    gstRegistrationId: uuid("gst_registration_id").references(
+      () => gstRegistrations.id,
+      { onDelete: "set null" }
+    ),
+    branchId: uuid("branch_id").references(() => businessBranches.id, {
+      onDelete: "set null",
+    }),
+    supplierName: text("supplier_name").notNull().default(""),
+    supplierGstin: text("supplier_gstin"),
+    invoiceNumber: text("invoice_number").notNull(),
+    normalizedInvoiceNumber: text("normalized_invoice_number").notNull(),
+    invoiceDate: date("invoice_date").notNull(),
+    taxableValue: numeric("taxable_value", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    cgst: numeric("cgst", { precision: 14, scale: 2 }).notNull().default("0"),
+    sgst: numeric("sgst", { precision: 14, scale: 2 }).notNull().default("0"),
+    igst: numeric("igst", { precision: 14, scale: 2 }).notNull().default("0"),
+    cess: numeric("cess", { precision: 14, scale: 2 }).notNull().default("0"),
+    totalTax: numeric("total_tax", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    taxPeriod: text("tax_period").notNull(),
+    reconciliationStatus: text("reconciliation_status")
+      .notNull()
+      .default("NOT_MATCHED"),
+    itcStatus: text("itc_status").notNull().default("NOT_REVIEWED"),
+    eligibleCgst: numeric("eligible_cgst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    eligibleSgst: numeric("eligible_sgst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    eligibleIgst: numeric("eligible_igst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    eligibleCess: numeric("eligible_cess", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    ineligibleCgst: numeric("ineligible_cgst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    ineligibleSgst: numeric("ineligible_sgst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    ineligibleIgst: numeric("ineligible_igst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    ineligibleCess: numeric("ineligible_cess", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    deferredCgst: numeric("deferred_cgst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    deferredSgst: numeric("deferred_sgst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    deferredIgst: numeric("deferred_igst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    deferredCess: numeric("deferred_cess", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    inputType: text("input_type").notNull().default("regular"),
+    sourceSnapshot: jsonb("source_snapshot").notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("purchase_tax_records_business_id_idx").on(
+      table.businessId
+    ),
+    periodIndex: index("purchase_tax_records_business_period_idx").on(
+      table.businessId,
+      table.taxPeriod
+    ),
+    reconciliationStatusIndex: index(
+      "purchase_tax_records_reconciliation_status_idx"
+    ).on(table.reconciliationStatus),
+    itcStatusIndex: index("purchase_tax_records_itc_status_idx").on(
+      table.itcStatus
+    ),
+    normalizedMatchIndex: index("purchase_tax_records_normalized_match_idx").on(
+      table.businessId,
+      table.gstRegistrationId,
+      table.supplierGstin,
+      table.normalizedInvoiceNumber,
+      table.invoiceDate
+    ),
+    businessIdentityUnique: uniqueIndex(
+      "purchase_tax_records_id_business_unique"
+    ).on(table.id, table.businessId),
+    purchaseBusinessFk: foreignKey({
+      columns: [table.purchaseBillId, table.businessId],
+      foreignColumns: [purchaseBills.id, purchaseBills.businessId],
+      name: "purchase_tax_records_purchase_business_fk",
+    }),
+    adjustmentBusinessFk: foreignKey({
+      columns: [table.adjustmentDocumentId, table.businessId],
+      foreignColumns: [adjustmentDocuments.id, adjustmentDocuments.businessId],
+      name: "purchase_tax_records_adjustment_business_fk",
+    }),
+    voucherBusinessFk: foreignKey({
+      columns: [table.voucherId, table.businessId],
+      foreignColumns: [vouchers.id, vouchers.businessId],
+      name: "purchase_tax_records_voucher_business_fk",
+    }),
+    supplierBusinessFk: foreignKey({
+      columns: [table.supplierId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "purchase_tax_records_supplier_business_fk",
+    }),
+    gstRegistrationBusinessFk: foreignKey({
+      columns: [table.gstRegistrationId, table.businessId],
+      foreignColumns: [gstRegistrations.id, gstRegistrations.businessId],
+      name: "purchase_tax_records_gst_registration_business_fk",
+    }),
+    branchBusinessFk: foreignKey({
+      columns: [table.branchId, table.businessId],
+      foreignColumns: [businessBranches.id, businessBranches.businessId],
+      name: "purchase_tax_records_branch_business_fk",
+    }),
+  })
+)
+
+export const externalGstImports = pgTable(
+  "external_gst_imports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    period: text("period").notNull(),
+    gstRegistrationId: uuid("gst_registration_id").references(
+      () => gstRegistrations.id,
+      { onDelete: "set null" }
+    ),
+    fileName: text("file_name").notNull(),
+    recordCount: integer("record_count").notNull().default(0),
+    importedBy: uuid("imported_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    importedAt: timestamp("imported_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    status: text("status").notNull().default("imported"),
+    rawMetadata: jsonb("raw_metadata").notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    businessPeriodIndex: index("external_gst_imports_business_period_idx").on(
+      table.businessId,
+      table.period
+    ),
+    businessIdentityUnique: uniqueIndex(
+      "external_gst_imports_id_business_unique"
+    ).on(table.id, table.businessId),
+    gstRegistrationBusinessFk: foreignKey({
+      columns: [table.gstRegistrationId, table.businessId],
+      foreignColumns: [gstRegistrations.id, gstRegistrations.businessId],
+      name: "external_gst_imports_gst_registration_business_fk",
+    }),
+  })
+)
+
+export const externalGstRecords = pgTable(
+  "external_gst_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    importId: uuid("import_id").notNull(),
+    gstRegistrationId: uuid("gst_registration_id").references(
+      () => gstRegistrations.id,
+      { onDelete: "set null" }
+    ),
+    supplierGstin: text("supplier_gstin").notNull(),
+    supplierName: text("supplier_name"),
+    documentNumber: text("document_number").notNull(),
+    normalizedDocumentNumber: text("normalized_document_number").notNull(),
+    documentDate: date("document_date").notNull(),
+    taxableValue: numeric("taxable_value", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    cgst: numeric("cgst", { precision: 14, scale: 2 }).notNull().default("0"),
+    sgst: numeric("sgst", { precision: 14, scale: 2 }).notNull().default("0"),
+    igst: numeric("igst", { precision: 14, scale: 2 }).notNull().default("0"),
+    cess: numeric("cess", { precision: 14, scale: 2 }).notNull().default("0"),
+    totalTax: numeric("total_tax", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    period: text("period").notNull(),
+    source: text("source").notNull().default("gstr_2b"),
+    status: text("status").notNull().default("available"),
+    rawReference: jsonb("raw_reference").notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    businessPeriodIndex: index("external_gst_records_business_period_idx").on(
+      table.businessId,
+      table.period
+    ),
+    matchKeyIndex: index("external_gst_records_match_key_idx").on(
+      table.businessId,
+      table.supplierGstin,
+      table.documentNumber,
+      table.documentDate
+    ),
+    normalizedMatchIndex: index("external_gst_records_normalized_match_idx").on(
+      table.businessId,
+      table.gstRegistrationId,
+      table.supplierGstin,
+      table.normalizedDocumentNumber,
+      table.documentDate
+    ),
+    duplicateReviewIndex: index("external_gst_records_duplicate_review_idx").on(
+      table.businessId,
+      table.gstRegistrationId,
+      table.source,
+      table.period,
+      table.supplierGstin,
+      table.normalizedDocumentNumber,
+      table.documentDate,
+      table.taxableValue,
+      table.totalTax
+    ),
+    businessIdentityUnique: uniqueIndex(
+      "external_gst_records_id_business_unique"
+    ).on(table.id, table.businessId),
+    importBusinessFk: foreignKey({
+      columns: [table.importId, table.businessId],
+      foreignColumns: [externalGstImports.id, externalGstImports.businessId],
+      name: "external_gst_records_import_business_fk",
+    }),
+    gstRegistrationBusinessFk: foreignKey({
+      columns: [table.gstRegistrationId, table.businessId],
+      foreignColumns: [gstRegistrations.id, gstRegistrations.businessId],
+      name: "external_gst_records_gst_registration_business_fk",
+    }),
+  })
+)
+
+export const gstReconciliationMatches = pgTable(
+  "gst_reconciliation_matches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    purchaseTaxRecordId: uuid("purchase_tax_record_id").notNull(),
+    externalGstRecordId: uuid("external_gst_record_id").notNull(),
+    matchStatus: text("match_status").notNull(),
+    matchConfidence: text("match_confidence").notNull(),
+    taxableDifference: numeric("taxable_difference", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    cgstDifference: numeric("cgst_difference", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    sgstDifference: numeric("sgst_difference", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    igstDifference: numeric("igst_difference", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    cessDifference: numeric("cess_difference", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    matchedBy: uuid("matched_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    matchedAt: timestamp("matched_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    manualOverride: boolean("manual_override").notNull().default(false),
+    reason: text("reason"),
+    status: text("status").notNull().default("active"),
+    ...timestamps,
+  },
+  (table) => ({
+    businessStatusIndex: index("gst_reconciliation_matches_business_status_idx").on(
+      table.businessId,
+      table.matchStatus
+    ),
+    businessIdentityUnique: uniqueIndex(
+      "gst_reconciliation_matches_id_business_unique"
+    ).on(table.id, table.businessId),
+    taxRecordBusinessFk: foreignKey({
+      columns: [table.purchaseTaxRecordId, table.businessId],
+      foreignColumns: [purchaseTaxRecords.id, purchaseTaxRecords.businessId],
+      name: "gst_reconciliation_matches_tax_record_business_fk",
+    }),
+    externalRecordBusinessFk: foreignKey({
+      columns: [table.externalGstRecordId, table.businessId],
+      foreignColumns: [externalGstRecords.id, externalGstRecords.businessId],
+      name: "gst_reconciliation_matches_external_record_business_fk",
+    }),
+  })
+)
+
+export const gstReconciliationExceptions = pgTable(
+  "gst_reconciliation_exceptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    matchId: uuid("match_id"),
+    purchaseTaxRecordId: uuid("purchase_tax_record_id"),
+    externalGstRecordId: uuid("external_gst_record_id"),
+    exceptionType: text("exception_type").notNull(),
+    severity: text("severity").notNull().default("MEDIUM"),
+    status: text("status").notNull().default("OPEN"),
+    assignedTo: uuid("assigned_to").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reason: text("reason"),
+    resolution: text("resolution"),
+    resolvedBy: uuid("resolved_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => ({
+    businessStatusIndex: index(
+      "gst_reconciliation_exceptions_business_status_idx"
+    ).on(table.businessId, table.status),
+    businessIdentityUnique: uniqueIndex(
+      "gst_reconciliation_exceptions_id_business_unique"
+    ).on(table.id, table.businessId),
+    matchBusinessFk: foreignKey({
+      columns: [table.matchId, table.businessId],
+      foreignColumns: [gstReconciliationMatches.id, gstReconciliationMatches.businessId],
+      name: "gst_reconciliation_exceptions_match_business_fk",
+    }),
+    taxRecordBusinessFk: foreignKey({
+      columns: [table.purchaseTaxRecordId, table.businessId],
+      foreignColumns: [purchaseTaxRecords.id, purchaseTaxRecords.businessId],
+      name: "gst_reconciliation_exceptions_tax_record_business_fk",
+    }),
+    externalRecordBusinessFk: foreignKey({
+      columns: [table.externalGstRecordId, table.businessId],
+      foreignColumns: [externalGstRecords.id, externalGstRecords.businessId],
+      name: "gst_reconciliation_exceptions_external_record_business_fk",
+    }),
+  })
+)
+
+export const itcClaims = pgTable(
+  "itc_claims",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    purchaseTaxRecordId: uuid("purchase_tax_record_id").notNull(),
+    claimPeriod: text("claim_period").notNull(),
+    claimedCgst: numeric("claimed_cgst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    claimedSgst: numeric("claimed_sgst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    claimedIgst: numeric("claimed_igst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    claimedCess: numeric("claimed_cess", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    sourceTaxRecord: jsonb("source_tax_record").notNull().default({}),
+    status: text("status").notNull().default("active"),
+    claimedBy: uuid("claimed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    claimedAt: timestamp("claimed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    reversedBy: uuid("reversed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }),
+    reversalReason: text("reversal_reason"),
+    ...timestamps,
+  },
+  (table) => ({
+    businessPeriodIndex: index("itc_claims_business_period_idx").on(
+      table.businessId,
+      table.claimPeriod
+    ),
+    businessIdentityUnique: uniqueIndex("itc_claims_id_business_unique").on(
+      table.id,
+      table.businessId
+    ),
+    taxRecordBusinessFk: foreignKey({
+      columns: [table.purchaseTaxRecordId, table.businessId],
+      foreignColumns: [purchaseTaxRecords.id, purchaseTaxRecords.businessId],
+      name: "itc_claims_tax_record_business_fk",
+    }),
+  })
+)
+
+export const itcStatusEvents = pgTable(
+  "itc_status_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    purchaseTaxRecordId: uuid("purchase_tax_record_id").notNull(),
+    fromStatus: text("from_status"),
+    toStatus: text("to_status").notNull(),
+    previousEligibleCgst: numeric("previous_eligible_cgst", {
+      precision: 14,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    previousEligibleSgst: numeric("previous_eligible_sgst", {
+      precision: 14,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    previousEligibleIgst: numeric("previous_eligible_igst", {
+      precision: 14,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    previousEligibleCess: numeric("previous_eligible_cess", {
+      precision: 14,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    previousIneligibleCgst: numeric("previous_ineligible_cgst", {
+      precision: 14,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    previousIneligibleSgst: numeric("previous_ineligible_sgst", {
+      precision: 14,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    previousIneligibleIgst: numeric("previous_ineligible_igst", {
+      precision: 14,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    previousIneligibleCess: numeric("previous_ineligible_cess", {
+      precision: 14,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    previousDeferredCgst: numeric("previous_deferred_cgst", {
+      precision: 14,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    previousDeferredSgst: numeric("previous_deferred_sgst", {
+      precision: 14,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    previousDeferredIgst: numeric("previous_deferred_igst", {
+      precision: 14,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    previousDeferredCess: numeric("previous_deferred_cess", {
+      precision: 14,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    eligibleCgst: numeric("eligible_cgst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    eligibleSgst: numeric("eligible_sgst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    eligibleIgst: numeric("eligible_igst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    eligibleCess: numeric("eligible_cess", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    ineligibleCgst: numeric("ineligible_cgst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    ineligibleSgst: numeric("ineligible_sgst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    ineligibleIgst: numeric("ineligible_igst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    ineligibleCess: numeric("ineligible_cess", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    deferredCgst: numeric("deferred_cgst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    deferredSgst: numeric("deferred_sgst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    deferredIgst: numeric("deferred_igst", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    deferredCess: numeric("deferred_cess", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    reason: text("reason"),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    businessRecordIndex: index("itc_status_events_business_record_idx").on(
+      table.businessId,
+      table.purchaseTaxRecordId
+    ),
+    taxRecordBusinessFk: foreignKey({
+      columns: [table.purchaseTaxRecordId, table.businessId],
+      foreignColumns: [purchaseTaxRecords.id, purchaseTaxRecords.businessId],
+      name: "itc_status_events_tax_record_business_fk",
+    }),
+  })
+)
+
+export const gstReconciliationIdempotencyKeys = pgTable(
+  "gst_reconciliation_idempotency_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    operationScope: text("operation_scope").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull(),
+    responseBody: jsonb("response_body"),
+    status: text("status").notNull().default("completed"),
+    ...timestamps,
+  },
+  (table) => ({
+    businessScopeKeyUnique: uniqueIndex(
+      "gst_reconciliation_idempotency_keys_business_scope_key_unique"
+    ).on(table.businessId, table.operationScope, table.idempotencyKey),
+  })
+)
+
+export const gstReportingRuns = pgTable(
+  "gst_reporting_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    gstRegistrationId: uuid("gst_registration_id")
+      .notNull()
+      .references(() => gstRegistrations.id, { onDelete: "restrict" }),
+    gstinSnapshot: text("gstin_snapshot"),
+    period: text("period").notNull(),
+    periodStart: date("period_start"),
+    periodEnd: date("period_end"),
+    version: integer("version").notNull().default(1),
+    status: text("status").notNull().default("DRAFT"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }),
+    sourceVersion: text("source_version").notNull().default("GSTFY_REPORTING_V1"),
+    sourceDataHash: text("source_data_hash"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    approvedBy: uuid("approved_by").references(() => users.id, { onDelete: "set null" }),
+    approvalComment: text("approval_comment"),
+    readyForSubmissionAt: timestamp("ready_for_submission_at", { withTimezone: true }),
+    readyForSubmissionBy: uuid("ready_for_submission_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    submittedBy: uuid("submitted_by").references(() => users.id, { onDelete: "set null" }),
+    filedAt: timestamp("filed_at", { withTimezone: true }),
+    filedBy: uuid("filed_by").references(() => users.id, { onDelete: "set null" }),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    lockedBy: uuid("locked_by").references(() => users.id, { onDelete: "set null" }),
+    reopenedAt: timestamp("reopened_at", { withTimezone: true }),
+    reopenedBy: uuid("reopened_by").references(() => users.id, { onDelete: "set null" }),
+    reopenReason: text("reopen_reason"),
+    summary: jsonb("summary").notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    businessStatusIndex: index("gst_reporting_runs_business_status_idx").on(
+      table.businessId,
+      table.status
+    ),
+    businessGstinPeriodVersionUnique: uniqueIndex(
+      "gst_reporting_runs_business_gstin_period_version_unique"
+    ).on(table.businessId, table.gstRegistrationId, table.period, table.version),
+    businessIdentityPeriodUnique: uniqueIndex(
+      "gst_reporting_runs_id_business_gstin_period_unique"
+    ).on(table.id, table.businessId, table.gstRegistrationId, table.period),
+    gstRegistrationBusinessFk: foreignKey({
+      columns: [table.gstRegistrationId, table.businessId],
+      foreignColumns: [gstRegistrations.id, gstRegistrations.businessId],
+      name: "gst_reporting_runs_gst_registration_business_fk",
+    }),
+  })
+)
+
+export const gstReportingFacts = pgTable(
+  "gst_reporting_facts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => gstReportingRuns.id, { onDelete: "cascade" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    gstRegistrationId: uuid("gst_registration_id")
+      .notNull()
+      .references(() => gstRegistrations.id, { onDelete: "restrict" }),
+    gstinSnapshot: text("gstin_snapshot"),
+    period: text("period").notNull(),
+    sourceVoucherId: uuid("source_voucher_id"),
+    sourceDocumentId: uuid("source_document_id"),
+    sourceDocumentType: text("source_document_type").notNull(),
+    sourceDocumentNumber: text("source_document_number").notNull(),
+    sourceDocumentDate: date("source_document_date").notNull(),
+    sourceLineId: uuid("source_line_id"),
+    partyId: uuid("party_id"),
+    partyName: text("party_name"),
+    partyGstin: text("party_gstin"),
+    placeOfSupplyStateCode: text("place_of_supply_state_code"),
+    placeOfSupplyState: text("place_of_supply_state"),
+    classification: text("classification").notNull(),
+    hsnSac: text("hsn_sac"),
+    description: text("description"),
+    uqc: text("uqc"),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull().default("0"),
+    taxableValue: numeric("taxable_value", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    cgst: numeric("cgst", { precision: 14, scale: 2 }).notNull().default("0"),
+    sgst: numeric("sgst", { precision: 14, scale: 2 }).notNull().default("0"),
+    igst: numeric("igst", { precision: 14, scale: 2 }).notNull().default("0"),
+    cess: numeric("cess", { precision: 14, scale: 2 }).notNull().default("0"),
+    totalTax: numeric("total_tax", { precision: 14, scale: 2 }).notNull().default("0"),
+    reverseCharge: boolean("reverse_charge").notNull().default(false),
+    itcCategory: text("itc_category"),
+    reportingStatus: text("reporting_status").notNull().default("included"),
+    sourceSnapshot: jsonb("source_snapshot").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    runIndex: index("gst_reporting_facts_run_idx").on(table.runId),
+    businessPeriodIndex: index("gst_reporting_facts_business_period_idx").on(
+      table.businessId,
+      table.gstRegistrationId,
+      table.period
+    ),
+    classificationIndex: index("gst_reporting_facts_classification_idx").on(
+      table.businessId,
+      table.gstRegistrationId,
+      table.period,
+      table.classification
+    ),
+    sourceIndex: index("gst_reporting_facts_source_idx").on(
+      table.businessId,
+      table.sourceDocumentType,
+      table.sourceDocumentId
+    ),
+    businessIdentityUnique: uniqueIndex("gst_reporting_facts_id_business_unique").on(
+      table.id,
+      table.businessId
+    ),
+    sourceLineUnique: uniqueIndex("gst_reporting_facts_source_line_unique")
+      .on(table.runId, table.sourceDocumentType, table.sourceLineId)
+      .where(sql`${table.sourceLineId} is not null`),
+    runBusinessFk: foreignKey({
+      columns: [
+        table.runId,
+        table.businessId,
+        table.gstRegistrationId,
+        table.period,
+      ],
+      foreignColumns: [
+        gstReportingRuns.id,
+        gstReportingRuns.businessId,
+        gstReportingRuns.gstRegistrationId,
+        gstReportingRuns.period,
+      ],
+      name: "gst_reporting_facts_run_business_fk",
+    }),
+    gstRegistrationBusinessFk: foreignKey({
+      columns: [table.gstRegistrationId, table.businessId],
+      foreignColumns: [gstRegistrations.id, gstRegistrations.businessId],
+      name: "gst_reporting_facts_gst_registration_business_fk",
+    }),
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "gst_reporting_facts_party_business_fk",
+    }),
+    voucherBusinessFk: foreignKey({
+      columns: [table.sourceVoucherId, table.businessId],
+      foreignColumns: [vouchers.id, vouchers.businessId],
+      name: "gst_reporting_facts_voucher_business_fk",
+    }),
+  })
+)
+
+export const gstReportingExceptions = pgTable(
+  "gst_reporting_exceptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => gstReportingRuns.id, { onDelete: "cascade" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    gstRegistrationId: uuid("gst_registration_id")
+      .notNull()
+      .references(() => gstRegistrations.id, { onDelete: "restrict" }),
+    gstinSnapshot: text("gstin_snapshot"),
+    period: text("period").notNull(),
+    factId: uuid("fact_id"),
+    sourceDocumentType: text("source_document_type"),
+    sourceDocumentId: uuid("source_document_id"),
+    exceptionType: text("exception_type").notNull(),
+    severity: text("severity").notNull().default("MEDIUM"),
+    status: text("status").notNull().default("OPEN"),
+    message: text("message").notNull(),
+    recommendation: text("recommendation"),
+    isBlocking: boolean("is_blocking").notNull().default(false),
+    resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolution: text("resolution"),
+    ...timestamps,
+  },
+  (table) => ({
+    runIndex: index("gst_reporting_exceptions_run_idx").on(table.runId),
+    businessStatusIndex: index("gst_reporting_exceptions_status_idx").on(
+      table.businessId,
+      table.status,
+      table.severity
+    ),
+    runBusinessFk: foreignKey({
+      columns: [
+        table.runId,
+        table.businessId,
+        table.gstRegistrationId,
+        table.period,
+      ],
+      foreignColumns: [
+        gstReportingRuns.id,
+        gstReportingRuns.businessId,
+        gstReportingRuns.gstRegistrationId,
+        gstReportingRuns.period,
+      ],
+      name: "gst_reporting_exceptions_run_business_fk",
+    }),
+    factBusinessFk: foreignKey({
+      columns: [table.factId, table.businessId],
+      foreignColumns: [gstReportingFacts.id, gstReportingFacts.businessId],
+      name: "gst_reporting_exceptions_fact_business_fk",
+    }),
+    gstRegistrationBusinessFk: foreignKey({
+      columns: [table.gstRegistrationId, table.businessId],
+      foreignColumns: [gstRegistrations.id, gstRegistrations.businessId],
+      name: "gst_reporting_exceptions_gst_registration_business_fk",
+    }),
+  })
+)
+
+export const gstReportingExports = pgTable(
+  "gst_reporting_exports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => gstReportingRuns.id, { onDelete: "cascade" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    gstRegistrationId: uuid("gst_registration_id")
+      .notNull()
+      .references(() => gstRegistrations.id, { onDelete: "restrict" }),
+    gstinSnapshot: text("gstin_snapshot"),
+    period: text("period").notNull(),
+    reportType: text("report_type").notNull(),
+    exportFormat: text("export_format").notNull(),
+    fileName: text("file_name").notNull(),
+    contentType: text("content_type").notNull(),
+    contentHash: text("content_hash").notNull(),
+    exportedBy: uuid("exported_by").references(() => users.id, { onDelete: "set null" }),
+    exportedAt: timestamp("exported_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    runIndex: index("gst_reporting_exports_run_idx").on(table.runId),
+    runBusinessFk: foreignKey({
+      columns: [
+        table.runId,
+        table.businessId,
+        table.gstRegistrationId,
+        table.period,
+      ],
+      foreignColumns: [
+        gstReportingRuns.id,
+        gstReportingRuns.businessId,
+        gstReportingRuns.gstRegistrationId,
+        gstReportingRuns.period,
+      ],
+      name: "gst_reporting_exports_run_business_fk",
+    }),
+    gstRegistrationBusinessFk: foreignKey({
+      columns: [table.gstRegistrationId, table.businessId],
+      foreignColumns: [gstRegistrations.id, gstRegistrations.businessId],
+      name: "gst_reporting_exports_gst_registration_business_fk",
+    }),
+  })
+)
+
+export const gstReportingIdempotencyKeys = pgTable(
+  "gst_reporting_idempotency_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    operationScope: text("operation_scope").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull(),
+    responseBody: jsonb("response_body"),
+    status: text("status").notNull().default("completed"),
+    ...timestamps,
+  },
+  (table) => ({
+    businessScopeKeyUnique: uniqueIndex(
+      "gst_reporting_idempotency_keys_business_scope_key_unique"
+    ).on(table.businessId, table.operationScope, table.idempotencyKey),
+  })
+)
+
+export const gstFilingRuns = pgTable(
+  "gst_filing_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    gstRegistrationId: uuid("gst_registration_id")
+      .notNull()
+      .references(() => gstRegistrations.id, { onDelete: "restrict" }),
+    reportingRunId: uuid("reporting_run_id")
+      .notNull()
+      .references(() => gstReportingRuns.id, { onDelete: "restrict" }),
+    returnType: text("return_type").notNull(),
+    period: text("period").notNull(),
+    status: text("status").notNull().default("DRAFT"),
+    attemptNumber: integer("attempt_number").notNull().default(1),
+    adapterName: text("adapter_name").notNull().default("mock"),
+    adapterMode: text("adapter_mode"),
+    schemaVersion: text("schema_version"),
+    payloadHash: text("payload_hash"),
+    validationResult: jsonb("validation_result").notNull().default({}),
+    externalReference: text("external_reference"),
+    acknowledgementNumber: text("acknowledgement_number"),
+    acknowledgementDate: timestamp("acknowledgement_date", { withTimezone: true }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    submittedBy: uuid("submitted_by").references(() => users.id, { onDelete: "set null" }),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    filedAt: timestamp("filed_at", { withTimezone: true }),
+    rejectedAt: timestamp("rejected_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    rawExternalResponse: jsonb("raw_external_response"),
+    externalResponseReceivedAt: timestamp("external_response_received_at", { withTimezone: true }),
+    acknowledgementArtifactId: text("acknowledgement_artifact_id"),
+    correctionRequiredAt: timestamp("correction_required_at", { withTimezone: true }),
+    correctionReason: text("correction_reason"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    cancelledBy: uuid("cancelled_by").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (table) => ({
+    reportingReturnAttemptUnique: uniqueIndex(
+      "gst_filing_runs_reporting_return_attempt_unique"
+    ).on(table.businessId, table.reportingRunId, table.returnType, table.attemptNumber),
+    businessPeriodIndex: index("gst_filing_runs_business_period_idx").on(
+      table.businessId,
+      table.gstRegistrationId,
+      table.period,
+      table.returnType
+    ),
+    businessStatusIndex: index("gst_filing_runs_business_status_idx").on(
+      table.businessId,
+      table.status
+    ),
+    idBusinessReturnUnique: uniqueIndex("gst_filing_runs_id_business_return_unique").on(
+      table.id,
+      table.businessId,
+      table.returnType
+    ),
+    idBusinessUnique: uniqueIndex("gst_filing_runs_id_business_unique").on(
+      table.id,
+      table.businessId
+    ),
+    reportingRunBusinessFk: foreignKey({
+      columns: [
+        table.reportingRunId,
+        table.businessId,
+        table.gstRegistrationId,
+        table.period,
+      ],
+      foreignColumns: [
+        gstReportingRuns.id,
+        gstReportingRuns.businessId,
+        gstReportingRuns.gstRegistrationId,
+        gstReportingRuns.period,
+      ],
+      name: "gst_filing_runs_reporting_run_business_fk",
+    }),
+    gstRegistrationBusinessFk: foreignKey({
+      columns: [table.gstRegistrationId, table.businessId],
+      foreignColumns: [gstRegistrations.id, gstRegistrations.businessId],
+      name: "gst_filing_runs_gst_registration_business_fk",
+    }),
+  })
+)
+
+export const gstFilingPayloads = pgTable(
+  "gst_filing_payloads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    filingRunId: uuid("filing_run_id")
+      .notNull()
+      .references(() => gstFilingRuns.id, { onDelete: "restrict" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    reportingRunId: uuid("reporting_run_id")
+      .notNull()
+      .references(() => gstReportingRuns.id, { onDelete: "restrict" }),
+    returnType: text("return_type").notNull(),
+    payloadType: text("payload_type").notNull(),
+    schemaVersion: text("schema_version").notNull(),
+    contentHash: text("content_hash").notNull(),
+    payload: jsonb("payload").notNull(),
+    generatedBy: uuid("generated_by").references(() => users.id, { onDelete: "set null" }),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+    ...timestamps,
+  },
+  (table) => ({
+    runTypeUnique: uniqueIndex("gst_filing_payloads_run_type_unique").on(
+      table.filingRunId,
+      table.payloadType
+    ),
+    businessRunIndex: index("gst_filing_payloads_business_run_idx").on(
+      table.businessId,
+      table.filingRunId
+    ),
+    runBusinessFk: foreignKey({
+      columns: [table.filingRunId, table.businessId, table.returnType],
+      foreignColumns: [
+        gstFilingRuns.id,
+        gstFilingRuns.businessId,
+        gstFilingRuns.returnType,
+      ],
+      name: "gst_filing_payloads_run_business_fk",
+    }),
+  })
+)
+
+export const gstFilingStatusEvents = pgTable(
+  "gst_filing_status_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    filingRunId: uuid("filing_run_id")
+      .notNull()
+      .references(() => gstFilingRuns.id, { onDelete: "restrict" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    previousStatus: text("previous_status"),
+    status: text("status").notNull(),
+    eventType: text("event_type").notNull(),
+    message: text("message"),
+    externalReference: text("external_reference"),
+    rawResponse: jsonb("raw_response"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    runIndex: index("gst_filing_status_events_run_idx").on(
+      table.filingRunId,
+      table.createdAt
+    ),
+    runBusinessFk: foreignKey({
+      columns: [table.filingRunId, table.businessId],
+      foreignColumns: [gstFilingRuns.id, gstFilingRuns.businessId],
+      name: "gst_filing_status_events_run_business_fk",
+    }),
+  })
+)
+
+export const gstFilingIdempotencyKeys = pgTable(
+  "gst_filing_idempotency_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    operationScope: text("operation_scope").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull(),
+    responseBody: jsonb("response_body"),
+    status: text("status").notNull().default("completed"),
+    ...timestamps,
+  },
+  (table) => ({
+    businessScopeKeyUnique: uniqueIndex(
+      "gst_filing_idempotency_keys_business_scope_key_unique"
+    ).on(table.businessId, table.operationScope, table.idempotencyKey),
+  })
+)
+
+export const eInvoiceRecords = pgTable(
+  "e_invoice_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    gstRegistrationId: uuid("gst_registration_id")
+      .notNull()
+      .references(() => gstRegistrations.id, { onDelete: "restrict" }),
+    sourceDocumentType: text("source_document_type").notNull(),
+    sourceDocumentId: uuid("source_document_id").notNull(),
+    sourceSalesInvoiceId: uuid("source_sales_invoice_id").references(
+      () => salesInvoices.id,
+      { onDelete: "restrict" }
+    ),
+    sourceAdjustmentDocumentId: uuid("source_adjustment_document_id").references(
+      () => adjustmentDocuments.id,
+      { onDelete: "restrict" }
+    ),
+    sourceVoucherId: uuid("source_voucher_id").references(() => vouchers.id, {
+      onDelete: "restrict",
+    }),
+    sourceDocumentNumber: text("source_document_number").notNull(),
+    documentDate: date("document_date").notNull(),
+    partyId: uuid("party_id").references(() => parties.id, { onDelete: "set null" }),
+    partyGstin: text("party_gstin"),
+    eligibilityStatus: text("eligibility_status").notNull().default("ELIGIBLE"),
+    submissionStatus: text("submission_status").notNull().default("ELIGIBLE"),
+    attemptNumber: integer("attempt_number").notNull().default(1),
+    providerName: text("provider_name").notNull().default("mock"),
+    providerMode: text("provider_mode"),
+    providerReference: text("provider_reference"),
+    payloadSchemaVersion: text("payload_schema_version"),
+    payloadHash: text("payload_hash"),
+    irn: text("irn"),
+    ackNumber: text("ack_number"),
+    ackDate: timestamp("ack_date", { withTimezone: true }),
+    signedInvoiceReference: text("signed_invoice_reference"),
+    signedQrCode: text("signed_qr_code"),
+    rawResponseReference: text("raw_response_reference"),
+    validationResult: jsonb("validation_result").notNull().default({}),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    rawExternalResponse: jsonb("raw_external_response"),
+    externalResponseReceivedAt: timestamp("external_response_received_at", {
+      withTimezone: true,
+    }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    submittedBy: uuid("submitted_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    generatedAt: timestamp("generated_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelledBy: uuid("cancelled_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    cancelReason: text("cancel_reason"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    ...timestamps,
+  },
+  (table) => ({
+    sourceUnique: uniqueIndex("e_invoice_records_business_source_unique").on(
+      table.businessId,
+      table.sourceDocumentType,
+      table.sourceDocumentId
+    ),
+    businessIrnUnique: uniqueIndex("e_invoice_records_business_irn_unique").on(
+      table.businessId,
+      table.irn
+    ),
+    businessIdentityUnique: uniqueIndex(
+      "e_invoice_records_id_business_id_unique"
+    ).on(table.id, table.businessId),
+    businessStatusIndex: index("e_invoice_records_business_status_idx").on(
+      table.businessId,
+      table.submissionStatus
+    ),
+    businessDateIndex: index("e_invoice_records_business_date_idx").on(
+      table.businessId,
+      table.documentDate
+    ),
+    gstRegistrationBusinessFk: foreignKey({
+      columns: [table.gstRegistrationId, table.businessId],
+      foreignColumns: [gstRegistrations.id, gstRegistrations.businessId],
+      name: "e_invoice_records_gst_registration_business_fk",
+    }),
+    salesInvoiceBusinessFk: foreignKey({
+      columns: [table.sourceSalesInvoiceId, table.businessId],
+      foreignColumns: [salesInvoices.id, salesInvoices.businessId],
+      name: "e_invoice_records_sales_invoice_business_fk",
+    }),
+    adjustmentDocumentBusinessFk: foreignKey({
+      columns: [table.sourceAdjustmentDocumentId, table.businessId],
+      foreignColumns: [adjustmentDocuments.id, adjustmentDocuments.businessId],
+      name: "e_invoice_records_adjustment_document_business_fk",
+    }),
+    partyBusinessFk: foreignKey({
+      columns: [table.partyId, table.businessId],
+      foreignColumns: [parties.id, parties.businessId],
+      name: "e_invoice_records_party_business_fk",
+    }).onDelete("restrict"),
+  })
+)
+
+export const eInvoicePayloads = pgTable(
+  "e_invoice_payloads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eInvoiceRecordId: uuid("e_invoice_record_id")
+      .notNull()
+      .references(() => eInvoiceRecords.id, { onDelete: "restrict" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    payloadType: text("payload_type").notNull(),
+    schemaVersion: text("schema_version").notNull(),
+    contentHash: text("content_hash").notNull(),
+    payload: jsonb("payload").notNull(),
+    generatedBy: uuid("generated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+    ...timestamps,
+  },
+  (table) => ({
+    recordTypeUnique: uniqueIndex("e_invoice_payloads_record_type_unique").on(
+      table.eInvoiceRecordId,
+      table.payloadType
+    ),
+    businessRecordIndex: index("e_invoice_payloads_business_record_idx").on(
+      table.businessId,
+      table.eInvoiceRecordId
+    ),
+    recordBusinessFk: foreignKey({
+      columns: [table.eInvoiceRecordId, table.businessId],
+      foreignColumns: [eInvoiceRecords.id, eInvoiceRecords.businessId],
+      name: "e_invoice_payloads_record_business_fk",
+    }),
+  })
+)
+
+export const eInvoiceStatusEvents = pgTable(
+  "e_invoice_status_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eInvoiceRecordId: uuid("e_invoice_record_id")
+      .notNull()
+      .references(() => eInvoiceRecords.id, { onDelete: "restrict" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    previousStatus: text("previous_status"),
+    status: text("status").notNull(),
+    eventType: text("event_type").notNull(),
+    message: text("message"),
+    providerReference: text("provider_reference"),
+    rawResponse: jsonb("raw_response"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    recordIndex: index("e_invoice_status_events_record_idx").on(
+      table.eInvoiceRecordId,
+      table.createdAt
+    ),
+    recordBusinessFk: foreignKey({
+      columns: [table.eInvoiceRecordId, table.businessId],
+      foreignColumns: [eInvoiceRecords.id, eInvoiceRecords.businessId],
+      name: "e_invoice_status_events_record_business_fk",
+    }),
+  })
+)
+
+export const eInvoiceIdempotencyKeys = pgTable(
+  "e_invoice_idempotency_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    operationScope: text("operation_scope").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull(),
+    responseBody: jsonb("response_body"),
+    status: text("status").notNull().default("completed"),
+    ...timestamps,
+  },
+  (table) => ({
+    businessScopeKeyUnique: uniqueIndex(
+      "e_invoice_idempotency_keys_business_scope_key_unique"
+    ).on(table.businessId, table.operationScope, table.idempotencyKey),
   })
 )
 
@@ -3256,6 +4593,8 @@ export type GstEntryRecord = typeof gstEntries.$inferSelect
 export type ReceivablePayableEntryRecord = typeof receivablePayableEntries.$inferSelect
 export type PaymentTermRecord = typeof paymentTerms.$inferSelect
 export type PaymentAllocationRecord = typeof paymentAllocations.$inferSelect
+export type ReceivablePayableAdjustmentEffectRecord =
+  typeof receivablePayableAdjustmentEffects.$inferSelect
 export type ReceiptRecord = typeof receipts.$inferSelect
 export type PaymentRecord = typeof payments.$inferSelect
 export type BankStatementImportRecord = typeof bankStatementImports.$inferSelect
@@ -3270,6 +4609,26 @@ export type PurchaseBillLineRecord = typeof purchaseBillLines.$inferSelect
 export type PurchaseBillPaymentRecord = typeof purchaseBillPayments.$inferSelect
 export type AdjustmentDocumentRecord = typeof adjustmentDocuments.$inferSelect
 export type AdjustmentDocumentLineRecord = typeof adjustmentDocumentLines.$inferSelect
+export type PurchaseTaxRecord = typeof purchaseTaxRecords.$inferSelect
+export type ExternalGstImportRecord = typeof externalGstImports.$inferSelect
+export type ExternalGstRecord = typeof externalGstRecords.$inferSelect
+export type GstReconciliationMatchRecord =
+  typeof gstReconciliationMatches.$inferSelect
+export type GstReconciliationExceptionRecord =
+  typeof gstReconciliationExceptions.$inferSelect
+export type ItcClaimRecord = typeof itcClaims.$inferSelect
+export type ItcStatusEventRecord = typeof itcStatusEvents.$inferSelect
+export type GstReportingRunRecord = typeof gstReportingRuns.$inferSelect
+export type GstReportingFactRecord = typeof gstReportingFacts.$inferSelect
+export type GstReportingExceptionRecord =
+  typeof gstReportingExceptions.$inferSelect
+export type GstReportingExportRecord = typeof gstReportingExports.$inferSelect
+export type GstFilingRunRecord = typeof gstFilingRuns.$inferSelect
+export type GstFilingPayloadRecord = typeof gstFilingPayloads.$inferSelect
+export type GstFilingStatusEventRecord = typeof gstFilingStatusEvents.$inferSelect
+export type EInvoiceRecord = typeof eInvoiceRecords.$inferSelect
+export type EInvoicePayloadRecord = typeof eInvoicePayloads.$inferSelect
+export type EInvoiceStatusEventRecord = typeof eInvoiceStatusEvents.$inferSelect
 export type PosSaleRecord = typeof posSales.$inferSelect
 export type PosSaleLineRecord = typeof posSaleLines.$inferSelect
 export type PosSalePaymentRecord = typeof posSalePayments.$inferSelect

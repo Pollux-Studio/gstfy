@@ -13,7 +13,11 @@ import { registerAvatarRoutes } from "./modules/avatar/avatar.routes.js"
 import { registerAuthRoutes } from "./modules/auth/auth.routes.js"
 import { registerCaRoutes } from "./modules/ca/ca.routes.js"
 import { registerCoreRoutes } from "./modules/core/core.routes.js"
+import { registerEInvoiceRoutes } from "./modules/e-invoice/e-invoice.routes.js"
 import { registerInventoryRoutes } from "./modules/inventory/inventory.routes.js"
+import { registerGstFilingRoutes } from "./modules/gst-filing/gst-filing.routes.js"
+import { registerGstReconciliationRoutes } from "./modules/gst-reconciliation/gst-reconciliation.routes.js"
+import { registerGstReportingRoutes } from "./modules/gst-reporting/gst-reporting.routes.js"
 import { registerOrganizationRoutes } from "./modules/organization/organization.routes.js"
 import { registerPartiesRoutes } from "./modules/parties/parties.routes.js"
 import { registerPaymentReceiptRoutes } from "./modules/payment-receipt/payment-receipt.routes.js"
@@ -207,6 +211,10 @@ async function registerBackendRoutes(app: Parameters<typeof registerAuthRoutes>[
   await registerPartiesRoutes(app)
   await registerProductsRoutes(app)
   await registerInventoryRoutes(app)
+  await registerEInvoiceRoutes(app)
+  await registerGstFilingRoutes(app)
+  await registerGstReconciliationRoutes(app)
+  await registerGstReportingRoutes(app)
   await registerTaxRoutes(app)
   await registerSalesRoutes(app)
   await registerPurchasesRoutes(app)

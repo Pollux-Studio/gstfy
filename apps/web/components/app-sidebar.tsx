@@ -11,6 +11,7 @@ import {
   Building2Icon,
   CreditCardIcon,
   FileChartColumnIcon,
+  FileSignatureIcon,
   GalleryVerticalEndIcon,
   HandCoinsIcon,
   KeyRoundIcon,
@@ -200,6 +201,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 item.module === "expenses" ? <HandCoinsIcon /> :
                 item.title === "Money" ? <BadgeIndianRupeeIcon /> :
                 item.module === "gstr" ? <ReceiptTextIcon /> :
+                item.module === "einvoice" ? <FileSignatureIcon /> :
                 item.title === "Payment Reports" ? <BarChart3Icon /> :
                 item.title === "Products" ? <PackageIcon /> :
                 item.module === "inventory" ? <WarehouseIcon /> :

@@ -15,6 +15,41 @@ export function calculateOutstandingCents(
   return Math.max(originalAmountCents - activeAllocationCents, 0)
 }
 
+export function calculateAdjustedSettlement(input: {
+  originalAmountCents: number
+  activeAllocationCents: number
+  activeAdjustmentCents: number
+}) {
+  const adjustmentCents = Math.min(
+    Math.max(input.activeAdjustmentCents, 0),
+    Math.max(input.originalAmountCents, 0)
+  )
+  const effectiveAmountCents = Math.max(
+    input.originalAmountCents - adjustmentCents,
+    0
+  )
+  const settledAmountCents = Math.min(
+    Math.max(input.activeAllocationCents, 0),
+    effectiveAmountCents
+  )
+  const excessSettledAmountCents = Math.max(
+    input.activeAllocationCents - effectiveAmountCents,
+    0
+  )
+  const outstandingAmountCents = Math.max(
+    effectiveAmountCents - settledAmountCents,
+    0
+  )
+
+  return {
+    adjustmentCents,
+    effectiveAmountCents,
+    settledAmountCents,
+    excessSettledAmountCents,
+    outstandingAmountCents,
+  }
+}
+
 export function validateAllocationLimits(input: AllocationLimitInput) {
   if (input.requestedCents <= 0) {
     return { valid: false, reason: "amount_not_positive" as const }

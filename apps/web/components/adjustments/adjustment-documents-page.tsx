@@ -77,6 +77,9 @@ type AdjustmentPageConfig = {
   sourceDocumentKind: "sales" | "purchase"
   valueInput: "quantity" | "amount"
   defaultContext: "goods_related" | "value_only" | "tax_adjustment"
+  defaultIssuerType: "GSTFY_BUSINESS" | "CUSTOMER" | "SUPPLIER"
+  defaultDocumentDirection: "incoming" | "outgoing"
+  defaultSourcePartyRole: "customer" | "supplier"
 }
 
 const pageConfigs: Record<AdjustmentMode, AdjustmentPageConfig> = {
@@ -91,6 +94,9 @@ const pageConfigs: Record<AdjustmentMode, AdjustmentPageConfig> = {
     sourceDocumentKind: "sales",
     valueInput: "quantity",
     defaultContext: "goods_related",
+    defaultIssuerType: "GSTFY_BUSINESS",
+    defaultDocumentDirection: "outgoing",
+    defaultSourcePartyRole: "customer",
   },
   "purchase-return": {
     mode: "purchase-return",
@@ -103,6 +109,9 @@ const pageConfigs: Record<AdjustmentMode, AdjustmentPageConfig> = {
     sourceDocumentKind: "purchase",
     valueInput: "quantity",
     defaultContext: "goods_related",
+    defaultIssuerType: "GSTFY_BUSINESS",
+    defaultDocumentDirection: "outgoing",
+    defaultSourcePartyRole: "supplier",
   },
   "credit-note": {
     mode: "credit-note",
@@ -115,6 +124,9 @@ const pageConfigs: Record<AdjustmentMode, AdjustmentPageConfig> = {
     sourceDocumentKind: "sales",
     valueInput: "amount",
     defaultContext: "value_only",
+    defaultIssuerType: "GSTFY_BUSINESS",
+    defaultDocumentDirection: "outgoing",
+    defaultSourcePartyRole: "customer",
   },
   "debit-note": {
     mode: "debit-note",
@@ -127,6 +139,9 @@ const pageConfigs: Record<AdjustmentMode, AdjustmentPageConfig> = {
     sourceDocumentKind: "purchase",
     valueInput: "amount",
     defaultContext: "tax_adjustment",
+    defaultIssuerType: "SUPPLIER",
+    defaultDocumentDirection: "incoming",
+    defaultSourcePartyRole: "supplier",
   },
 }
 
@@ -239,9 +254,10 @@ export function AdjustmentDocumentsPage({ mode }: { mode: AdjustmentMode }) {
         </div>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-3">
+      <section className="grid gap-3 md:grid-cols-4">
         <MetricCard label="Total adjusted" value={formatCurrency(totals.total)} />
-        <MetricCard label="Posted" value={String(totals.posted)} />
+        <MetricCard label="AR/AP reduced" value={formatCurrency(totals.settlement)} />
+        <MetricCard label="Excess credit" value={formatCurrency(totals.excess)} />
         <MetricCard label="Drafts" value={String(totals.draft)} />
       </section>
 
@@ -304,6 +320,7 @@ export function AdjustmentDocumentsPage({ mode }: { mode: AdjustmentMode }) {
                     <TableHead>Date</TableHead>
                     <TableHead className="text-right">Taxable</TableHead>
                     <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Settlement</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Action</TableHead>
                   </TableRow>
@@ -333,6 +350,14 @@ export function AdjustmentDocumentsPage({ mode }: { mode: AdjustmentMode }) {
                       <TableCell>{formatDate(document.adjustmentDate)}</TableCell>
                       <AmountCell value={document.taxableTotal} />
                       <AmountCell value={document.grandTotal} />
+                      <TableCell className="text-right font-mono">
+                        <p>{formatCurrency(document.settlementEffectAmount ?? "0")}</p>
+                        {Number(document.excessCreditAmount ?? 0) > 0 ? (
+                          <p className="text-[11px] text-amber-600">
+                            {formatCurrency(document.excessCreditAmount)} excess
+                          </p>
+                        ) : null}
+                      </TableCell>
                       <TableCell>
                         <StatusBadge status={document.status} />
                       </TableCell>
@@ -582,6 +607,9 @@ function AdjustmentCreateDialog({
         adjustmentDate,
         reason: reason.trim() || null,
         adjustmentContext: config.defaultContext,
+        issuerType: config.defaultIssuerType,
+        documentDirection: config.defaultDocumentDirection,
+        sourcePartyRole: config.defaultSourcePartyRole,
         lines,
       })
     },
@@ -882,10 +910,12 @@ function summarizeDocuments(documents: AdjustmentListRow[]) {
   return documents.reduce(
     (summary, document) => ({
       total: summary.total + Number(document.grandTotal),
+      settlement: summary.settlement + Number(document.settlementEffectAmount ?? 0),
+      excess: summary.excess + Number(document.excessCreditAmount ?? 0),
       posted: summary.posted + (document.status === "posted" ? 1 : 0),
       draft: summary.draft + (document.status === "draft" ? 1 : 0),
     }),
-    { total: 0, posted: 0, draft: 0 }
+    { total: 0, settlement: 0, excess: 0, posted: 0, draft: 0 }
   )
 }
 

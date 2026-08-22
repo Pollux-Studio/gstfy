@@ -9,6 +9,22 @@ export type AdjustmentType =
 export type SourceDocumentType = "sales_invoice" | "purchase_bill"
 export type AdjustmentStatus = "draft" | "posted" | "reversed"
 export type InventoryEffect = "STOCK_IN" | "STOCK_OUT" | "NONE"
+export type AdjustmentIssuerType = "GSTFY_BUSINESS" | "CUSTOMER" | "SUPPLIER"
+export type AdjustmentDocumentDirection = "incoming" | "outgoing"
+export type AdjustmentSourcePartyRole = "customer" | "supplier"
+
+export type AdjustmentIssuerContext = {
+  issuerType: AdjustmentIssuerType
+  documentDirection: AdjustmentDocumentDirection
+  sourcePartyRole: AdjustmentSourcePartyRole
+}
+
+export type AdjustmentFinancialDirection = {
+  arApEntryType: "receivable" | "payable" | null
+  arApEffect: "increase" | "decrease" | "none"
+  taxKind: "input" | "output"
+  taxSide: "debit" | "credit"
+}
 
 export type ReturnableLineInput = {
   originalQuantity: string | number
@@ -51,6 +67,132 @@ export function sourceDocumentTypeForAdjustment(type: AdjustmentType) {
   return type === "SALES_RETURN" || type === "CREDIT_NOTE" ?
       "sales_invoice"
     : "purchase_bill"
+}
+
+export function defaultIssuerContextForAdjustment(
+  type: AdjustmentType,
+  sourceDocumentType: SourceDocumentType
+): AdjustmentIssuerContext {
+  if (sourceDocumentType === "sales_invoice") {
+    return {
+      issuerType: "GSTFY_BUSINESS",
+      documentDirection: "outgoing",
+      sourcePartyRole: "customer",
+    }
+  }
+
+  if (type === "PURCHASE_RETURN") {
+    return {
+      issuerType: "GSTFY_BUSINESS",
+      documentDirection: "outgoing",
+      sourcePartyRole: "supplier",
+    }
+  }
+
+  return {
+    issuerType: "SUPPLIER",
+    documentDirection: "incoming",
+    sourcePartyRole: "supplier",
+  }
+}
+
+export function resolveAdjustmentIssuerContext(input: {
+  type: AdjustmentType
+  sourceDocumentType: SourceDocumentType
+  issuerType?: AdjustmentIssuerType
+  documentDirection?: AdjustmentDocumentDirection
+  sourcePartyRole?: AdjustmentSourcePartyRole | null
+}) {
+  const defaults = defaultIssuerContextForAdjustment(
+    input.type,
+    input.sourceDocumentType
+  )
+  const context = {
+    issuerType: input.issuerType ?? defaults.issuerType,
+    documentDirection: input.documentDirection ?? defaults.documentDirection,
+    sourcePartyRole: input.sourcePartyRole ?? defaults.sourcePartyRole,
+  }
+
+  if (input.sourceDocumentType === "sales_invoice" && context.sourcePartyRole !== "customer") {
+    return {
+      valid: false,
+      reason: "Sales-source adjustments must target a customer." as const,
+      context,
+    }
+  }
+
+  if (input.sourceDocumentType === "purchase_bill" && context.sourcePartyRole !== "supplier") {
+    return {
+      valid: false,
+      reason: "Purchase-source adjustments must target a supplier." as const,
+      context,
+    }
+  }
+
+  if (
+    input.type === "DEBIT_NOTE" &&
+    input.sourceDocumentType === "sales_invoice" &&
+    (context.issuerType !== "GSTFY_BUSINESS" || context.documentDirection !== "outgoing")
+  ) {
+    return {
+      valid: false,
+      reason: "Customer debit notes must be GSTfy-issued outgoing documents." as const,
+      context,
+    }
+  }
+
+  if (
+    input.type === "DEBIT_NOTE" &&
+    input.sourceDocumentType === "purchase_bill" &&
+    (context.issuerType !== "SUPPLIER" || context.documentDirection !== "incoming")
+  ) {
+    return {
+      valid: false,
+      reason: "Supplier debit notes must be incoming supplier-issued documents." as const,
+      context,
+    }
+  }
+
+  return { valid: true, reason: null, context }
+}
+
+export function resolveAdjustmentFinancialDirection(input: {
+  type: AdjustmentType
+  sourceDocumentType: SourceDocumentType
+}): AdjustmentFinancialDirection {
+  if (input.sourceDocumentType === "sales_invoice") {
+    if (input.type === "DEBIT_NOTE") {
+      return {
+        arApEntryType: "receivable",
+        arApEffect: "increase",
+        taxKind: "output",
+        taxSide: "credit",
+      }
+    }
+
+    return {
+      arApEntryType: "receivable",
+      arApEffect: "decrease",
+      taxKind: "output",
+      taxSide: "debit",
+    }
+  }
+
+  if (input.type === "DEBIT_NOTE") {
+    return {
+      arApEntryType: "payable",
+      arApEffect: "increase",
+      taxKind: "input",
+      taxSide: "debit",
+    }
+  }
+
+  return {
+    arApEntryType: "payable",
+    arApEffect: "decrease",
+    taxKind: "input",
+    taxSide: "credit",
+  }
 }
 
 export function voucherTypeForAdjustment(type: AdjustmentType) {

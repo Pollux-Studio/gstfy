@@ -52,6 +52,10 @@ const pathModuleMap: Array<{
     module: "accounting",
   },
   {
+    test: (pathname) => pathname === "/e-invoices" || pathname.startsWith("/e-invoices/"),
+    module: "einvoice",
+  },
+  {
     test: (pathname) =>
       pathname === "/money" ||
       pathname.startsWith("/money/") ||

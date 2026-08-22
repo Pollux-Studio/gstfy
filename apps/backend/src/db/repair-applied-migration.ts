@@ -13,6 +13,7 @@ type MigrationLedgerRow = {
 const repairableMigrations = new Set([
   "0034_payment_receipt_hardening.sql",
   "0035_payment_receipt_production_guards.sql",
+  "0053_e_invoice_engine.sql",
 ])
 const migrationsDirectory = fileURLToPath(
   new URL("../../drizzle/", import.meta.url)

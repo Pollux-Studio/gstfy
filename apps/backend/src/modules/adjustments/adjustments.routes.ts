@@ -24,8 +24,11 @@ import {
   journalEntries,
   journalEntryLines,
   moneyOperationIdempotencyKeys,
+  paymentAllocations,
   purchaseBillLines,
   purchaseBills,
+  receivablePayableAdjustmentEffects,
+  receivablePayableEntries,
   salesInvoiceLines,
   salesInvoices,
   vouchers,
@@ -53,6 +56,8 @@ import {
   documentTypeForAdjustment,
   draftPrefixForAdjustment,
   formatQuantity,
+  resolveAdjustmentFinancialDirection,
+  resolveAdjustmentIssuerContext,
   sourceDocumentTypeForAdjustment,
   type AdjustmentType,
   type SourceDocumentType,
@@ -73,6 +78,7 @@ import {
 } from "./adjustments.schemas.js"
 
 type BusinessAccess = Awaited<ReturnType<typeof requirePrimaryBusinessAccess>>
+type AdjustmentDbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
 type AdjustmentAction = "view" | "create" | "edit" | "delete"
 
 type SalesSource = {
@@ -359,6 +365,8 @@ async function listAdjustments(
       sgstTotal: adjustmentDocuments.sgstTotal,
       igstTotal: adjustmentDocuments.igstTotal,
       grandTotal: adjustmentDocuments.grandTotal,
+      settlementEffectAmount: adjustmentDocuments.settlementEffectAmount,
+      excessCreditAmount: adjustmentDocuments.excessCreditAmount,
       reason: adjustmentDocuments.reason,
       postedAt: adjustmentDocuments.postedAt,
       reversedAt: adjustmentDocuments.reversedAt,
@@ -457,7 +465,7 @@ async function getAdjustmentDetail(businessId: string, id: string) {
           eq(vouchers.id, adjustment.voucherId)
         ),
       })
-    : null
+      : null
 
   const journalEntryRows =
     adjustment.voucherId ?
@@ -465,7 +473,7 @@ async function getAdjustmentDetail(businessId: string, id: string) {
         .select()
         .from(journalEntries)
         .where(eq(journalEntries.voucherId, adjustment.voucherId))
-    : []
+      : []
   const journalEntryIds = journalEntryRows.map((entry) => entry.id)
   const journalLines =
     journalEntryIds.length > 0 ?
@@ -473,7 +481,7 @@ async function getAdjustmentDetail(businessId: string, id: string) {
         .select()
         .from(journalEntryLines)
         .where(inArray(journalEntryLines.journalEntryId, journalEntryIds))
-    : []
+      : []
 
   const audit = await db
     .select()
@@ -486,12 +494,49 @@ async function getAdjustmentDetail(businessId: string, id: string) {
       )
     )
     .orderBy(desc(auditLogs.createdAt))
+  const settlementEffects = await db
+    .select({
+      id: receivablePayableAdjustmentEffects.id,
+      adjustmentDocumentId: receivablePayableAdjustmentEffects.adjustmentDocumentId,
+      adjustmentVoucherId: receivablePayableAdjustmentEffects.adjustmentVoucherId,
+      sourceVoucherId: receivablePayableAdjustmentEffects.sourceVoucherId,
+      receivablePayableEntryId:
+        receivablePayableAdjustmentEffects.receivablePayableEntryId,
+      effectKind: receivablePayableAdjustmentEffects.effectKind,
+      amount: receivablePayableAdjustmentEffects.amount,
+      status: receivablePayableAdjustmentEffects.status,
+      reversedAt: receivablePayableAdjustmentEffects.reversedAt,
+      reversalReason: receivablePayableAdjustmentEffects.reversalReason,
+      createdAt: receivablePayableAdjustmentEffects.createdAt,
+      entryOriginalAmount: receivablePayableEntries.originalAmount,
+      entryAdjustmentAmount: receivablePayableEntries.adjustmentAmount,
+      entryEffectiveAmount: receivablePayableEntries.effectiveAmount,
+      entrySettledAmount: receivablePayableEntries.settledAmount,
+      entryOutstandingAmount: receivablePayableEntries.outstandingAmount,
+      entryExcessSettledAmount: receivablePayableEntries.excessSettledAmount,
+    })
+    .from(receivablePayableAdjustmentEffects)
+    .innerJoin(
+      receivablePayableEntries,
+      eq(
+        receivablePayableEntries.id,
+        receivablePayableAdjustmentEffects.receivablePayableEntryId
+      )
+    )
+    .where(
+      and(
+        eq(receivablePayableAdjustmentEffects.businessId, businessId),
+        eq(receivablePayableAdjustmentEffects.adjustmentDocumentId, id)
+      )
+    )
+    .orderBy(desc(receivablePayableAdjustmentEffects.createdAt))
 
   return {
     ...adjustment,
     lines,
     sourceVoucher,
     voucher,
+    settlementEffects,
     journalEntries: journalEntryRows.map((entry) => ({
       ...entry,
       lines: journalLines.filter((line) => line.journalEntryId === entry.id),
@@ -510,6 +555,18 @@ async function createAdjustment(
     sourceDocumentTypeForAdjustment(type),
     body.sourceDocumentId
   )
+  const issuerContext = resolveAdjustmentIssuerContext({
+    type,
+    sourceDocumentType: source.sourceDocumentType,
+    issuerType: body.sourcePartyRole ? body.issuerType : undefined,
+    documentDirection: body.sourcePartyRole ? body.documentDirection : undefined,
+    sourcePartyRole: body.sourcePartyRole,
+  })
+
+  if (!issuerContext.valid) {
+    throw new HttpError(400, issuerContext.reason ?? "Invalid adjustment issuer context.")
+  }
+
   const calculation = await calculateAdjustment(access.business.id, type, source, body)
   const adjustmentNumber = createDraftDocumentNumber(draftPrefixForAdjustment(type))
   const partyId = getSourcePartyId(source)
@@ -530,9 +587,9 @@ async function createAdjustment(
         adjustmentDate: body.adjustmentDate,
         reasonCode: body.reasonCode ?? null,
         reason: body.reason ?? null,
-        issuerType: body.issuerType,
-        documentDirection: body.documentDirection,
-        sourcePartyRole: body.sourcePartyRole ?? getSourcePartyRole(source),
+        issuerType: issuerContext.context.issuerType,
+        documentDirection: issuerContext.context.documentDirection,
+        sourcePartyRole: issuerContext.context.sourcePartyRole,
         adjustmentContext: body.adjustmentContext,
         ...calculation.totals,
         partySnapshot: getSourcePartySnapshot(source),
@@ -604,6 +661,23 @@ async function updateAdjustment(
       body.lines ??
       (await getExistingDraftInputLines(access.business.id, existing.id)),
   }
+  const hasExplicitIssuerContext =
+    body.issuerType !== undefined ||
+    body.documentDirection !== undefined ||
+    body.sourcePartyRole !== undefined
+  const issuerContext = resolveAdjustmentIssuerContext({
+    type,
+    sourceDocumentType: source.sourceDocumentType,
+    issuerType: hasExplicitIssuerContext ? createLikeBody.issuerType : undefined,
+    documentDirection:
+      hasExplicitIssuerContext ? createLikeBody.documentDirection : undefined,
+    sourcePartyRole: hasExplicitIssuerContext ? createLikeBody.sourcePartyRole : undefined,
+  })
+
+  if (!issuerContext.valid) {
+    throw new HttpError(400, issuerContext.reason ?? "Invalid adjustment issuer context.")
+  }
+
   const calculation = await calculateAdjustment(
     access.business.id,
     type,
@@ -630,9 +704,9 @@ async function updateAdjustment(
         adjustmentDate: createLikeBody.adjustmentDate,
         reasonCode: createLikeBody.reasonCode ?? null,
         reason: createLikeBody.reason ?? null,
-        issuerType: createLikeBody.issuerType,
-        documentDirection: createLikeBody.documentDirection,
-        sourcePartyRole: createLikeBody.sourcePartyRole ?? null,
+        issuerType: issuerContext.context.issuerType,
+        documentDirection: issuerContext.context.documentDirection,
+        sourcePartyRole: issuerContext.context.sourcePartyRole,
         adjustmentContext: createLikeBody.adjustmentContext,
         ...calculation.totals,
         taxSnapshot: buildTaxSnapshot(source, calculation),
@@ -720,71 +794,99 @@ async function postAdjustment(
   )
 
   const accountMap = await ensureDefaultLedgerAccountMap(access.business.id)
-  const voucherResult = await postVoucher(access, {
-    idempotencyKey: body.idempotencyKey ?? randomUUID(),
-    voucherType: type,
-    documentType: documentTypeForAdjustment(type),
-    voucherDate: adjustment.adjustmentDate,
-    financialYearId: context.financialYearId,
-    gstRegistrationId: context.gstRegistration.id,
-    branchId: context.branch?.id ?? null,
-    warehouseId: context.warehouseId,
-    referenceVoucherId: adjustment.originalVoucherId,
-    seriesCode: "DEFAULT",
-    notes: adjustment.reason ?? undefined,
-    snapshots: {
-      seller: {
-        businessId: access.business.id,
-        legalName: access.business.legalName,
-        tradeName: access.business.tradeName,
-        gstin: context.gstRegistration.gstin,
-      },
-      branch: context.branch ?? undefined,
-      party: adjustment.partySnapshot as Record<string, unknown> | undefined,
-      tax: adjustment.taxSnapshot as Record<string, unknown> | undefined,
-    },
-    journal: {
-      description: `${type} - ${getPartyName(adjustment)}`,
-      lines: buildJournalLines(type, adjustment, accountMap, context),
-    },
-    inventoryEntries: buildInventoryEntries(type, lines, adjustment.adjustmentDate),
-    gstEntries: buildGstEntries(adjustment, lines, context.branch?.id ?? null),
-    receivablePayableEntries: buildReceivablePayableEntries(type, adjustment),
-    paymentAllocations: [],
-  })
-
-  const [updated] = await db
-    .update(adjustmentDocuments)
-    .set({
-      voucherId: voucherResult.voucher.id,
-      adjustmentNumber: voucherResult.voucher.voucherNumber,
-      status: "posted",
-      postedBy: access.userId,
-      postedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(adjustmentDocuments.businessId, access.business.id),
-        eq(adjustmentDocuments.id, adjustment.id)
-      )
-    )
-    .returning()
-
-  if (!updated) {
-    throw new HttpError(500, "Unable to mark adjustment as posted.")
-  }
-
-  await insertAuditLog(
+  let postedAdjustment: AdjustmentDocumentRecord | null = null
+  await postVoucher(
     access,
-    updated.id,
-    `${type}_POSTED`,
-    adjustment,
-    updated,
-    adjustment.reason
+    {
+      idempotencyKey: body.idempotencyKey ?? randomUUID(),
+      voucherType: type,
+      documentType: documentTypeForAdjustment(type),
+      voucherDate: adjustment.adjustmentDate,
+      financialYearId: context.financialYearId,
+      gstRegistrationId: context.gstRegistration.id,
+      branchId: context.branch?.id ?? null,
+      warehouseId: context.warehouseId,
+      referenceVoucherId: adjustment.originalVoucherId,
+      seriesCode: "DEFAULT",
+      notes: adjustment.reason ?? undefined,
+      snapshots: {
+        seller: {
+          businessId: access.business.id,
+          legalName: access.business.legalName,
+          tradeName: access.business.tradeName,
+          gstin: context.gstRegistration.gstin,
+        },
+        branch: context.branch ?? undefined,
+        party: adjustment.partySnapshot as Record<string, unknown> | undefined,
+        tax: adjustment.taxSnapshot as Record<string, unknown> | undefined,
+      },
+      journal: {
+        description: `${type} - ${getPartyName(adjustment)}`,
+        lines: buildJournalLines(type, adjustment, accountMap, context),
+      },
+      inventoryEntries: buildInventoryEntries(type, lines, adjustment.adjustmentDate),
+      gstEntries: buildGstEntries(adjustment, lines, context.branch?.id ?? null),
+      receivablePayableEntries: buildReceivablePayableEntries(type, adjustment),
+      paymentAllocations: [],
+    },
+    {
+      beforePost: async (tx) => {
+        await assertAdjustmentStillReturnableInTransaction(
+          tx,
+          access.business.id,
+          type,
+          adjustment.id,
+          source
+        )
+      },
+      afterPost: async ({ tx, voucher, postedAt }) => {
+        const settlement = await applyAdjustmentSettlementEffects(
+          tx,
+          access,
+          type,
+          adjustment,
+          voucher.id
+        )
+        const [updated] = await tx
+          .update(adjustmentDocuments)
+          .set({
+            voucherId: voucher.id,
+            adjustmentNumber: voucher.voucherNumber,
+            status: "posted",
+            postedBy: access.userId,
+            postedAt,
+            settlementEffectAmount: settlement.appliedAmount,
+            excessCreditAmount: settlement.excessAmount,
+            updatedAt: postedAt,
+          })
+          .where(
+            and(
+              eq(adjustmentDocuments.businessId, access.business.id),
+              eq(adjustmentDocuments.id, adjustment.id)
+            )
+          )
+          .returning()
+
+        if (!updated) {
+          throw new HttpError(500, "Unable to mark adjustment as posted.")
+        }
+
+        await tx.insert(auditLogs).values({
+          businessId: access.business.id,
+          entityType: "adjustment_document",
+          entityId: updated.id,
+          action: `${type}_POSTED`,
+          userId: access.userId,
+          before: adjustment,
+          after: updated,
+          reason: adjustment.reason,
+        })
+        postedAdjustment = updated
+      },
+    }
   )
 
-  return updated
+  return postedAdjustment ?? requireAdjustment(access.business.id, type, id)
 }
 
 async function reverseAdjustment(
@@ -799,53 +901,85 @@ async function reverseAdjustment(
     throw new HttpError(409, "Only posted adjustment documents can be reversed.")
   }
 
-  await createReversalVoucher(access, adjustment.voucherId, body.reason)
+  const adjustmentVoucherId = adjustment.voucherId
+  await createReversalVoucher(access, adjustmentVoucherId, body.reason)
 
-  const [updated] = await db
-    .update(adjustmentDocuments)
-    .set({
-      status: "reversed",
-      reversedBy: access.userId,
-      reversedAt: new Date(),
-      reversalReason: body.reason,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(adjustmentDocuments.businessId, access.business.id),
-        eq(adjustmentDocuments.id, id)
+  return db.transaction(async (tx) => {
+    const reversedAt = new Date()
+    const reversedEffects = await tx
+      .update(receivablePayableAdjustmentEffects)
+      .set({
+        status: "reversed",
+        reversedBy: access.userId,
+        reversedAt,
+        reversalReason: body.reason,
+        updatedAt: reversedAt,
+      })
+      .where(
+        and(
+          eq(receivablePayableAdjustmentEffects.businessId, access.business.id),
+          eq(receivablePayableAdjustmentEffects.adjustmentDocumentId, id),
+          eq(receivablePayableAdjustmentEffects.status, "active")
+        )
       )
-    )
-    .returning()
+      .returning({
+        entryId: receivablePayableAdjustmentEffects.receivablePayableEntryId,
+      })
 
-  if (!updated) {
-    throw new HttpError(500, "Unable to reverse adjustment document.")
-  }
-
-  await db
-    .update(vouchers)
-    .set({
-      status: "reversed",
-      cancelledAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(vouchers.businessId, access.business.id),
-        eq(vouchers.id, adjustment.voucherId)
-      )
+    await refreshReceivablePayableSettlementsInTransaction(
+      tx,
+      access.business.id,
+      reversedEffects.map((effect) => effect.entryId)
     )
 
-  await insertAuditLog(
-    access,
-    updated.id,
-    `${type}_REVERSED`,
-    adjustment,
-    updated,
-    body.reason
-  )
+    const [updated] = await tx
+      .update(adjustmentDocuments)
+      .set({
+        status: "reversed",
+        reversedBy: access.userId,
+        reversedAt,
+        reversalReason: body.reason,
+        updatedAt: reversedAt,
+      })
+      .where(
+        and(
+          eq(adjustmentDocuments.businessId, access.business.id),
+          eq(adjustmentDocuments.id, id)
+        )
+      )
+      .returning()
 
-  return updated
+    if (!updated) {
+      throw new HttpError(500, "Unable to reverse adjustment document.")
+    }
+
+    await tx
+      .update(vouchers)
+      .set({
+        status: "reversed",
+        cancelledAt: reversedAt,
+        updatedAt: reversedAt,
+      })
+      .where(
+        and(
+          eq(vouchers.businessId, access.business.id),
+          eq(vouchers.id, adjustmentVoucherId)
+        )
+      )
+
+    await tx.insert(auditLogs).values({
+      businessId: access.business.id,
+      entityType: "adjustment_document",
+      entityId: updated.id,
+      action: `${type}_REVERSED`,
+      userId: access.userId,
+      before: adjustment,
+      after: updated,
+      reason: body.reason,
+    })
+
+    return updated
+  })
 }
 
 async function getReturnableSource(
@@ -1004,7 +1138,7 @@ async function calculateAdjustment(
         source.sourceDocumentType,
         body.lines.map((line) => line.originalLineId).filter((id): id is string => Boolean(id))
       )
-    : new Map<string, string>()
+      : new Map<string, string>()
   const lines: AdjustmentLineDraft[] = []
 
   for (const [index, inputLine] of body.lines.entries()) {
@@ -1060,8 +1194,8 @@ function calculateLineDraft(
     inputLine.taxableValue ? toCents(inputLine.taxableValue) : null
   const ratio =
     explicitTaxable !== null && sourceTaxableCents > 0 ? explicitTaxable / sourceTaxableCents
-    : sourceQuantity > 0 ? inputQuantity / sourceQuantity
-    : 0
+      : sourceQuantity > 0 ? inputQuantity / sourceQuantity
+        : 0
   const taxableCents = explicitTaxable ?? Math.round(sourceTaxableCents * ratio)
   const cgstCents = Math.round(toCents(sourceLine.cgstAmount) * ratio)
   const sgstCents = Math.round(toCents(sourceLine.sgstAmount) * ratio)
@@ -1070,15 +1204,15 @@ function calculateLineDraft(
   const lineTotalCents = taxableCents + cgstCents + sgstCents + igstCents + cessCents
   const defaultInventoryEffect =
     type === "SALES_RETURN" ? "STOCK_IN"
-    : type === "PURCHASE_RETURN" ? "STOCK_OUT"
-    : "NONE"
+      : type === "PURCHASE_RETURN" ? "STOCK_OUT"
+        : "NONE"
 
   return {
     originalLineId: sourceLine.id,
     originalLineType:
       sourceDocumentType === "sales_invoice" ?
         "sales_invoice_line"
-      : "purchase_bill_line",
+        : "purchase_bill_line",
     itemId: sourceLine.itemId,
     descriptionSnapshot: sourceLine.itemNameSnapshot,
     hsnSacSnapshot: sourceLine.hsnSacCode,
@@ -1165,11 +1299,11 @@ async function getPostedReturnedQuantities(
   const originalLineType =
     sourceDocumentType === "sales_invoice" ?
       "sales_invoice_line"
-    : "purchase_bill_line"
+      : "purchase_bill_line"
   const returnType =
     sourceDocumentType === "sales_invoice" ?
       "SALES_RETURN"
-    : "PURCHASE_RETURN"
+      : "PURCHASE_RETURN"
   const rows = await db
     .select({
       originalLineId: adjustmentDocumentLines.originalLineId,
@@ -1241,6 +1375,379 @@ async function assertAdjustmentStillReturnable(
   }
 }
 
+async function assertAdjustmentStillReturnableInTransaction(
+  tx: AdjustmentDbTransaction,
+  businessId: string,
+  type: AdjustmentType,
+  adjustmentId: string,
+  source: AdjustmentSource
+) {
+  if (type !== "SALES_RETURN" && type !== "PURCHASE_RETURN") {
+    return
+  }
+
+  await lockSourceLinesForReturn(tx, businessId, source)
+
+  const lines = await tx
+    .select()
+    .from(adjustmentDocumentLines)
+    .where(
+      and(
+        eq(adjustmentDocumentLines.businessId, businessId),
+        eq(adjustmentDocumentLines.adjustmentDocumentId, adjustmentId)
+      )
+    )
+  const returnedByLineId = await getPostedReturnedQuantitiesInTransaction(
+    tx,
+    businessId,
+    source.sourceDocumentType,
+    lines.map((line) => line.originalLineId).filter((id): id is string => Boolean(id))
+  )
+  const sourceLinesById = new Map(source.lines.map((line) => [line.id, line]))
+
+  for (const line of lines) {
+    if (!line.originalLineId) {
+      continue
+    }
+
+    const sourceLine = sourceLinesById.get(line.originalLineId)
+
+    if (!sourceLine) {
+      throw new HttpError(404, "Source line no longer exists.")
+    }
+
+    const validation = assertReturnQuantityWithinLimit({
+      requestedQuantity: line.quantity,
+      originalQuantity: sourceLine.quantity,
+      previouslyReturnedQuantity: returnedByLineId.get(line.originalLineId) ?? "0",
+    })
+
+    if (!validation.valid) {
+      throw new HttpError(409, "Return quantity exceeds the remaining quantity.")
+    }
+  }
+}
+
+async function lockSourceLinesForReturn(
+  tx: AdjustmentDbTransaction,
+  businessId: string,
+  source: AdjustmentSource
+) {
+  if (source.sourceDocumentType === "sales_invoice") {
+    await tx.execute(
+      drizzleSql`select id from public.sales_invoice_lines
+        where business_id = ${businessId}
+          and sales_invoice_id = ${source.document.id}
+        for update`
+    )
+    return
+  }
+
+  await tx.execute(
+    drizzleSql`select id from public.purchase_bill_lines
+      where business_id = ${businessId}
+        and purchase_bill_id = ${source.document.id}
+      for update`
+  )
+}
+
+async function getPostedReturnedQuantitiesInTransaction(
+  tx: AdjustmentDbTransaction,
+  businessId: string,
+  sourceDocumentType: SourceDocumentType,
+  lineIds: string[]
+) {
+  const uniqueLineIds = uniqueStrings(lineIds)
+
+  if (uniqueLineIds.length === 0) {
+    return new Map<string, string>()
+  }
+
+  const originalLineType =
+    sourceDocumentType === "sales_invoice" ?
+      "sales_invoice_line"
+      : "purchase_bill_line"
+  const returnType =
+    sourceDocumentType === "sales_invoice" ?
+      "SALES_RETURN"
+      : "PURCHASE_RETURN"
+  const rows = await tx
+    .select({
+      originalLineId: adjustmentDocumentLines.originalLineId,
+      returnedQuantity: drizzleSql<string>`coalesce(sum(${adjustmentDocumentLines.quantity}), 0)::text`,
+    })
+    .from(adjustmentDocumentLines)
+    .innerJoin(
+      adjustmentDocuments,
+      eq(adjustmentDocuments.id, adjustmentDocumentLines.adjustmentDocumentId)
+    )
+    .where(
+      and(
+        eq(adjustmentDocumentLines.businessId, businessId),
+        eq(adjustmentDocumentLines.originalLineType, originalLineType),
+        eq(adjustmentDocuments.adjustmentType, returnType),
+        eq(adjustmentDocuments.status, "posted"),
+        inArray(adjustmentDocumentLines.originalLineId, uniqueLineIds)
+      )
+    )
+    .groupBy(adjustmentDocumentLines.originalLineId)
+
+  return new Map(
+    rows
+      .filter((row): row is { originalLineId: string; returnedQuantity: string } =>
+        Boolean(row.originalLineId)
+      )
+      .map((row) => [row.originalLineId, row.returnedQuantity])
+  )
+}
+
+async function applyAdjustmentSettlementEffects(
+  tx: AdjustmentDbTransaction,
+  access: BusinessAccess,
+  type: AdjustmentType,
+  adjustment: AdjustmentDocumentRecord,
+  adjustmentVoucherId: string
+) {
+  const adjustmentCents = toCents(adjustment.grandTotal)
+
+  if (adjustmentCents <= 0 || type === "DEBIT_NOTE") {
+    return { appliedAmount: "0.00", excessAmount: "0.00" }
+  }
+
+  const direction = resolveAdjustmentFinancialDirection({
+    type,
+    sourceDocumentType: adjustment.sourceDocumentType as SourceDocumentType,
+  })
+  const expectedEntryType = direction.arApEntryType
+
+  if (!expectedEntryType || direction.arApEffect !== "decrease") {
+    return { appliedAmount: "0.00", excessAmount: "0.00" }
+  }
+
+  const effectKind =
+    expectedEntryType === "receivable" ? "receivable_reduction" : "payable_reduction"
+
+  await tx.execute(
+    drizzleSql`select id from public.receivable_payable_entries
+      where business_id = ${access.business.id}
+        and voucher_id = ${adjustment.originalVoucherId}
+        and entry_type = ${expectedEntryType}
+      for update`
+  )
+
+  const [targetEntry] = await tx
+    .select()
+    .from(receivablePayableEntries)
+    .where(
+      and(
+        eq(receivablePayableEntries.businessId, access.business.id),
+        eq(receivablePayableEntries.voucherId, adjustment.originalVoucherId),
+        eq(receivablePayableEntries.entryType, expectedEntryType)
+      )
+    )
+    .limit(1)
+
+  if (!targetEntry) {
+    return { appliedAmount: "0.00", excessAmount: formatCents(adjustmentCents) }
+  }
+
+  if (["cancelled", "closed", "written_off"].includes(targetEntry.status)) {
+    throw new HttpError(409, "Closed receivable/payable entries cannot be adjusted.")
+  }
+
+  const existingEffects = await tx
+    .select({
+      amount: receivablePayableAdjustmentEffects.amount,
+    })
+    .from(receivablePayableAdjustmentEffects)
+    .where(
+      and(
+        eq(receivablePayableAdjustmentEffects.businessId, access.business.id),
+        eq(
+          receivablePayableAdjustmentEffects.receivablePayableEntryId,
+          targetEntry.id
+        ),
+        eq(receivablePayableAdjustmentEffects.status, "active")
+      )
+    )
+  const existingAdjustmentCents = existingEffects.reduce(
+    (total, effect) => total + toCents(effect.amount),
+    0
+  )
+  const remainingAdjustableCents = Math.max(
+    toCents(targetEntry.originalAmount) - existingAdjustmentCents,
+    0
+  )
+  const appliedCents = Math.min(adjustmentCents, remainingAdjustableCents)
+  const excessCents = Math.max(adjustmentCents - appliedCents, 0)
+
+  if (appliedCents > 0) {
+    await tx.insert(receivablePayableAdjustmentEffects).values({
+      businessId: access.business.id,
+      adjustmentDocumentId: adjustment.id,
+      adjustmentVoucherId,
+      sourceVoucherId: adjustment.originalVoucherId,
+      receivablePayableEntryId: targetEntry.id,
+      effectKind,
+      amount: formatCents(appliedCents),
+      status: "active",
+      createdBy: access.userId,
+    })
+    await refreshReceivablePayableSettlementsInTransaction(
+      tx,
+      access.business.id,
+      [targetEntry.id]
+    )
+  }
+
+  return {
+    appliedAmount: formatCents(appliedCents),
+    excessAmount: formatCents(excessCents),
+  }
+}
+
+async function refreshReceivablePayableSettlementsInTransaction(
+  tx: AdjustmentDbTransaction,
+  businessId: string,
+  entryIds: string[]
+) {
+  const uniqueIds = uniqueStrings(entryIds)
+
+  if (uniqueIds.length === 0) {
+    return
+  }
+
+  const rows = await tx
+    .select({
+      id: receivablePayableEntries.id,
+      voucherId: receivablePayableEntries.voucherId,
+      originalAmount: receivablePayableEntries.originalAmount,
+    })
+    .from(receivablePayableEntries)
+    .where(
+      and(
+        eq(receivablePayableEntries.businessId, businessId),
+        inArray(receivablePayableEntries.id, uniqueIds)
+      )
+    )
+  const allocationRows = await tx
+    .select({
+      receivablePayableEntryId: paymentAllocations.receivablePayableEntryId,
+      allocatedAmount: paymentAllocations.allocatedAmount,
+    })
+    .from(paymentAllocations)
+    .where(
+      and(
+        eq(paymentAllocations.businessId, businessId),
+        eq(paymentAllocations.status, "active"),
+        inArray(paymentAllocations.receivablePayableEntryId, uniqueIds)
+      )
+    )
+  const effectRows = await tx
+    .select({
+      receivablePayableEntryId:
+        receivablePayableAdjustmentEffects.receivablePayableEntryId,
+      amount: receivablePayableAdjustmentEffects.amount,
+    })
+    .from(receivablePayableAdjustmentEffects)
+    .where(
+      and(
+        eq(receivablePayableAdjustmentEffects.businessId, businessId),
+        eq(receivablePayableAdjustmentEffects.status, "active"),
+        inArray(receivablePayableAdjustmentEffects.receivablePayableEntryId, uniqueIds)
+      )
+    )
+  const allocatedByEntryId = new Map<string, number>()
+  const adjustedByEntryId = new Map<string, number>()
+
+  for (const row of allocationRows) {
+    if (!row.receivablePayableEntryId) {
+      continue
+    }
+
+    allocatedByEntryId.set(
+      row.receivablePayableEntryId,
+      (allocatedByEntryId.get(row.receivablePayableEntryId) ?? 0) +
+      toCents(row.allocatedAmount)
+    )
+  }
+
+  for (const row of effectRows) {
+    adjustedByEntryId.set(
+      row.receivablePayableEntryId,
+      (adjustedByEntryId.get(row.receivablePayableEntryId) ?? 0) + toCents(row.amount)
+    )
+  }
+
+  for (const row of rows) {
+    const originalAmount = toCents(row.originalAmount)
+    const adjustmentAmount = Math.min(
+      adjustedByEntryId.get(row.id) ?? 0,
+      originalAmount
+    )
+    const effectiveAmount = Math.max(originalAmount - adjustmentAmount, 0)
+    const settledAmount = Math.min(
+      allocatedByEntryId.get(row.id) ?? 0,
+      effectiveAmount
+    )
+    const excessSettledAmount = Math.max(
+      (allocatedByEntryId.get(row.id) ?? 0) - effectiveAmount,
+      0
+    )
+    const outstandingAmount = effectiveAmount - settledAmount
+    const status =
+      effectiveAmount === 0 || outstandingAmount === 0 ? "settled"
+        : settledAmount > 0 || adjustmentAmount > 0 ? "partially_settled"
+          : "open"
+
+    await tx
+      .update(receivablePayableEntries)
+      .set({
+        adjustmentAmount: formatCents(adjustmentAmount),
+        effectiveAmount: formatCents(effectiveAmount),
+        settledAmount: formatCents(settledAmount),
+        outstandingAmount: formatCents(outstandingAmount),
+        excessSettledAmount: formatCents(excessSettledAmount),
+        status,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(receivablePayableEntries.businessId, businessId),
+          eq(receivablePayableEntries.id, row.id)
+        )
+      )
+
+    await tx
+      .update(salesInvoices)
+      .set({
+        amountDue: formatCents(outstandingAmount),
+        amountPaid: drizzleSql`${salesInvoices.totalAmount} - ${formatCents(outstandingAmount)}`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(salesInvoices.businessId, businessId),
+          eq(salesInvoices.voucherId, row.voucherId)
+        )
+      )
+
+    await tx
+      .update(purchaseBills)
+      .set({
+        amountDue: formatCents(outstandingAmount),
+        amountPaid: drizzleSql`${purchaseBills.totalAmount} - ${formatCents(outstandingAmount)}`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(purchaseBills.businessId, businessId),
+          eq(purchaseBills.voucherId, row.voucherId)
+        )
+      )
+  }
+}
+
 function buildJournalLines(
   type: AdjustmentType,
   adjustment: AdjustmentDocumentRecord,
@@ -1255,7 +1762,11 @@ function buildJournalLines(
   const totalCents = toCents(adjustment.grandTotal)
   const lines = []
   const isSalesSource = adjustment.sourceDocumentType === "sales_invoice"
-  const increasesReceivableOrPayable = type === "DEBIT_NOTE"
+  const direction = resolveAdjustmentFinancialDirection({
+    type,
+    sourceDocumentType: adjustment.sourceDocumentType as SourceDocumentType,
+  })
+  const increasesReceivableOrPayable = direction.arApEffect === "increase"
 
   if (isSalesSource) {
     if (increasesReceivableOrPayable) {
@@ -1316,7 +1827,7 @@ function pushTaxJournalLines(
   const codes =
     taxKind === "input" ?
       { cgst: "1210", sgst: "1220", igst: "1230", cess: "1240" }
-    : { cgst: "2210", sgst: "2220", igst: "2230", cess: "2240" }
+      : { cgst: "2210", sgst: "2220", igst: "2230", cess: "2240" }
 
   for (const [component, amount] of [
     ["cgst", values.cgstCents],
@@ -1387,7 +1898,7 @@ function buildGstEntries(
   const placeOfSupplyStateCode =
     typeof adjustment.taxSnapshot === "object" && adjustment.taxSnapshot ?
       String((adjustment.taxSnapshot as Record<string, unknown>).placeOfSupplyStateCode ?? "")
-    : undefined
+      : undefined
 
   for (const line of lines) {
     for (const [component, amount, rate] of [
@@ -1411,7 +1922,7 @@ function buildGstEntries(
         placeOfSupplyStateCode:
           placeOfSupplyStateCode && /^\d{2}$/.test(placeOfSupplyStateCode) ?
             placeOfSupplyStateCode
-          : undefined,
+            : undefined,
       })
     }
   }
@@ -1423,7 +1934,12 @@ function buildReceivablePayableEntries(
   type: AdjustmentType,
   adjustment: AdjustmentDocumentRecord
 ) {
-  if (type !== "DEBIT_NOTE") {
+  const direction = resolveAdjustmentFinancialDirection({
+    type,
+    sourceDocumentType: adjustment.sourceDocumentType as SourceDocumentType,
+  })
+
+  if (direction.arApEffect !== "increase" || !direction.arApEntryType) {
     return []
   }
 
@@ -1432,8 +1948,7 @@ function buildReceivablePayableEntries(
       partyId: adjustment.partyId ?? undefined,
       partyNameSnapshot: getPartyName(adjustment),
       partySnapshot: adjustment.partySnapshot as Record<string, unknown> | undefined,
-      entryType:
-        adjustment.sourceDocumentType === "sales_invoice" ? "receivable" as const : "payable" as const,
+      entryType: direction.arApEntryType,
       originalAmount: adjustment.grandTotal,
     },
   ]
@@ -1486,7 +2001,7 @@ async function createReversalVoucher(
         .select()
         .from(journalEntryLines)
         .where(inArray(journalEntryLines.journalEntryId, entryIds))
-    : []
+      : []
 
   if (originalLines.length === 0) {
     return
@@ -1732,9 +2247,9 @@ async function assertCanUseAdjustment(
     type === "SALES_RETURN" || type === "CREDIT_NOTE" ? "invoices" : "purchases"
   const permissionColumn =
     action === "view" ? businessMemberPermissions.canView
-    : action === "create" ? businessMemberPermissions.canCreate
-    : action === "edit" ? businessMemberPermissions.canEdit
-    : businessMemberPermissions.canDelete
+      : action === "create" ? businessMemberPermissions.canCreate
+        : action === "edit" ? businessMemberPermissions.canEdit
+          : businessMemberPermissions.canDelete
   const permission = await db.query.businessMemberPermissions.findFirst({
     where: and(
       eq(businessMemberPermissions.businessMemberId, access.membership.id),
@@ -1770,12 +2285,8 @@ async function insertAuditLog(
 
 function getSourcePartyId(source: AdjustmentSource) {
   return source.sourceDocumentType === "sales_invoice" ?
-      source.document.partyId
+    source.document.partyId
     : source.document.supplierId
-}
-
-function getSourcePartyRole(source: AdjustmentSource) {
-  return source.sourceDocumentType === "sales_invoice" ? "customer" : "supplier"
 }
 
 function getSourceBranchId(source: AdjustmentSource) {
@@ -1796,31 +2307,31 @@ function getSourcePlaceOfSupply(source: AdjustmentSource) {
 
 function getSourcePartySnapshot(source: AdjustmentSource) {
   return source.sourceDocumentType === "sales_invoice" ?
-      source.document.partySnapshot
+    source.document.partySnapshot
     : source.document.supplierSnapshot
 }
 
 function buildSourceSnapshot(source: AdjustmentSource) {
   return source.sourceDocumentType === "sales_invoice" ?
-      {
-        id: source.document.id,
-        voucherId: source.document.voucherId,
-        documentNumber: source.document.invoiceNumber,
-        documentDate: source.document.invoiceDate,
-        partyName: source.document.customerName,
-        totalAmount: source.document.totalAmount,
-        sourceDocumentType: source.sourceDocumentType,
-      }
+    {
+      id: source.document.id,
+      voucherId: source.document.voucherId,
+      documentNumber: source.document.invoiceNumber,
+      documentDate: source.document.invoiceDate,
+      partyName: source.document.customerName,
+      totalAmount: source.document.totalAmount,
+      sourceDocumentType: source.sourceDocumentType,
+    }
     : {
-        id: source.document.id,
-        voucherId: source.document.voucherId,
-        documentNumber: source.document.billNumber,
-        supplierInvoiceNumber: source.document.supplierInvoiceNumber,
-        documentDate: source.document.billDate,
-        partyName: source.document.supplierName,
-        totalAmount: source.document.totalAmount,
-        sourceDocumentType: source.sourceDocumentType,
-      }
+      id: source.document.id,
+      voucherId: source.document.voucherId,
+      documentNumber: source.document.billNumber,
+      supplierInvoiceNumber: source.document.supplierInvoiceNumber,
+      documentDate: source.document.billDate,
+      partyName: source.document.supplierName,
+      totalAmount: source.document.totalAmount,
+      sourceDocumentType: source.sourceDocumentType,
+    }
 }
 
 function buildTaxSnapshot(source: AdjustmentSource, calculation: AdjustmentCalculation) {

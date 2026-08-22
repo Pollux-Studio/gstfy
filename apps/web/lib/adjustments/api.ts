@@ -32,6 +32,8 @@ export type AdjustmentListRow = {
   sgstTotal: string
   igstTotal: string
   grandTotal: string
+  settlementEffectAmount: string
+  excessCreditAmount: string
   reason: string | null
   postedAt: string | null
   reversedAt: string | null
@@ -58,18 +60,41 @@ export type AdjustmentLine = {
   reason: string | null
 }
 
+export type AdjustmentSettlementEffect = {
+  id: string
+  adjustmentDocumentId: string
+  adjustmentVoucherId: string | null
+  sourceVoucherId: string
+  receivablePayableEntryId: string
+  effectKind: "receivable_reduction" | "payable_reduction"
+  amount: string
+  status: "active" | "reversed"
+  reversedAt: string | null
+  reversalReason: string | null
+  createdAt: string
+  entryOriginalAmount: string
+  entryAdjustmentAmount: string
+  entryEffectiveAmount: string
+  entrySettledAmount: string
+  entryOutstandingAmount: string
+  entryExcessSettledAmount: string
+}
+
 export type AdjustmentDetail = AdjustmentListRow & {
   voucherId: string | null
   originalVoucherId: string
   reasonCode: string | null
   issuerType: string
   documentDirection: string
-  sourcePartyRole: string | null
+  sourcePartyRole: string
   adjustmentContext: string
   sourceSnapshot: unknown
   taxSnapshot: unknown
+  settlementEffectAmount: string
+  excessCreditAmount: string
   reversalReason: string | null
   lines: AdjustmentLine[]
+  settlementEffects: AdjustmentSettlementEffect[]
   sourceVoucher: {
     id: string
     voucherNumber: string

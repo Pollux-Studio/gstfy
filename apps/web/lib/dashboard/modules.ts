@@ -44,7 +44,8 @@ const featureCategories: SidebarFeatureCategory[] = [
   {
     title: "Compliance",
     items: [
-      { module: "gstr", title: "GST Returns", url: "#" },
+      { module: "gstr", title: "GST", url: "/gst" },
+      { module: "einvoice", title: "E-Invoice", url: "/e-invoices" },
       { module: "accounting", title: "Payment Reports", url: "/payment-reports" },
     ],
   },
