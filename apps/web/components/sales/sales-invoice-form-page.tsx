@@ -114,7 +114,7 @@ export function SalesInvoiceFormPage() {
           </Badge>
           <h1 className="text-2xl font-semibold tracking-tight">Create invoice</h1>
         </div>
-        <Link className={buttonVariants({ variant: "outline" })} href="/invoices">
+        <Link className={buttonVariants({ variant: "outline" })} href="/sales">
           <ArrowLeftIcon />
           Back
         </Link>

@@ -70,9 +70,9 @@ export function SalesInvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
       <section className="rounded-2xl border bg-card p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-3">
-            <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/invoices">
+            <Link className={buttonVariants({ variant: "outline", size: "sm" })} href="/sales">
               <ArrowLeftIcon />
-              Back to invoices
+              Back to sales
             </Link>
             <div>
               <div className="mb-2 flex flex-wrap items-center gap-2">

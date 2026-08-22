@@ -11,6 +11,15 @@ export type SalesInvoiceLinePayload = {
   unit?: string
   rate: string
   gstRate: string
+  taxability?: "TAXABLE" | "EXEMPT" | "NIL_RATED" | "NON_GST" | "ZERO_RATED"
+  cessRuleId?: string | null
+  pricingMode?: "tax_exclusive" | "tax_inclusive"
+  discountAmount?: string | null
+  otherCharges?: Array<{
+    chargeType: string
+    amount: string
+    taxTreatment: "taxable" | "non_taxable"
+  }>
 }
 
 export type SalesPaymentPayload = {

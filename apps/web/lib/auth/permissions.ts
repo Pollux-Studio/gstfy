@@ -13,6 +13,8 @@ const pathModuleMap: Array<{
   },
   {
     test: (pathname) =>
+      pathname === "/sales" ||
+      pathname.startsWith("/sales/") ||
       pathname === "/invoices" ||
       pathname.startsWith("/invoices/") ||
       pathname === "/sales-returns" ||

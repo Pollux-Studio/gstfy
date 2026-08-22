@@ -23,19 +23,11 @@ export type SidebarFeatureCategory = {
 const featureCategories: SidebarFeatureCategory[] = [
   {
     title: "Sales",
-    items: [
-      { module: "invoices", title: "Invoices", url: "/invoices" },
-      { module: "invoices", title: "Sales Returns", url: "/sales-returns" },
-      { module: "invoices", title: "Credit Notes", url: "/credit-notes" },
-      { module: "pos", title: "POS", url: "/pos" },
-    ],
+    items: [{ module: "invoices", title: "Sales", url: "/sales" }],
   },
   {
     title: "Purchases",
-    items: [
-      { module: "purchases", title: "Purchases", url: "/purchases" },
-      { module: "expenses", title: "Expenses", url: "#" },
-    ],
+    items: [{ module: "purchases", title: "Purchases", url: "/purchases" }],
   },
   {
     title: "Money",
@@ -62,10 +54,7 @@ const featureCategories: SidebarFeatureCategory[] = [
   },
   {
     title: "Business",
-    items: [
-      { module: "reports", title: "Reports", url: "#" },
-      { module: "accounting", title: "Accounting", url: "/accounting" },
-    ],
+    items: [{ module: "accounting", title: "Accounting", url: "/accounting" }],
   },
 ]
 
