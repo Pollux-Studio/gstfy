@@ -3043,6 +3043,7 @@ export const businessPreferences = pgTable("business_preferences", {
   invoiceTemplate: text("invoice_template").notNull().default("standard"),
   purchaseInvoiceTemplate: text("purchase_invoice_template").notNull().default("reference-01"),
   invoicePrefix: text("invoice_prefix").notNull().default("INV"),
+  invoiceWatermarkText: text("invoice_watermark_text").notNull().default("GSTFY"),
   invoiceNextNumber: integer("invoice_next_number").notNull().default(1),
   enabledGstSlabs: text("enabled_gst_slabs").notNull().default("5,12,18,28"),
   printerPaperSize: text("printer_paper_size").notNull().default("a4"),

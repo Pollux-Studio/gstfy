@@ -13,6 +13,7 @@ export type { PurchaseInvoiceBusinessInfo }
 export type RenderPurchaseInvoicePdfOptions = {
   buyer?: PurchaseInvoiceBusinessInfo | null
   templateCode?: PurchaseInvoiceTemplateCode | null
+  watermarkText?: string | null
 }
 
 export async function renderPurchaseInvoicePdf(
@@ -25,6 +26,7 @@ export async function renderPurchaseInvoicePdf(
       bill,
       buyer: options.buyer ?? null,
       template,
+      watermarkText: options.watermarkText ?? null,
     }),
     {
       size: "a4",

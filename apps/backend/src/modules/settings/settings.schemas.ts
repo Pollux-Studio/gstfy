@@ -75,6 +75,7 @@ export const updateInvoiceSettingsSchema = z.object({
   salesInvoiceTemplate: invoiceTemplateSchema.optional(),
   purchaseInvoiceTemplate: invoiceTemplateSchema.optional(),
   invoicePrefix: z.string().trim().min(1).max(12).optional(),
+  invoiceWatermarkText: z.string().trim().max(40).optional(),
   invoiceNextNumber: z.number().int().positive().optional(),
 })
 

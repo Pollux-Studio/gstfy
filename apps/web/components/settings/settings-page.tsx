@@ -131,6 +131,7 @@ const invoiceSettingsSchema = z.object({
     .string()
     .trim()
     .regex(invoicePrefixPattern, "Use 2 to 10 uppercase letters, numbers, or hyphens."),
+  invoiceWatermarkText: z.string().trim().max(40, "Keep watermark text under 40 characters."),
 })
 
 const gstRateSettingsSchema = z.object({
@@ -321,6 +322,7 @@ export function SettingsPage() {
       salesInvoiceTemplate: "reference-01",
       purchaseInvoiceTemplate: "reference-01",
       invoicePrefix: "INV",
+      invoiceWatermarkText: "GSTFY",
     },
   })
   const gstForm = useForm<GstRateSettingsFormValues>({
@@ -365,6 +367,7 @@ export function SettingsPage() {
       purchaseInvoiceTemplate:
         data.invoiceSettings.purchaseInvoiceTemplate ?? data.invoiceSettings.invoiceTemplate,
       invoicePrefix: data.invoiceSettings.invoicePrefix,
+      invoiceWatermarkText: data.invoiceSettings.invoiceWatermarkText ?? "GSTFY",
     })
     gstForm.reset({
       enabledGstSlabs: data.gstRateSettings.enabledGstSlabs,
@@ -384,6 +387,10 @@ export function SettingsPage() {
     control: invoiceForm.control,
     name: "invoicePrefix",
   }) || "INV"
+  const invoiceWatermarkText = useWatch({
+    control: invoiceForm.control,
+    name: "invoiceWatermarkText",
+  }) ?? ""
   const currentEnabledSlabs = useWatch({
     control: gstForm.control,
     name: "enabledGstSlabs",
@@ -523,6 +530,7 @@ export function SettingsPage() {
           salesInvoiceTemplate: values.salesInvoiceTemplate,
           purchaseInvoiceTemplate: values.purchaseInvoiceTemplate,
           invoicePrefix: values.invoicePrefix.trim().toUpperCase(),
+          invoiceWatermarkText: values.invoiceWatermarkText.trim(),
         },
         accessToken
       ),
@@ -1267,6 +1275,30 @@ export function SettingsPage() {
                     Prefix is limited to uppercase letters, numbers, and hyphens.
                   </FieldDescription>
                   <FieldError errors={[invoiceForm.formState.errors.invoicePrefix]} />
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="settings-invoice-watermark">
+                    Invoice watermark text
+                  </FieldLabel>
+                  <Input
+                    id="settings-invoice-watermark"
+                    value={invoiceWatermarkText}
+                    onChange={(event) =>
+                      invoiceForm.setValue("invoiceWatermarkText", event.target.value, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                    className="uppercase tracking-[0.18em]"
+                    placeholder="GSTFY"
+                    disabled={!canEditBusiness}
+                    maxLength={40}
+                  />
+                  <FieldDescription>
+                    Printed as a light background watermark. Leave blank to hide it.
+                  </FieldDescription>
+                  <FieldError errors={[invoiceForm.formState.errors.invoiceWatermarkText]} />
                 </Field>
 
                 <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">

@@ -26,6 +26,7 @@ export function createReferencePurchaseInvoiceTemplate({
   bill,
   buyer,
   template,
+  watermarkText,
 }: PurchaseInvoiceTemplateProps) {
   const taxRows = getTaxRows(bill)
   const totalQuantity = bill.lines.reduce((total, line) => total + Number(line.quantity || 0), 0)
@@ -56,8 +57,10 @@ export function createReferencePurchaseInvoiceTemplate({
         style={{
           border: `1px solid ${border}`,
           minHeight: 778,
+          position: "relative",
         }}
       >
+        <InvoiceWatermark text={watermarkText} />
         <HeaderGrid bill={bill} buyer={buyer} />
 
         <ItemsTable bill={bill} dense={template.sourcePage === 7 || template.sourcePage === 3} />
@@ -74,6 +77,76 @@ export function createReferencePurchaseInvoiceTemplate({
       <ComputerGeneratedNote />
     </main>
   )
+}
+
+function InvoiceWatermark({ text }: { text?: string | null }) {
+  const normalizedText = text?.trim().toUpperCase()
+
+  if (!normalizedText) {
+    return null
+  }
+
+  const fontSize = getWatermarkFontSize(normalizedText)
+  const letterSpacing = getWatermarkLetterSpacing(normalizedText)
+
+  return (
+    <div
+      style={{
+        color: "#111827",
+        fontSize,
+        fontWeight: 700,
+        left: 0,
+        letterSpacing,
+        lineHeight: 1,
+        opacity: 0.055,
+        position: "absolute",
+        right: 0,
+        textAlign: "center",
+        textTransform: "uppercase",
+        top: 355,
+        transform: "rotate(-28deg)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {normalizedText}
+    </div>
+  )
+}
+
+function getWatermarkFontSize(value: string) {
+  const length = value.length
+
+  if (length <= 8) {
+    return 52
+  }
+
+  if (length <= 14) {
+    return 42
+  }
+
+  if (length <= 22) {
+    return 32
+  }
+
+  return 24
+}
+
+function getWatermarkLetterSpacing(value: string) {
+  const length = value.length
+
+  if (length <= 8) {
+    return 5
+  }
+
+  if (length <= 14) {
+    return 3
+  }
+
+  if (length <= 22) {
+    return 1.5
+  }
+
+  return 0.5
 }
 
 function HeaderGrid({
@@ -613,7 +686,7 @@ function ComputerGeneratedNote() {
         textAlign: "center",
       }}
     >
-      This is a computer generated bill
+      This is a Computer Generated Invoice
     </div>
   )
 }

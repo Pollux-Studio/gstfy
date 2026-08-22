@@ -72,6 +72,7 @@ export async function GET(
   const pdf = await renderPurchaseInvoicePdf(payload.bill, {
     buyer: renderSettings.buyer,
     templateCode: renderSettings.purchaseInvoiceTemplate,
+    watermarkText: renderSettings.invoiceWatermarkText,
   })
   const renderDuration = performance.now() - renderStartedAt
   const totalDuration = performance.now() - routeStartedAt
@@ -95,6 +96,7 @@ export async function GET(
 async function getPurchaseInvoiceRenderSettings(headers: Headers): Promise<{
   buyer: PurchaseInvoiceBusinessInfo | null
   purchaseInvoiceTemplate: PurchaseInvoiceTemplateCode | null
+  invoiceWatermarkText: string | null
 }> {
   const settingsResponse = await fetch(`${API_BASE_URL}${API_BASE_PATH}/settings`, {
     cache: "no-store",
@@ -105,6 +107,7 @@ async function getPurchaseInvoiceRenderSettings(headers: Headers): Promise<{
     return {
       buyer: null,
       purchaseInvoiceTemplate: null,
+      invoiceWatermarkText: null,
     }
   }
 
@@ -125,6 +128,7 @@ async function getPurchaseInvoiceRenderSettings(headers: Headers): Promise<{
     invoiceSettings?: {
       invoiceTemplate?: PurchaseInvoiceTemplateCode | null
       purchaseInvoiceTemplate?: PurchaseInvoiceTemplateCode | null
+      invoiceWatermarkText?: string | null
     }
   }
 
@@ -144,6 +148,7 @@ async function getPurchaseInvoiceRenderSettings(headers: Headers): Promise<{
       payload.invoiceSettings?.purchaseInvoiceTemplate ??
       payload.invoiceSettings?.invoiceTemplate ??
       null,
+    invoiceWatermarkText: payload.invoiceSettings?.invoiceWatermarkText ?? null,
   }
 }
 

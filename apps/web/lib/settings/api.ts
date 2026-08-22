@@ -63,6 +63,7 @@ export type SettingsResponse = {
     salesInvoiceTemplate: InvoiceTemplateCode
     purchaseInvoiceTemplate: InvoiceTemplateCode
     invoicePrefix: string
+    invoiceWatermarkText: string
     previewInvoiceNumber: string
   }
   gstRateSettings: {
@@ -135,6 +136,7 @@ export type UpdateInvoiceSettingsPayload = {
   salesInvoiceTemplate?: InvoiceTemplateCode
   purchaseInvoiceTemplate?: InvoiceTemplateCode
   invoicePrefix: string
+  invoiceWatermarkText?: string
 }
 
 export type UpdateGstRateSettingsPayload = {

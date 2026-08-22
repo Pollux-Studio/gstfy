@@ -365,6 +365,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
           toStoredInvoiceTemplate(body.purchaseInvoiceTemplate)
         : undefined,
       invoicePrefix: body.invoicePrefix,
+      invoiceWatermarkText: body.invoiceWatermarkText,
       invoiceNextNumber: body.invoiceNextNumber,
     })
 
@@ -622,6 +623,7 @@ async function getSettingsResponse(
         preferences?.purchaseInvoiceTemplate
       ),
       invoicePrefix,
+      invoiceWatermarkText: preferences?.invoiceWatermarkText ?? "GSTFY",
       previewInvoiceNumber: `${invoicePrefix}-2026-${String(invoiceNextNumber).padStart(4, "0")}`,
     },
     gstRateSettings: {

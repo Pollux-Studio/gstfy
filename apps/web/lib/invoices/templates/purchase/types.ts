@@ -17,4 +17,5 @@ export type PurchaseInvoiceTemplateProps = {
   bill: PurchaseBillDetail
   buyer: PurchaseInvoiceBusinessInfo | null
   template: InvoiceTemplateOption
+  watermarkText?: string | null
 }
