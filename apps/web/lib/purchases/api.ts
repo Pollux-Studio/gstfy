@@ -27,6 +27,14 @@ export type CreatePurchaseBillPayload = {
   supplierInvoiceNumber?: string | null
   invoiceDate: string
   billDate: string
+  deliveryNoteNumber?: string | null
+  buyerOrderNumber?: string | null
+  buyerOrderDate?: string | null
+  dispatchDocumentNumber?: string | null
+  deliveryNoteDate?: string | null
+  dispatchedThrough?: string | null
+  destination?: string | null
+  termsOfDelivery?: string | null
   gstRegistrationId?: string | null
   branchId?: string | null
   warehouseId?: string | null
@@ -43,6 +51,14 @@ export type PurchaseBill = {
   supplierInvoiceNumber: string | null
   invoiceDate: string
   billDate: string
+  deliveryNoteNumber: string | null
+  buyerOrderNumber: string | null
+  buyerOrderDate: string | null
+  dispatchDocumentNumber: string | null
+  deliveryNoteDate: string | null
+  dispatchedThrough: string | null
+  destination: string | null
+  termsOfDelivery: string | null
   supplierName: string
   status: PurchaseBillStatus
   taxableValue: string
@@ -59,6 +75,32 @@ export type PurchaseBill = {
 export type PurchaseBillDetail = PurchaseBill & {
   purchaseType: string
   notes: string | null
+  supplierSnapshot?: {
+    id: string
+    displayName: string
+    legalName: string | null
+    tradeName: string | null
+    gstin: string | null
+    stateCode: string | null
+  } | null
+  supplierAddress?: {
+    addressLine1: string | null
+    addressLine2: string | null
+    locality: string | null
+    city: string | null
+    district: string | null
+    state: string | null
+    stateCode: string | null
+    pincode: string | null
+    country: string | null
+  } | null
+  supplierGstRegistration?: {
+    gstin: string
+    legalName: string | null
+    tradeName: string | null
+    stateCode: string
+    state: string | null
+  } | null
   lines: Array<{
     id: string
     itemNameSnapshot: string

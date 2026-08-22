@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api/client"
+import type { InvoiceTemplateCode } from "@/lib/invoices/templates/shared/template-options"
 
 export type SettingsResponse = {
   business: {
@@ -58,7 +59,9 @@ export type SettingsResponse = {
     canAdd: boolean
   }
   invoiceSettings: {
-    invoiceTemplate: "classic" | "modern" | "compact"
+    invoiceTemplate: InvoiceTemplateCode
+    salesInvoiceTemplate: InvoiceTemplateCode
+    purchaseInvoiceTemplate: InvoiceTemplateCode
     invoicePrefix: string
     previewInvoiceNumber: string
   }
@@ -128,7 +131,9 @@ export type ChangeUserPasswordPayload = {
 }
 
 export type UpdateInvoiceSettingsPayload = {
-  invoiceTemplate: "classic" | "modern" | "compact"
+  invoiceTemplate?: InvoiceTemplateCode
+  salesInvoiceTemplate?: InvoiceTemplateCode
+  purchaseInvoiceTemplate?: InvoiceTemplateCode
   invoicePrefix: string
 }
 

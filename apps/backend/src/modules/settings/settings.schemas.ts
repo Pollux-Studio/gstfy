@@ -54,8 +54,26 @@ export const updateBusinessSettingsSchema = z.object({
     .or(z.literal("")),
 })
 
+const invoiceTemplateSchema = z.enum([
+  "classic",
+  "modern",
+  "compact",
+  "standard",
+  "thermal",
+  "reference-01",
+  "reference-02",
+  "reference-03",
+  "reference-04",
+  "reference-05",
+  "reference-06",
+  "reference-07",
+  "reference-08",
+])
+
 export const updateInvoiceSettingsSchema = z.object({
-  invoiceTemplate: z.enum(["classic", "modern", "compact", "standard", "thermal"]).optional(),
+  invoiceTemplate: invoiceTemplateSchema.optional(),
+  salesInvoiceTemplate: invoiceTemplateSchema.optional(),
+  purchaseInvoiceTemplate: invoiceTemplateSchema.optional(),
   invoicePrefix: z.string().trim().min(1).max(12).optional(),
   invoiceNextNumber: z.number().int().positive().optional(),
 })

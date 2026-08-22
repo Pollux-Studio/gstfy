@@ -5,6 +5,8 @@ import { db } from "../../db/client.js"
 import {
   itemInventoryProfiles,
   items,
+  partyAddresses,
+  partyGstRegistrations,
   purchaseBillLines,
   purchaseBillPayments,
   purchaseBills,
@@ -89,6 +91,15 @@ export async function registerPurchasesRoutes(app: FastifyInstance) {
     }
   })
 
+  app.get("/purchase-bills/:id/invoice", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    const { id } = billIdParamsSchema.parse(request.params)
+
+    return {
+      bill: await getPurchaseBillInvoiceDetail(access.business.id, id),
+    }
+  })
+
   app.post("/purchase-bills", async (request) => {
     const access = await requirePrimaryBusinessAccess(request)
     const body = createPurchaseBillSchema.parse(request.body)
@@ -114,6 +125,14 @@ export async function registerPurchasesRoutes(app: FastifyInstance) {
       supplierInvoiceNumber: detail.supplierInvoiceNumber,
       invoiceDate: detail.invoiceDate,
       billDate: detail.billDate,
+      deliveryNoteNumber: detail.deliveryNoteNumber,
+      buyerOrderNumber: detail.buyerOrderNumber,
+      buyerOrderDate: detail.buyerOrderDate,
+      dispatchDocumentNumber: detail.dispatchDocumentNumber,
+      deliveryNoteDate: detail.deliveryNoteDate,
+      dispatchedThrough: detail.dispatchedThrough,
+      destination: detail.destination,
+      termsOfDelivery: detail.termsOfDelivery,
       gstRegistrationId: detail.gstRegistrationId,
       branchId: detail.branchId,
       warehouseId: detail.warehouseId,
@@ -201,6 +220,14 @@ async function createPurchaseBill(access: BusinessAccess, body: CreatePurchaseBi
       supplierInvoiceNumber: body.supplierInvoiceNumber,
       invoiceDate: body.invoiceDate,
       billDate: body.billDate,
+      deliveryNoteNumber: body.deliveryNoteNumber,
+      buyerOrderNumber: body.buyerOrderNumber,
+      buyerOrderDate: body.buyerOrderDate,
+      dispatchDocumentNumber: body.dispatchDocumentNumber,
+      deliveryNoteDate: body.deliveryNoteDate,
+      dispatchedThrough: body.dispatchedThrough,
+      destination: body.destination,
+      termsOfDelivery: body.termsOfDelivery,
       placeOfSupplyStateCode: context.placeOfSupplyStateCode,
       purchaseType: body.purchaseType,
       status: body.status,
@@ -347,7 +374,7 @@ async function getPurchaseBillDetail(businessId: string, billId: string) {
     throw new HttpError(404, "Purchase bill not found.")
   }
 
-  const [lines, payments] = await Promise.all([
+  const [lines, payments, supplierAddress, supplierGstRegistration] = await Promise.all([
     db
       .select()
       .from(purchaseBillLines)
@@ -357,12 +384,96 @@ async function getPurchaseBillDetail(businessId: string, billId: string) {
       .select()
       .from(purchaseBillPayments)
       .where(eq(purchaseBillPayments.purchaseBillId, billId)),
+    bill.supplierId ?
+      db.query.partyAddresses.findFirst({
+        where: and(
+          eq(partyAddresses.businessId, businessId),
+          eq(partyAddresses.partyId, bill.supplierId),
+          eq(partyAddresses.isActive, true)
+        ),
+        orderBy: [
+          desc(partyAddresses.isPrimary),
+          desc(partyAddresses.createdAt),
+        ],
+      })
+    : Promise.resolve(null),
+    bill.supplierId ?
+      db.query.partyGstRegistrations.findFirst({
+        where: and(
+          eq(partyGstRegistrations.businessId, businessId),
+          eq(partyGstRegistrations.partyId, bill.supplierId),
+          eq(partyGstRegistrations.status, "active")
+        ),
+        orderBy: [
+          desc(partyGstRegistrations.isPrimary),
+          desc(partyGstRegistrations.createdAt),
+        ],
+      })
+    : Promise.resolve(null),
   ])
 
   return {
     ...bill,
     lines,
     payments,
+    supplierAddress: supplierAddress ?? null,
+    supplierGstRegistration: supplierGstRegistration ?? null,
+  }
+}
+
+async function getPurchaseBillInvoiceDetail(businessId: string, billId: string) {
+  const bill = await db.query.purchaseBills.findFirst({
+    where: and(eq(purchaseBills.businessId, businessId), eq(purchaseBills.id, billId)),
+  })
+
+  if (!bill) {
+    throw new HttpError(404, "Purchase bill not found.")
+  }
+
+  const [lines, payments, supplierAddress, supplierGstRegistration] = await Promise.all([
+    db
+      .select()
+      .from(purchaseBillLines)
+      .where(eq(purchaseBillLines.purchaseBillId, billId))
+      .orderBy(purchaseBillLines.sortOrder),
+    db
+      .select()
+      .from(purchaseBillPayments)
+      .where(eq(purchaseBillPayments.purchaseBillId, billId)),
+    bill.supplierId ?
+      db.query.partyAddresses.findFirst({
+        where: and(
+          eq(partyAddresses.businessId, businessId),
+          eq(partyAddresses.partyId, bill.supplierId),
+          eq(partyAddresses.isActive, true)
+        ),
+        orderBy: [
+          desc(partyAddresses.isPrimary),
+          desc(partyAddresses.createdAt),
+        ],
+      })
+    : Promise.resolve(null),
+    bill.supplierId ?
+      db.query.partyGstRegistrations.findFirst({
+        where: and(
+          eq(partyGstRegistrations.businessId, businessId),
+          eq(partyGstRegistrations.partyId, bill.supplierId),
+          eq(partyGstRegistrations.status, "active")
+        ),
+        orderBy: [
+          desc(partyGstRegistrations.isPrimary),
+          desc(partyGstRegistrations.createdAt),
+        ],
+      })
+    : Promise.resolve(null),
+  ])
+
+  return {
+    ...bill,
+    lines,
+    payments,
+    supplierAddress: supplierAddress ?? null,
+    supplierGstRegistration: supplierGstRegistration ?? null,
   }
 }
 

@@ -356,9 +356,14 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     assertCanManageBusiness(access.membership)
     const body = updateInvoiceSettingsSchema.parse(request.body)
     await ensureSettingsRows(access.business.id)
+    const salesInvoiceTemplate = body.salesInvoiceTemplate ?? body.invoiceTemplate
     const invoicePatch = removeUndefined({
       invoiceTemplate:
-        body.invoiceTemplate ? toStoredInvoiceTemplate(body.invoiceTemplate) : undefined,
+        salesInvoiceTemplate ? toStoredInvoiceTemplate(salesInvoiceTemplate) : undefined,
+      purchaseInvoiceTemplate:
+        body.purchaseInvoiceTemplate ?
+          toStoredInvoiceTemplate(body.purchaseInvoiceTemplate)
+        : undefined,
       invoicePrefix: body.invoicePrefix,
       invoiceNextNumber: body.invoiceNextNumber,
     })
@@ -612,6 +617,10 @@ async function getSettingsResponse(
     caReferral,
     invoiceSettings: {
       invoiceTemplate: toUiInvoiceTemplate(preferences?.invoiceTemplate),
+      salesInvoiceTemplate: toUiInvoiceTemplate(preferences?.invoiceTemplate),
+      purchaseInvoiceTemplate: toUiInvoiceTemplate(
+        preferences?.purchaseInvoiceTemplate
+      ),
       invoicePrefix,
       previewInvoiceNumber: `${invoicePrefix}-2026-${String(invoiceNextNumber).padStart(4, "0")}`,
     },
@@ -786,27 +795,39 @@ function removeUndefined<T extends Record<string, unknown>>(value: T) {
 }
 
 function toStoredInvoiceTemplate(template: string) {
-  if (template === "standard") {
-    return "classic"
+  if (template === "standard" || template === "classic") {
+    return "reference-01"
   }
 
-  if (template === "thermal") {
-    return "compact"
+  if (template === "modern") {
+    return "reference-02"
   }
 
-  return template
+  if (template === "compact" || template === "thermal") {
+    return "reference-03"
+  }
+
+  if (/^reference-0[1-8]$/.test(template)) {
+    return template
+  }
+
+  return "reference-01"
 }
 
 function toUiInvoiceTemplate(template: string | null | undefined) {
   if (template === "modern") {
-    return "modern"
+    return "reference-02"
   }
 
   if (template === "compact" || template === "thermal") {
-    return "compact"
+    return "reference-03"
   }
 
-  return "classic"
+  if (template && /^reference-0[1-8]$/.test(template)) {
+    return template
+  }
+
+  return "reference-01"
 }
 
 function parseEnabledGstSlabs(value: string | null | undefined) {

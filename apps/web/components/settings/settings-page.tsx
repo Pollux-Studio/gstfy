@@ -64,6 +64,11 @@ import {
   type InventorySettings,
 } from "@/lib/inventory/api"
 import {
+  getInvoiceTemplateOption,
+  getInvoiceTemplateOptions,
+  invoiceTemplateCodes,
+} from "@/lib/invoices/templates/shared/template-options"
+import {
   getSettings,
   updateBusinessTenant,
   updateBusinessDetails,
@@ -120,7 +125,8 @@ const businessDetailsSchema = z.object({
 })
 
 const invoiceSettingsSchema = z.object({
-  invoiceTemplate: z.enum(["classic", "modern", "compact"]),
+  salesInvoiceTemplate: z.enum(invoiceTemplateCodes),
+  purchaseInvoiceTemplate: z.enum(invoiceTemplateCodes),
   invoicePrefix: z
     .string()
     .trim()
@@ -161,27 +167,7 @@ type BarcodeScannerTestResult = {
   capturedAt: string
 }
 
-const invoiceTemplateOptions: Array<{
-  value: SettingsResponse["invoiceSettings"]["invoiceTemplate"]
-  label: string
-  description: string
-}> = [
-  {
-    value: "classic",
-    label: "Classic",
-    description: "Balanced layout for standard GST invoices and PDF sharing.",
-  },
-  {
-    value: "modern",
-    label: "Modern",
-    description: "Cleaner visual hierarchy for brand-forward invoice exports.",
-  },
-  {
-    value: "compact",
-    label: "Compact",
-    description: "Denser invoice body tuned for smaller print surfaces.",
-  },
-]
+const standardInvoiceTemplate = getInvoiceTemplateOptions("sales")[0]!
 
 const gstSlabOptions = [5, 12, 18, 28] as const
 
@@ -332,7 +318,8 @@ export function SettingsPage() {
   const invoiceForm = useForm<InvoiceSettingsFormValues>({
     resolver: zodResolver(invoiceSettingsSchema),
     defaultValues: {
-      invoiceTemplate: "classic",
+      salesInvoiceTemplate: "reference-01",
+      purchaseInvoiceTemplate: "reference-01",
       invoicePrefix: "INV",
     },
   })
@@ -373,7 +360,10 @@ export function SettingsPage() {
       registrationDate: data.registration.registrationDate,
     })
     invoiceForm.reset({
-      invoiceTemplate: data.invoiceSettings.invoiceTemplate,
+      salesInvoiceTemplate:
+        data.invoiceSettings.salesInvoiceTemplate ?? data.invoiceSettings.invoiceTemplate,
+      purchaseInvoiceTemplate:
+        data.invoiceSettings.purchaseInvoiceTemplate ?? data.invoiceSettings.invoiceTemplate,
       invoicePrefix: data.invoiceSettings.invoicePrefix,
     })
     gstForm.reset({
@@ -394,10 +384,6 @@ export function SettingsPage() {
     control: invoiceForm.control,
     name: "invoicePrefix",
   }) || "INV"
-  const currentInvoiceTemplate = useWatch({
-    control: invoiceForm.control,
-    name: "invoiceTemplate",
-  })
   const currentEnabledSlabs = useWatch({
     control: gstForm.control,
     name: "enabledGstSlabs",
@@ -533,7 +519,9 @@ export function SettingsPage() {
     mutationFn: (values: InvoiceSettingsFormValues) =>
       updateInvoiceSettings(
         {
-          invoiceTemplate: values.invoiceTemplate,
+          invoiceTemplate: values.salesInvoiceTemplate,
+          salesInvoiceTemplate: values.salesInvoiceTemplate,
+          purchaseInvoiceTemplate: values.purchaseInvoiceTemplate,
           invoicePrefix: values.invoicePrefix.trim().toUpperCase(),
         },
         accessToken
@@ -1236,63 +1224,26 @@ export function SettingsPage() {
                       variant="outline"
                       className="bg-background font-mono text-[11px] uppercase tracking-[0.14em]"
                     >
-                      {currentInvoiceTemplate}
+                      {standardInvoiceTemplate.code}
                     </Badge>
                   </div>
-                  <div
-                    role="radiogroup"
-                    aria-label="Invoice template"
-                    className="-mx-1 overflow-x-auto px-1 pb-2 [scrollbar-color:hsl(var(--border))_transparent] [scrollbar-width:thin]"
-                  >
-                    <div className="flex w-max gap-3">
-                      {invoiceTemplateOptions.map((template) => {
-                        const isSelected = currentInvoiceTemplate === template.value
-
-                        return (
-                          <button
-                            key={template.value}
-                            type="button"
-                            role="radio"
-                            aria-checked={isSelected}
-                            disabled={!canEditBusiness}
-                            onClick={() =>
-                              invoiceForm.setValue("invoiceTemplate", template.value, {
-                                shouldDirty: true,
-                                shouldValidate: true,
-                              })
-                            }
-                            className={cn(
-                              "w-56 shrink-0 rounded-2xl border bg-background p-2 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
-                              isSelected
-                                ? "border-foreground"
-                                : "border-border hover:border-foreground/40"
-                            )}
-                          >
-                            <InvoiceTemplatePreview
-                              template={template.value}
-                              prefix={invoicePreviewPrefix || "INV"}
-                              selected={isSelected}
-                            />
-                            <div className="mt-3 space-y-1 px-1 pb-1">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-sm font-medium">{template.label}</p>
-                                {isSelected ? (
-                                  <Badge className="h-5 px-1.5 text-[10px]">
-                                    Selected
-                                  </Badge>
-                                ) : null}
-                              </div>
-                              <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
-                                {template.description}
-                              </p>
-                            </div>
-                          </button>
-                        )
-                      })}
+                  <div className="grid gap-4 rounded-2xl border border-border bg-background p-3 sm:grid-cols-[14rem_minmax(0,1fr)]">
+                    <InvoiceTemplatePreview
+                      prefix={invoicePreviewPrefix || "INV"}
+                      selected
+                    />
+                    <div className="flex min-w-0 flex-col justify-center gap-2">
+                      <p className="text-sm font-medium">{standardInvoiceTemplate.label}</p>
+                      <p className="max-w-xl text-sm leading-6 text-muted-foreground">
+                        {standardInvoiceTemplate.description} The same layout is used for sales
+                        invoices and purchase invoice exports.
+                      </p>
+                      <Badge className="w-fit">Selected</Badge>
                     </div>
                   </div>
                   <FieldDescription>
-                    Scroll horizontally and select a template. The selected template code is saved with the invoice settings.
+                    All document samples use the same GST invoice structure, so GSTFY keeps one
+                    standard invoice template.
                   </FieldDescription>
                 </Field>
 
@@ -1323,7 +1274,7 @@ export function SettingsPage() {
                     <div>
                       <p className="text-sm font-medium">Preview</p>
                       <p className="text-sm text-muted-foreground">
-                        {getTemplateLabel(currentInvoiceTemplate)} template
+                        {getTemplateLabel()} template
                       </p>
                     </div>
                     <Badge className="gap-1.5 font-mono">
@@ -2032,100 +1983,127 @@ function SettingsSection({
 }
 
 function InvoiceTemplatePreview({
-  template,
   prefix,
   selected,
 }: {
-  template: SettingsResponse["invoiceSettings"]["invoiceTemplate"]
   prefix: string
   selected: boolean
 }) {
-  const isModern = template === "modern"
-  const isCompact = template === "compact"
+  const templateOption = getInvoiceTemplateOption()
 
   return (
     <div
       className={cn(
-        "relative aspect-[3/4] overflow-hidden rounded-xl border bg-white text-zinc-950",
+        "relative aspect-[3/4] overflow-hidden rounded-xl border bg-white p-2 text-zinc-950",
         selected ? "border-foreground" : "border-border"
       )}
     >
-      {isModern ? (
-        <div className="absolute inset-y-0 left-0 w-2 bg-zinc-950" />
-      ) : null}
-      <div className={cn("flex h-full flex-col p-3", isCompact && "p-2.5")}>
-        <div
-          className={cn(
-            "flex items-start justify-between gap-3 border-b border-zinc-200 pb-2",
-            isModern && "border-zinc-900/20"
+      <div className="flex h-full flex-col border border-zinc-950 text-[7px] leading-tight">
+        <div className="grid grid-cols-[1.15fr_0.85fr] border-b border-zinc-950">
+          <div className="space-y-1 border-r border-zinc-950 p-1.5">
+            <p className="truncate text-[8px] font-bold">{templateOption.sampleSeller}</p>
+            <div className="h-1 w-24 rounded bg-zinc-300" />
+            <div className="h-1 w-20 rounded bg-zinc-200" />
+            <p className="font-mono text-[6px]">GSTIN/UIN : 09XXXXXXXXX1Z1</p>
+          </div>
+          <div className="grid grid-cols-2">
+            {["Invoice No.", "Dated", "Delivery Note", "Mode/Terms"].map((label, index) => (
+              <div
+                key={label}
+                className={cn(
+                  "border-zinc-950 p-1",
+                  index % 2 === 0 && "border-r",
+                  index < 2 && "border-b"
+                )}
+              >
+                <p className="text-[5px] text-zinc-500">{label}</p>
+                <p className="truncate font-mono text-[6px]">
+                  {index === 0 ? `${prefix}-2026-0001` : index === 1 ? "01-Apr-24" : ""}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-[1.15fr_0.85fr] border-b border-zinc-950">
+          <div className="space-y-1 border-r border-zinc-950 p-1.5">
+            <p className="text-[5px] text-zinc-500">Buyer (Bill to)</p>
+            <div className="h-1.5 w-24 rounded bg-zinc-800" />
+            <div className="h-1 w-28 rounded bg-zinc-200" />
+            <div className="h-1 w-16 rounded bg-zinc-200" />
+          </div>
+          <div className="grid grid-cols-2">
+            {["Reference", "Order No.", "Dispatch", "Destination"].map((label, index) => (
+              <div
+                key={label}
+                className={cn(
+                  "border-zinc-950 p-1",
+                  index % 2 === 0 && "border-r",
+                  index < 2 && "border-b"
+                )}
+              >
+                <p className="text-[5px] text-zinc-500">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-[1.2rem_1fr_2rem_2rem_2.2rem_2rem_2.4rem] border-b border-zinc-950 text-[5px] font-semibold">
+          {["Sl", "Description of Goods", "HSN/SAC", "GST", "Qty", "Rate", "Amount"].map(
+            (label) => (
+              <div key={label} className="border-r border-zinc-950 p-1 last:border-r-0">
+                {label}
+              </div>
+            )
           )}
-        >
-          <div>
-            <div className="h-2.5 w-16 rounded-full bg-zinc-950" />
-            <div className="mt-1 h-1.5 w-12 rounded-full bg-zinc-300" />
-          </div>
-          <div className={cn("text-right", isModern && "rounded-md bg-zinc-950 px-2 py-1 text-white")}>
-            <p className="text-[9px] font-semibold uppercase tracking-[0.18em]">Invoice</p>
-            <p className={cn("mt-1 font-mono text-[8px]", !isModern && "text-zinc-500")}>
-              {prefix}-2026-0001
-            </p>
-          </div>
         </div>
 
-        <div className={cn("grid gap-2 py-3", isCompact ? "grid-cols-2 py-2" : "grid-cols-2")}>
-          <div className="space-y-1.5">
-            <div className="h-1.5 w-10 rounded-full bg-zinc-300" />
-            <div className="h-1.5 w-20 rounded-full bg-zinc-800" />
-            <div className="h-1.5 w-14 rounded-full bg-zinc-200" />
-          </div>
-          <div className="space-y-1.5">
-            <div className="ml-auto h-1.5 w-10 rounded-full bg-zinc-300" />
-            <div className="ml-auto h-1.5 w-16 rounded-full bg-zinc-800" />
-            <div className="ml-auto h-1.5 w-12 rounded-full bg-zinc-200" />
-          </div>
-        </div>
-
-        <div className="overflow-hidden rounded-lg border border-zinc-200">
-          <div
-            className={cn(
-              "grid grid-cols-[1fr_2rem_2.5rem] gap-2 bg-zinc-100 px-2 py-1.5 text-[8px] font-medium uppercase tracking-[0.12em] text-zinc-500",
-              isCompact && "py-1"
-            )}
-          >
-            <span>Item</span>
-            <span>GST</span>
-            <span className="text-right">Total</span>
-          </div>
-          {Array.from({ length: isCompact ? 5 : 3 }).map((_, index) => (
+        <div className="flex-1">
+          {Array.from({ length: templateOption.sourcePage === 7 ? 6 : 4 }).map((_, index) => (
             <div
               key={index}
-              className="grid grid-cols-[1fr_2rem_2.5rem] gap-2 border-t border-zinc-100 px-2 py-1.5"
+              className="grid grid-cols-[1.2rem_1fr_2rem_2rem_2.2rem_2rem_2.4rem] text-[5px]"
             >
-              <span className="h-1.5 rounded-full bg-zinc-300" />
-              <span className="h-1.5 rounded-full bg-zinc-200" />
-              <span className="h-1.5 rounded-full bg-zinc-300" />
+              <div className="border-r border-zinc-950 p-1 text-center">{index + 1}</div>
+              <div className="border-r border-zinc-950 p-1">
+                <div className="h-1 rounded bg-zinc-300" />
+              </div>
+              <div className="border-r border-zinc-950 p-1">8544</div>
+              <div className="border-r border-zinc-950 p-1">18%</div>
+              <div className="border-r border-zinc-950 p-1">2 Pcs</div>
+              <div className="border-r border-zinc-950 p-1">100</div>
+              <div className="p-1 text-right">200</div>
             </div>
           ))}
         </div>
 
-        <div className="mt-auto space-y-1.5 pt-3">
-          <div className="ml-auto flex w-24 items-center justify-between gap-3">
-            <span className="h-1.5 w-10 rounded-full bg-zinc-300" />
-            <span className="h-1.5 w-10 rounded-full bg-zinc-200" />
+        <div className="border-t border-zinc-950">
+          <div className="grid grid-cols-[1fr_4.5rem] border-b border-zinc-950">
+            <div className="p-1 text-right font-semibold">Total</div>
+            <div className="border-l border-zinc-950 p-1 text-right font-bold">Rs. 2,404</div>
           </div>
-          <div
-            className={cn(
-              "ml-auto h-7 w-28 rounded-lg",
-              isModern ? "bg-zinc-950" : "bg-zinc-100"
+          <div className="p-1">
+            <p className="truncate text-[5px]">Amount Chargeable (in words)</p>
+            <p className="truncate font-semibold">INR Two Thousand Four Hundred Four Only</p>
+          </div>
+          <div className="grid grid-cols-5 border-t border-zinc-950 text-[5px]">
+            {["Taxable Value", "CGST", "SGST/UTGST", "Tax Amount", "Signatory"].map(
+              (label) => (
+                <div key={label} className="border-r border-zinc-950 p-1 last:border-r-0">
+                  {label}
+                </div>
+              )
             )}
-          >
-            <div className={cn("ml-auto h-full w-16 rounded-lg", isModern ? "bg-zinc-700" : "bg-zinc-300")} />
+          </div>
+          <div className="grid grid-cols-[1fr_5rem] border-t border-zinc-950">
+            <p className="p-1 text-[5px]">Declaration: All particulars are true and correct.</p>
+            <div className="border-l border-zinc-950 p-1 text-right">
+              <p className="text-[5px]">for {templateOption.sampleSeller}</p>
+              <p className="mt-3 text-[5px]">Authorised Signatory</p>
+            </div>
           </div>
         </div>
       </div>
-      {template === "classic" ? (
-        <div className="absolute inset-x-0 top-0 h-1 bg-zinc-950" />
-      ) : null}
     </div>
   )
 }
@@ -2301,8 +2279,8 @@ function getTenantSlugValidationError(value: string) {
   return null
 }
 
-function getTemplateLabel(value: SettingsResponse["invoiceSettings"]["invoiceTemplate"]) {
-  return invoiceTemplateOptions.find((template) => template.value === value)?.label ?? "Classic"
+function getTemplateLabel() {
+  return getInvoiceTemplateOption().label
 }
 
 function getErrorMessage(error: unknown) {

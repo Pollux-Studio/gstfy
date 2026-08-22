@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowDownIcon,
@@ -92,14 +93,16 @@ import { listParties, type PartyListItem } from "@/lib/parties/api"
 import { listProducts, type ProductListItem } from "@/lib/products/api"
 import {
   createPurchaseBill,
-  getPurchaseBill,
   listPurchaseBills,
   postPurchaseBill,
   type CreatePurchaseBillPayload,
   type PurchaseBill,
-  type PurchaseBillDetail,
   type PurchaseBillStatus,
 } from "@/lib/purchases/api"
+import {
+  downloadBlob,
+  fetchPurchaseInvoicePdf,
+} from "@/lib/purchases/purchase-invoice-client"
 import type { PaymentMode } from "@/lib/sales/api"
 import { getSettings } from "@/lib/settings/api"
 import { cn } from "@/lib/utils"
@@ -111,7 +114,9 @@ type PurchaseSortKey =
   | "supplierName"
   | "billDate"
   | "taxableValue"
-  | "gstAmount"
+  | "cgstAmount"
+  | "sgstAmount"
+  | "igstAmount"
   | "itcEligibleAmount"
   | "amountDue"
   | "totalAmount"
@@ -131,6 +136,14 @@ type PurchaseFormState = {
   supplierInvoiceNumber: string
   invoiceDate: string
   billDate: string
+  deliveryNoteNumber: string
+  buyerOrderNumber: string
+  buyerOrderDate: string
+  dispatchDocumentNumber: string
+  deliveryNoteDate: string
+  dispatchedThrough: string
+  destination: string
+  termsOfDelivery: string
   placeOfSupplyStateCode: string
   purchaseType: CreatePurchaseBillPayload["purchaseType"]
   itemId: string
@@ -159,6 +172,14 @@ const initialForm: PurchaseFormState = {
   supplierInvoiceNumber: "",
   invoiceDate: today,
   billDate: today,
+  deliveryNoteNumber: "",
+  buyerOrderNumber: "",
+  buyerOrderDate: "",
+  dispatchDocumentNumber: "",
+  deliveryNoteDate: "",
+  dispatchedThrough: "",
+  destination: "",
+  termsOfDelivery: "",
   placeOfSupplyStateCode: "33",
   purchaseType: "goods",
   itemId: "",
@@ -224,6 +245,7 @@ const tabCopy: Record<PurchaseWorkspaceTab, { title: string; description: string
 
 export function PurchaseBillsApiPage() {
   const queryClient = useQueryClient()
+  const router = useRouter()
   const accessToken = getStoredAuthSession()?.session.accessToken ?? ""
   const [activeTab, setActiveTab] = React.useState<PurchaseWorkspaceTab>("bills")
   const [search, setSearch] = React.useState("")
@@ -238,7 +260,6 @@ export function PurchaseBillsApiPage() {
   const [adjustmentSortDirection, setAdjustmentSortDirection] =
     React.useState<SortDirection>("desc")
   const [dialogMode, setDialogMode] = React.useState<PurchaseDialogMode>(null)
-  const [invoiceBillId, setInvoiceBillId] = React.useState("")
 
   const billsQuery = useInfiniteQuery({
     queryKey: ["purchase-bills", search, status],
@@ -286,13 +307,11 @@ export function PurchaseBillsApiPage() {
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   })
-  const invoiceQuery = useQuery({
-    queryKey: ["purchase-bills", "invoice", invoiceBillId],
-    queryFn: () => getPurchaseBill(accessToken, invoiceBillId),
-    enabled: invoiceBillId.length > 0 && accessToken.length > 0,
-  })
   const downloadInvoiceMutation = useMutation({
-    mutationFn: (billId: string) => downloadPurchaseInvoicePdf(accessToken, billId),
+    mutationFn: async (billId: string) => {
+      const file = await fetchPurchaseInvoicePdf(accessToken, billId, { force: true })
+      downloadBlob(file.fileName, file.blob)
+    },
     onError: (error) => toast.error(getErrorMessage(error)),
   })
 
@@ -408,19 +427,19 @@ export function PurchaseBillsApiPage() {
             <div className="grid grid-cols-2 gap-2">
               <PurchaseMetric
                 label="Posted value"
-                value={formatCurrency(summary.postedValue)}
+                value={formatTableCurrency(summary.postedValue)}
                 loading={billsQuery.isLoading}
                 tone="positive"
               />
               <PurchaseMetric
                 label="Input GST"
-                value={formatCurrency(summary.inputGst)}
+                value={formatTableCurrency(summary.inputGst)}
                 loading={billsQuery.isLoading}
                 tone="blue"
               />
               <PurchaseMetric
                 label="Supplier due"
-                value={formatCurrency(summary.due)}
+                value={formatTableCurrency(summary.due)}
                 loading={billsQuery.isLoading}
                 tone={summary.due > 0 ? "warning" : "muted"}
               />
@@ -526,10 +545,8 @@ export function PurchaseBillsApiPage() {
               onSort={togglePurchaseSort}
               onScroll={handlePurchaseTableScroll}
               onPost={(billId) => postPurchaseMutation.mutate(billId)}
-              onView={(billId) => {
-                window.location.assign(`/purchases/view/${billId}`)
-              }}
-              onPreviewInvoice={setInvoiceBillId}
+              onView={(billId) => router.push(`/purchases/view/${billId}`)}
+              onPreviewInvoice={(billId) => router.push(`/purchases/invoice/${billId}`)}
               onDownloadInvoice={(billId) => downloadInvoiceMutation.mutate(billId)}
               onCreate={() => setDialogMode("purchase")}
             />
@@ -593,22 +610,6 @@ export function PurchaseBillsApiPage() {
         open={dialogMode === "debit-note"}
         onOpenChange={(open) => !open && setDialogMode(null)}
       />
-      <PurchaseInvoiceDialog
-        open={invoiceBillId.length > 0}
-        loading={invoiceQuery.isLoading}
-        bill={invoiceQuery.data?.bill}
-        downloading={downloadInvoiceMutation.isPending}
-        onOpenChange={(open) => {
-          if (!open) {
-            setInvoiceBillId("")
-          }
-        }}
-        onDownload={() => {
-          if (invoiceBillId) {
-            downloadInvoiceMutation.mutate(invoiceBillId)
-          }
-        }}
-      />
     </main>
   )
 }
@@ -651,14 +652,16 @@ function PurchaseBillsTable({
       <div className="app-scrollbar max-h-[30rem] overflow-auto" onScroll={onScroll}>
         <Table className={purchaseTableClass}>
           <colgroup>
-            <col className="w-[13%]" />
-            <col className="w-[17%]" />
-            <col className="w-[11%]" />
             <col className="w-[12%]" />
-            <col className="w-[13%]" />
-            <col className="w-[12%]" />
+            <col className="w-[16%]" />
             <col className="w-[10%]" />
-            <col className="w-[12%]" />
+            <col className="w-[11%]" />
+            <col className="w-[9%]" />
+            <col className="w-[9%]" />
+            <col className="w-[9%]" />
+            <col className="w-[10%]" />
+            <col className="w-[7%]" />
+            <col className="w-[7%]" />
           </colgroup>
           <TableHeader className="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_var(--border)]">
             <TableRow className="hover:bg-transparent">
@@ -696,13 +699,31 @@ function PurchaseBillsTable({
                 Taxable
               </SortablePurchaseHead>
               <SortablePurchaseHead
-                sortKey="gstAmount"
+                sortKey="cgstAmount"
                 activeSortKey={sortKey}
                 sortDirection={sortDirection}
                 align="right"
                 onSort={onSort}
               >
-                GST
+                CGST
+              </SortablePurchaseHead>
+              <SortablePurchaseHead
+                sortKey="sgstAmount"
+                activeSortKey={sortKey}
+                sortDirection={sortDirection}
+                align="right"
+                onSort={onSort}
+              >
+                SGST
+              </SortablePurchaseHead>
+              <SortablePurchaseHead
+                sortKey="igstAmount"
+                activeSortKey={sortKey}
+                sortDirection={sortDirection}
+                align="right"
+                onSort={onSort}
+              >
+                IGST
               </SortablePurchaseHead>
               <SortablePurchaseHead
                 sortKey="itcEligibleAmount"
@@ -728,14 +749,14 @@ function PurchaseBillsTable({
             {isLoading ?
               Array.from({ length: 6 }).map((_, index) => (
                 <TableRow key={index}>
-                  <TableCell colSpan={8}>
+                  <TableCell colSpan={10}>
                     <Skeleton className="h-10 w-full" />
                   </TableCell>
                 </TableRow>
               ))
             : bills.length === 0 ?
               <TableRow>
-                <TableCell colSpan={8} className="h-72 py-8">
+                <TableCell colSpan={10} className="h-72 py-8">
                   <PurchaseEmptyState
                     icon={<ShoppingCartIcon className="size-5" />}
                     title="No purchase bills found"
@@ -761,7 +782,7 @@ function PurchaseBillsTable({
                   <TableCell>
                     <p className="truncate font-medium">{bill.supplierName}</p>
                     <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                      Due {formatCurrency(bill.amountDue)}
+                      Due {formatTableCurrency(bill.amountDue)}
                     </p>
                   </TableCell>
                   <TableCell>
@@ -771,23 +792,23 @@ function PurchaseBillsTable({
                     </p>
                   </TableCell>
                   <TableCell className="text-right font-mono">
-                    {formatCurrency(bill.taxableValue)}
+                    {formatTableCurrency(bill.taxableValue)}
                   </TableCell>
-                  <TableCell className="text-right">
-                    <p className="font-mono text-emerald-700 dark:text-emerald-300">
-                      {formatCurrency(getPurchaseGstAmount(bill))}
-                    </p>
-                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                      C {formatCurrency(bill.cgstAmount)} / S {formatCurrency(bill.sgstAmount)} / I{" "}
-                      {formatCurrency(bill.igstAmount)}
-                    </p>
+                  <TableCell className="text-right font-mono text-emerald-700 dark:text-emerald-300">
+                    {formatTableCurrency(bill.cgstAmount)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-emerald-700 dark:text-emerald-300">
+                    {formatTableCurrency(bill.sgstAmount)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-emerald-700 dark:text-emerald-300">
+                    {formatTableCurrency(bill.igstAmount)}
                   </TableCell>
                   <TableCell className="text-right">
                     <p className="font-mono text-blue-700 dark:text-blue-300">
-                      {formatCurrency(bill.itcEligibleAmount)}
+                      {formatTableCurrency(bill.itcEligibleAmount)}
                     </p>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      Paid {formatCurrency(bill.amountPaid)}
+                      Paid {formatTableCurrency(bill.amountPaid)}
                     </p>
                   </TableCell>
                   <TableCell>
@@ -1030,10 +1051,10 @@ function AdjustmentTable({
                   </TableCell>
                   <TableCell>{formatDate(document.adjustmentDate)}</TableCell>
                   <TableCell className="text-right font-mono">
-                    {formatCurrency(document.taxableTotal)}
+                    {formatTableCurrency(document.taxableTotal)}
                   </TableCell>
                   <TableCell className="text-right font-mono">
-                    {formatCurrency(document.grandTotal)}
+                    {formatTableCurrency(document.grandTotal)}
                   </TableCell>
                   <TableCell>
                     <AdjustmentStatusBadge status={document.status} />
@@ -1210,6 +1231,14 @@ function PurchaseBillDialog({
       supplierInvoiceNumber: form.supplierInvoiceNumber || null,
       invoiceDate: form.invoiceDate,
       billDate: form.billDate,
+      deliveryNoteNumber: form.deliveryNoteNumber || null,
+      buyerOrderNumber: form.buyerOrderNumber || null,
+      buyerOrderDate: form.buyerOrderDate || null,
+      dispatchDocumentNumber: form.dispatchDocumentNumber || null,
+      deliveryNoteDate: form.deliveryNoteDate || null,
+      dispatchedThrough: form.dispatchedThrough || null,
+      destination: form.destination || null,
+      termsOfDelivery: form.termsOfDelivery || null,
       warehouseId: selectedWarehouseId || null,
       placeOfSupplyStateCode: form.placeOfSupplyStateCode || null,
       purchaseType: form.purchaseType,
@@ -1260,7 +1289,7 @@ function PurchaseBillDialog({
                   setForm((current) => ({
                     ...current,
                     supplierId: supplier.id,
-                    supplierName: supplier.displayName,
+                    supplierName: getSupplierInvoiceName(supplier),
                     placeOfSupplyStateCode:
                       supplier.primaryGstRegistration?.stateCode ||
                       current.placeOfSupplyStateCode,
@@ -1489,6 +1518,65 @@ function PurchaseBillDialog({
               placeholder="Leave empty if unpaid"
               onChange={(value) => setFormValue("amountPaid", value, setForm)}
             />
+            <div className="grid gap-3 rounded-xl border border-border bg-muted/20 p-3 sm:col-span-2 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <p className="text-xs font-medium text-foreground">Invoice delivery details</p>
+                <p className="text-xs text-muted-foreground">
+                  Optional fields printed on the purchase invoice. E-way bill details can be entered here until e-way integration fills them automatically.
+                </p>
+              </div>
+              <TextField
+                label="Delivery note no."
+                value={form.deliveryNoteNumber}
+                placeholder="Delivery challan / note no."
+                onChange={(value) => setFormValue("deliveryNoteNumber", value, setForm)}
+              />
+              <TextField
+                label="Buyer order no."
+                value={form.buyerOrderNumber}
+                placeholder="Your PO / order reference"
+                onChange={(value) => setFormValue("buyerOrderNumber", value, setForm)}
+              />
+              <PurchaseDatePicker
+                label="Buyer order date"
+                value={form.buyerOrderDate}
+                onChange={(value) => setFormValue("buyerOrderDate", value, setForm)}
+              />
+              <TextField
+                label="Dispatch doc no."
+                value={form.dispatchDocumentNumber}
+                placeholder="E-way bill / LR / transport doc"
+                onChange={(value) => setFormValue("dispatchDocumentNumber", value, setForm)}
+              />
+              <PurchaseDatePicker
+                label="Delivery note date"
+                value={form.deliveryNoteDate}
+                onChange={(value) => setFormValue("deliveryNoteDate", value, setForm)}
+              />
+              <TextField
+                label="Dispatched through"
+                value={form.dispatchedThrough}
+                placeholder="Transporter / courier"
+                onChange={(value) => setFormValue("dispatchedThrough", value, setForm)}
+              />
+              <TextField
+                label="Destination"
+                value={form.destination}
+                placeholder="Delivery city or location"
+                onChange={(value) => setFormValue("destination", value, setForm)}
+              />
+              <Field className="sm:col-span-2">
+                <FieldLabel>Terms of delivery</FieldLabel>
+                <Textarea
+                  className="min-h-16"
+                  value={form.termsOfDelivery}
+                  onChange={(event) =>
+                    setFormValue("termsOfDelivery", event.target.value, setForm)
+                  }
+                  placeholder="Freight terms, handover note, delivery instruction"
+                />
+              </Field>
+            </div>
             <Field className="sm:col-span-2">
               <FieldLabel>Notes</FieldLabel>
               <Textarea
@@ -1849,180 +1937,6 @@ function ReturnableLinesEditor({
             })}
           </TableBody>
         </Table>
-      </div>
-    </div>
-  )
-}
-
-function PurchaseInvoiceDialog({
-  open,
-  loading,
-  bill,
-  downloading,
-  onOpenChange,
-  onDownload,
-}: {
-  open: boolean
-  loading: boolean
-  bill: PurchaseBillDetail | undefined
-  downloading: boolean
-  onOpenChange: (open: boolean) => void
-  onDownload: () => void
-}) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>Purchase invoice preview</DialogTitle>
-          <DialogDescription>
-            Review the purchase bill PDF before downloading it for records.
-          </DialogDescription>
-        </DialogHeader>
-        {loading ? (
-          <div className="space-y-3 rounded-2xl border p-4">
-            <Skeleton className="h-16 rounded-xl" />
-            <Skeleton className="h-48 rounded-xl" />
-            <Skeleton className="h-24 rounded-xl" />
-          </div>
-        ) : bill ? (
-          <PurchaseInvoicePreview bill={bill} />
-        ) : (
-          <div className="rounded-2xl border border-dashed p-8">
-            <PurchaseEmptyState
-              icon={<ReceiptTextIcon className="size-5" />}
-              title="Invoice unavailable"
-              description="The purchase bill details could not be loaded. Try opening it again."
-            />
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-          <Button
-            className="gap-2 bg-blue-600 text-white hover:bg-blue-700"
-            disabled={!bill || downloading}
-            onClick={onDownload}
-          >
-            {downloading ? <Spinner className="size-4" /> : <DownloadIcon className="size-4" />}
-            Download invoice
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function PurchaseInvoicePreview({ bill }: { bill: PurchaseBillDetail }) {
-  const gstAmount = getPurchaseGstAmount(bill)
-
-  return (
-    <div className="overflow-hidden rounded-2xl border bg-background">
-      <div className="grid gap-4 border-b bg-muted/20 p-4 sm:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="min-w-0">
-          <Badge variant="outline" className="gap-1.5 bg-background">
-            <ReceiptTextIcon className="size-3.5" />
-            Purchase invoice
-          </Badge>
-          <h3 className="mt-3 truncate text-xl font-semibold">{bill.billNumber}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Supplier invoice {bill.supplierInvoiceNumber || "not provided"}
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          <PreviewTile label="Bill date" value={formatDate(bill.billDate)} />
-          <PreviewTile label="Invoice date" value={formatDate(bill.invoiceDate)} />
-          <PreviewTile label="Taxable" value={formatCurrency(bill.taxableValue)} />
-          <PreviewTile label="GST" value={formatCurrency(gstAmount)} tone="green" />
-        </div>
-      </div>
-      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="min-w-0 space-y-4">
-          <div className="rounded-xl border p-3">
-            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Supplier
-            </p>
-            <p className="mt-1 truncate font-medium">{bill.supplierName}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Type {getPurchaseTypeLabel(bill.purchaseType)}
-            </p>
-          </div>
-          <div className="overflow-hidden rounded-xl border">
-            <Table className={purchaseTableClass}>
-              <TableHeader className="bg-muted/40">
-                <TableRow>
-                  <TableHead className="w-[34%]">Item</TableHead>
-                  <TableHead className="w-[12%] text-right">Qty</TableHead>
-                  <TableHead className="w-[14%] text-right">Rate</TableHead>
-                  <TableHead className="w-[14%] text-right">Taxable</TableHead>
-                  <TableHead className="w-[12%] text-right">GST</TableHead>
-                  <TableHead className="w-[14%] pr-3 text-right">Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {bill.lines.map((line) => (
-                  <TableRow key={line.id}>
-                    <TableCell>
-                      <p className="truncate font-medium">{line.itemNameSnapshot}</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {line.hsnSacCode || "No HSN"} · {line.unit} · GST {line.gstRate}%
-                      </p>
-                    </TableCell>
-                    <TableCell className="text-right font-mono">{line.quantity}</TableCell>
-                    <TableCell className="text-right font-mono">{formatCurrency(line.rate)}</TableCell>
-                    <TableCell className="text-right font-mono">
-                      {formatCurrency(line.taxableValue)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {formatCurrency(
-                        Number(line.cgstAmount) + Number(line.sgstAmount) + Number(line.igstAmount)
-                      )}
-                    </TableCell>
-                    <TableCell className="pr-3 text-right font-mono">
-                      {formatCurrency(line.lineTotal)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-        <div className="space-y-3">
-          <div className="space-y-2 rounded-xl border p-3 text-sm">
-            <SummaryRow label="Taxable" value={formatCurrency(bill.taxableValue)} />
-            <SummaryRow label="CGST" value={formatCurrency(bill.cgstAmount)} />
-            <SummaryRow label="SGST" value={formatCurrency(bill.sgstAmount)} />
-            <SummaryRow label="IGST" value={formatCurrency(bill.igstAmount)} />
-            <SummaryRow label="Total" value={formatCurrency(bill.totalAmount)} strong />
-            <SummaryRow label="Paid" value={formatCurrency(bill.amountPaid)} />
-            <SummaryRow
-              label="Due"
-              value={formatCurrency(bill.amountDue)}
-              tone={Number(bill.amountDue) > 0 ? "warning" : undefined}
-            />
-          </div>
-          <div className="rounded-xl border p-3">
-            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Payments
-            </p>
-            {bill.payments.length ? (
-              <div className="mt-2 space-y-2 text-sm">
-                {bill.payments.map((payment) => (
-                  <div key={payment.id} className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">
-                      {getPaymentModeLabel(payment.paymentMode)}
-                    </span>
-                    <span className="font-mono">{formatCurrency(payment.amount)}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-2 text-xs text-muted-foreground">
-                No payment was captured with this bill.
-              </p>
-            )}
-          </div>
-        </div>
       </div>
     </div>
   )
@@ -2601,13 +2515,17 @@ function sortPurchaseBills(
 
     const firstValue =
       sortKey === "taxableValue" ? first.taxableValue
-      : sortKey === "gstAmount" ? String(getPurchaseGstAmount(first))
+      : sortKey === "cgstAmount" ? first.cgstAmount
+      : sortKey === "sgstAmount" ? first.sgstAmount
+      : sortKey === "igstAmount" ? first.igstAmount
       : sortKey === "itcEligibleAmount" ? first.itcEligibleAmount
       : sortKey === "amountDue" ? first.amountDue
       : first.totalAmount
     const secondValue =
       sortKey === "taxableValue" ? second.taxableValue
-      : sortKey === "gstAmount" ? String(getPurchaseGstAmount(second))
+      : sortKey === "cgstAmount" ? second.cgstAmount
+      : sortKey === "sgstAmount" ? second.sgstAmount
+      : sortKey === "igstAmount" ? second.igstAmount
       : sortKey === "itcEligibleAmount" ? second.itcEligibleAmount
       : sortKey === "amountDue" ? second.amountDue
       : second.totalAmount
@@ -2645,10 +2563,6 @@ function sortAdjustments(
   })
 }
 
-function getPurchaseGstAmount(bill: PurchaseBill) {
-  return Number(bill.cgstAmount) + Number(bill.sgstAmount) + Number(bill.igstAmount)
-}
-
 function toSupplierOption(supplier: PartyListItem): ComboboxOption {
   const gstin = supplier.primaryGstRegistration?.gstin ?? ""
   const contact =
@@ -2659,11 +2573,29 @@ function toSupplierOption(supplier: PartyListItem): ComboboxOption {
 
   return {
     value: supplier.id,
-    label: supplier.displayName,
-    searchValue: [supplier.displayName, gstin, contact, supplier.supplierCode]
+    label: getSupplierInvoiceName(supplier),
+    searchValue: [
+      supplier.displayName,
+      getSupplierInvoiceName(supplier),
+      supplier.legalName,
+      supplier.tradeName,
+      gstin,
+      contact,
+      supplier.supplierCode,
+    ]
       .filter(Boolean)
       .join(" · "),
   }
+}
+
+function getSupplierInvoiceName(supplier: PartyListItem) {
+  return (
+    supplier.primaryGstRegistration?.tradeName ||
+    supplier.primaryGstRegistration?.legalName ||
+    supplier.tradeName ||
+    supplier.legalName ||
+    supplier.displayName
+  )
 }
 
 function toProductOption(product: ProductListItem): ComboboxOption {
@@ -2702,89 +2634,6 @@ function getAdjustmentSourceSummary(document: AdjustmentListRow) {
   }
 }
 
-function getPurchaseTypeLabel(value: string) {
-  return purchaseTypeOptions.find((option) => option.value === value)?.label ?? value
-}
-
-function getPaymentModeLabel(value: PaymentMode) {
-  return paymentModeOptions.find((option) => option.value === value)?.label ?? value
-}
-
-async function downloadPurchaseInvoicePdf(accessToken: string, billId: string) {
-  const headers = new Headers()
-
-  if (accessToken) {
-    headers.set("Authorization", `Bearer ${accessToken}`)
-  }
-
-  const tenantSlug = getTenantSlugForDownload()
-  if (tenantSlug) {
-    headers.set("X-GSTFY-Tenant", tenantSlug)
-  }
-
-  const response = await fetch(`/api/purchase-invoices/${billId}`, {
-    credentials: "include",
-    headers,
-  })
-
-  if (!response.ok) {
-    throw new Error(await extractDownloadError(response))
-  }
-
-  const blob = await response.blob()
-  downloadBlob(getDownloadFileName(response, `purchase-${billId}.pdf`), blob)
-}
-
-function downloadBlob(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement("a")
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
-function getTenantSlugForDownload() {
-  const storedTenant = getStoredAuthSession()?.tenant?.slug
-
-  if (storedTenant) {
-    return storedTenant
-  }
-
-  const hostname = window.location.hostname.toLowerCase()
-  const [subdomain, ...domainParts] = hostname.split(".")
-  const parentDomain = domainParts.join(".")
-
-  if (
-    !subdomain ||
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    (parentDomain !== "localhost" && domainParts.length < 2) ||
-    ["api", "app", "auth", "ca", "www"].includes(subdomain)
-  ) {
-    return null
-  }
-
-  return /^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])?$/.test(subdomain) ? subdomain : null
-}
-
-function getDownloadFileName(response: Response, fallback: string) {
-  const disposition = response.headers.get("content-disposition") ?? ""
-  const match = /filename="([^"]+)"/i.exec(disposition)
-  return match?.[1] ?? fallback
-}
-
-async function extractDownloadError(response: Response) {
-  const contentType = response.headers.get("content-type") ?? ""
-
-  if (contentType.includes("application/json")) {
-    const payload = (await response.json()) as { message?: unknown }
-    return typeof payload.message === "string" ? payload.message : "Unable to download invoice."
-  }
-
-  return (await response.text()) || "Unable to download invoice."
-}
-
 async function invalidatePurchaseWorkspace(
   queryClient: ReturnType<typeof useQueryClient>
 ) {
@@ -2800,6 +2649,15 @@ function formatCurrency(value: string | number) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0))
+}
+
+function formatTableCurrency(value: string | number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(Number(value || 0))
 }

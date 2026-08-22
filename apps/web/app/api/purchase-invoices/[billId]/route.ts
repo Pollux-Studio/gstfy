@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { API_BASE_PATH, API_BASE_URL } from "@/lib/api/config"
+import type { PurchaseInvoiceTemplateCode } from "@/lib/invoices/templates/purchase"
 import type { PurchaseBillDetail } from "@/lib/purchases/api"
-import { renderPurchaseInvoicePdf } from "@/lib/purchases/purchase-invoice-pdf"
+import {
+  renderPurchaseInvoicePdf,
+  type PurchaseInvoiceBusinessInfo,
+} from "@/lib/purchases/purchase-invoice-pdf"
 
 export const runtime = "nodejs"
 
@@ -10,6 +14,7 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ billId: string }> }
 ) {
+  const routeStartedAt = performance.now()
   const { billId } = await context.params
   const authorization = request.headers.get("authorization")
 
@@ -32,13 +37,28 @@ export async function GET(
     backendHeaders.set("Cookie", cookie)
   }
 
-  const backendResponse = await fetch(
-    `${API_BASE_URL}${API_BASE_PATH}/purchase-bills/${encodeURIComponent(billId)}`,
+  const backendStartedAt = performance.now()
+  const backendResponsePromise = fetch(
+    `${API_BASE_URL}${API_BASE_PATH}/purchase-bills/${encodeURIComponent(billId)}/invoice`,
     {
       cache: "no-store",
       headers: backendHeaders,
     }
+  ).then((response) => ({
+    duration: performance.now() - backendStartedAt,
+    response,
+  }))
+  const settingsStartedAt = performance.now()
+  const renderSettingsPromise = getPurchaseInvoiceRenderSettings(backendHeaders).then(
+    (settings) => ({
+      duration: performance.now() - settingsStartedAt,
+      settings,
+    })
   )
+  const [
+    { duration: backendDuration, response: backendResponse },
+    { duration: settingsDuration, settings: renderSettings },
+  ] = await Promise.all([backendResponsePromise, renderSettingsPromise])
 
   if (!backendResponse.ok) {
     return NextResponse.json(
@@ -48,15 +68,83 @@ export async function GET(
   }
 
   const payload = (await backendResponse.json()) as { bill: PurchaseBillDetail }
-  const pdf = await renderPurchaseInvoicePdf(payload.bill)
-
+  const renderStartedAt = performance.now()
+  const pdf = await renderPurchaseInvoicePdf(payload.bill, {
+    buyer: renderSettings.buyer,
+    templateCode: renderSettings.purchaseInvoiceTemplate,
+  })
+  const renderDuration = performance.now() - renderStartedAt
+  const totalDuration = performance.now() - routeStartedAt
   return new NextResponse(pdf, {
     headers: {
-      "Cache-Control": "no-store",
-      "Content-Disposition": `attachment; filename="${safeFileName(payload.bill.billNumber)}.pdf"`,
+      "Cache-Control": "no-store, max-age=0, must-revalidate",
+      "Content-Disposition": `inline; filename="${safeFileName(payload.bill.billNumber)}.pdf"`,
       "Content-Type": "application/pdf",
+      "Server-Timing": [
+        `backend;dur=${backendDuration.toFixed(1)}`,
+        `settings;dur=${settingsDuration.toFixed(1)}`,
+        `render;dur=${renderDuration.toFixed(1)}`,
+        `total;dur=${totalDuration.toFixed(1)}`,
+      ].join(", "),
+      "Vary": "Authorization, Cookie, X-GSTFY-Tenant",
+      "X-Content-Type-Options": "nosniff",
     },
   })
+}
+
+async function getPurchaseInvoiceRenderSettings(headers: Headers): Promise<{
+  buyer: PurchaseInvoiceBusinessInfo | null
+  purchaseInvoiceTemplate: PurchaseInvoiceTemplateCode | null
+}> {
+  const settingsResponse = await fetch(`${API_BASE_URL}${API_BASE_PATH}/settings`, {
+    cache: "no-store",
+    headers,
+  }).catch(() => null)
+
+  if (!settingsResponse?.ok) {
+    return {
+      buyer: null,
+      purchaseInvoiceTemplate: null,
+    }
+  }
+
+  const payload = (await settingsResponse.json()) as {
+    business?: {
+      legalName?: string | null
+      tradeName?: string | null
+    }
+    registration?: {
+      gstin?: string | null
+      principalAddressLine1?: string | null
+      principalAddressLine2?: string | null
+      locality?: string | null
+      district?: string | null
+      pincode?: string | null
+      stateCode?: string | null
+    }
+    invoiceSettings?: {
+      invoiceTemplate?: PurchaseInvoiceTemplateCode | null
+      purchaseInvoiceTemplate?: PurchaseInvoiceTemplateCode | null
+    }
+  }
+
+  return {
+    buyer: {
+      legalName: payload.business?.legalName,
+      tradeName: payload.business?.tradeName,
+      gstin: payload.registration?.gstin,
+      addressLine1: payload.registration?.principalAddressLine1,
+      addressLine2: payload.registration?.principalAddressLine2,
+      locality: payload.registration?.locality,
+      district: payload.registration?.district,
+      pincode: payload.registration?.pincode,
+      stateCode: payload.registration?.stateCode,
+    },
+    purchaseInvoiceTemplate:
+      payload.invoiceSettings?.purchaseInvoiceTemplate ??
+      payload.invoiceSettings?.invoiceTemplate ??
+      null,
+  }
 }
 
 async function getBackendErrorMessage(response: Response) {
