@@ -1,7 +1,7 @@
 import { apiRequest } from "@/lib/api/client"
 
 export type PaymentMode = "cash" | "upi" | "card" | "bank" | "cheque"
-export type SalesInvoiceStatus = "draft" | "posted" | "cancelled"
+export type SalesInvoiceStatus = "quotation" | "draft" | "posted" | "cancelled"
 
 export type SalesInvoiceLinePayload = {
   itemId?: string | null
@@ -29,7 +29,7 @@ export type SalesPaymentPayload = {
 }
 
 export type CreateSalesInvoicePayload = {
-  status: "draft" | "posted"
+  status: "quotation" | "draft" | "posted"
   partyId?: string | null
   customerName?: string | null
   invoiceDate: string
@@ -67,6 +67,14 @@ export type SalesInvoiceDetail = SalesInvoice & {
   supplyType: string
   invoiceType: string
   notes: string | null
+  partySnapshot?: {
+    id: string
+    displayName: string
+    legalName: string | null
+    tradeName: string | null
+    gstin: string | null
+    stateCode: string | null
+  } | null
   lines: Array<{
     id: string
     itemNameSnapshot: string

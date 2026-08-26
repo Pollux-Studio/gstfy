@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api/client"
 import type { PaymentMode } from "@/lib/sales/api"
+import type { Taxability } from "@/lib/products/api"
 
 export type PosCheckoutLinePayload = {
   itemId?: string | null
@@ -9,6 +10,9 @@ export type PosCheckoutLinePayload = {
   unit?: string
   rate: string
   gstRate: string
+  taxability?: Taxability
+  cessRuleId?: string | null
+  pricingMode?: "tax_exclusive" | "tax_inclusive"
 }
 
 export type PosPaymentPayload = {

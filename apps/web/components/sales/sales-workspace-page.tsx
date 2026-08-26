@@ -10,6 +10,7 @@ import {
   ArrowUpIcon,
   CalendarIcon,
   CheckCircle2Icon,
+  DownloadIcon,
   EyeIcon,
   FileMinus2Icon,
   FilePlus2Icon,
@@ -102,6 +103,10 @@ import {
   type SalesInvoiceStatus,
 } from "@/lib/sales/api"
 import { getSettings } from "@/lib/settings/api"
+import {
+  downloadBlob,
+  fetchSalesInvoicePdf,
+} from "@/lib/sales/sales-invoice-client"
 import { cn } from "@/lib/utils"
 
 type SalesWorkspaceTab = "bills" | "returns" | "credit-notes"
@@ -161,6 +166,7 @@ const salesTabTriggerClass =
 
 const statusOptions = [
   { value: "all", label: "All status" },
+  { value: "quotation", label: "Quotation" },
   { value: "draft", label: "Draft" },
   { value: "posted", label: "Posted" },
   { value: "cancelled", label: "Cancelled" },
@@ -259,7 +265,7 @@ export function SalesWorkspacePage() {
   const [dialogMode, setDialogMode] = React.useState<SalesDialogMode>(null)
 
   const invoicesQuery = useInfiniteQuery({
-    queryKey: ["sales", "invoices", search, status],
+    queryKey: ["sales", "bills", search, status],
     queryFn: ({ pageParam }) =>
       listSalesInvoices(accessToken, {
         search,
@@ -293,6 +299,12 @@ export function SalesWorkspacePage() {
       toast.success("Sales bill posted.")
       await invalidateSalesWorkspace(queryClient)
     },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  })
+  const downloadInvoiceMutation = useMutation({
+    mutationFn: (invoiceId: string) =>
+      fetchSalesInvoicePdf(accessToken, invoiceId, { force: true }),
+    onSuccess: ({ blob, fileName }) => downloadBlob(fileName, blob),
     onError: (error) => toast.error(getErrorMessage(error)),
   })
   const postAdjustmentMutation = useMutation({
@@ -388,6 +400,7 @@ export function SalesWorkspacePage() {
               <Button
                 type="button"
                 className="h-8 gap-2 bg-blue-600 text-white hover:bg-blue-700"
+                nativeButton={false}
                 render={<Link href="/pos" />}
               >
                 <PlusIcon className="size-4" />
@@ -434,7 +447,7 @@ export function SalesWorkspacePage() {
                 tone={summary.due > 0 ? "warning" : "muted"}
               />
               <SalesMetric
-                label="Draft bills"
+                label="Draft/quotes"
                 value={String(summary.drafts)}
                 loading={invoicesQuery.isLoading}
                 tone={summary.drafts > 0 ? "warning" : "muted"}
@@ -539,6 +552,12 @@ export function SalesWorkspacePage() {
               onSort={toggleSalesSort}
               onScroll={handleSalesTableScroll}
               onPost={(invoiceId) => postInvoiceMutation.mutate(invoiceId)}
+              downloadingInvoiceId={
+                downloadInvoiceMutation.isPending ?
+                  downloadInvoiceMutation.variables
+                : null
+              }
+              onDownload={(invoiceId) => downloadInvoiceMutation.mutate(invoiceId)}
               onCreate={() => router.push("/pos")}
             />
           </TabsContent>
@@ -633,6 +652,8 @@ function SalesBillsTable({
   onSort,
   onScroll,
   onPost,
+  downloadingInvoiceId,
+  onDownload,
   onCreate,
 }: {
   invoices: SalesInvoice[]
@@ -646,6 +667,8 @@ function SalesBillsTable({
   onSort: (key: SalesSortKey) => void
   onScroll: (event: React.UIEvent<HTMLDivElement>) => void
   onPost: (invoiceId: string) => void
+  downloadingInvoiceId: string | null
+  onDownload: (invoiceId: string) => void
   onCreate: () => void
 }) {
   return (
@@ -784,7 +807,9 @@ function SalesBillsTable({
                   <TableCell>
                     <p className="truncate font-medium">{invoice.customerName}</p>
                     <p className="truncate text-[11px] text-muted-foreground">
-                      {invoice.status === "posted" ? "Ready for GST" : "Draft not posted"}
+                      {invoice.status === "posted" ? "Ready for GST"
+                      : invoice.status === "quotation" ? "Quotation not posted"
+                      : "Draft not posted"}
                     </p>
                   </TableCell>
                   <TableCell>{formatDate(invoice.invoiceDate)}</TableCell>
@@ -816,7 +841,22 @@ function SalesBillsTable({
                           <EyeIcon className="size-4" />
                           View
                         </DropdownMenuItem>
-                        {invoice.status === "draft" ? (
+                        <DropdownMenuItem render={<Link href={`/invoices/invoice/${invoice.id}`} />}>
+                          <ReceiptTextIcon className="size-4" />
+                          View invoice
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={downloadingInvoiceId === invoice.id}
+                          onClick={() => onDownload(invoice.id)}
+                        >
+                          {downloadingInvoiceId === invoice.id ? (
+                            <Spinner className="size-4" />
+                          ) : (
+                            <DownloadIcon className="size-4" />
+                          )}
+                          Download invoice
+                        </DropdownMenuItem>
+                        {invoice.status === "draft" || invoice.status === "quotation" ? (
                           <>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -1392,7 +1432,7 @@ function SalesBillDialog({
               <Field>
                 <FieldLabel>Warehouse</FieldLabel>
                 <Select
-                  value={selectedWarehouseId || undefined}
+                  value={selectedWarehouseId}
                   onValueChange={(value) => {
                     if (!value) {
                       return
@@ -2123,11 +2163,15 @@ function SalesStatusBadge({ status }: { status: SalesInvoiceStatus }) {
       className={cn(
         "max-w-full truncate px-1.5 py-0 text-[10px]",
         status === "posted" && "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+        status === "quotation" && "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300",
         status === "draft" && "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
         status === "cancelled" && "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
       )}
     >
-      {status === "posted" ? "Posted" : status === "draft" ? "Draft" : "Cancelled"}
+      {status === "posted" ? "Posted"
+      : status === "quotation" ? "Quotation"
+      : status === "draft" ? "Draft"
+      : "Cancelled"}
     </Badge>
   )
 }
@@ -2507,7 +2551,7 @@ function estimateLine(line: SalesFormLine, isIntraState: boolean) {
 function summarizeSales(invoices: SalesInvoice[]) {
   return invoices.reduce(
     (summary, invoice) => {
-      if (invoice.status === "draft") {
+      if (invoice.status === "draft" || invoice.status === "quotation") {
         summary.drafts += 1
       }
 

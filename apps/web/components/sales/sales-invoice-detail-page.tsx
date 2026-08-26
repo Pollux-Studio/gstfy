@@ -90,7 +90,7 @@ export function SalesInvoiceDetailPage({ invoiceId }: { invoiceId: string }) {
               </p>
             </div>
           </div>
-          {invoice.status === "draft" ? (
+          {invoice.status === "draft" || invoice.status === "quotation" ? (
             <Button onClick={() => postMutation.mutate()} disabled={postMutation.isPending}>
               {postMutation.isPending ? <Spinner /> : <CheckCircle2Icon />}
               Post to accounting
@@ -184,10 +184,17 @@ function StatusBadge({ status }: { status: SalesInvoiceDetail["status"] }) {
       variant="outline"
       className={cn(
         status === "posted" &&
-          "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+          "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+        status === "quotation" &&
+          "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300",
+        status === "draft" &&
+          "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
       )}
     >
-      {status === "posted" ? "Posted" : status === "draft" ? "Draft" : "Cancelled"}
+      {status === "posted" ? "Posted"
+      : status === "quotation" ? "Quotation"
+      : status === "draft" ? "Draft"
+      : "Cancelled"}
     </Badge>
   )
 }

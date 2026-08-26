@@ -13,19 +13,27 @@ const quantitySchema = z
   .transform((value) => String(value).trim())
   .pipe(z.string().regex(/^\d+(\.\d{1,3})?$/))
   .refine((value) => Number(value) > 0, "Quantity must be greater than zero.")
+const nullableTextSchema = (maxLength: number) =>
+  z
+    .string()
+    .trim()
+    .max(maxLength)
+    .optional()
+    .nullable()
+    .transform((value) => (typeof value === "string" && value ? value : null))
 
 export const paymentModes = ["cash", "upi", "card", "bank", "cheque"] as const
 
 export const posCheckoutLineSchema = z.object({
   itemId: nullableUuidSchema,
   itemName: z.string().trim().min(2).max(180),
-  hsnSacCode: z.string().trim().max(12).optional().or(z.literal("")).transform((value) => value || null),
+  hsnSacCode: nullableTextSchema(12),
   quantity: quantitySchema,
   unit: z.string().trim().min(1).max(20).default("PCS"),
   rate: moneySchema.refine((value) => Number(value) > 0, "Rate must be greater than zero."),
   gstRate: moneySchema.default("0"),
   taxability: z.enum(taxabilities).default("TAXABLE"),
-  cessRuleId: z.string().trim().max(80).optional().or(z.literal("")).transform((value) => value || null),
+  cessRuleId: nullableTextSchema(80),
   pricingMode: z.enum(pricingModes).default("tax_exclusive"),
   discountAmount: moneySchema.optional().nullable(),
   otherCharges: z
@@ -42,18 +50,18 @@ export const posCheckoutLineSchema = z.object({
 export const posPaymentSchema = z.object({
   paymentMode: z.enum(paymentModes),
   amount: moneySchema.refine((value) => Number(value) > 0, "Amount must be greater than zero."),
-  referenceNumber: z.string().trim().max(80).optional().or(z.literal("")).transform((value) => value || null),
+  referenceNumber: nullableTextSchema(80),
 })
 
 export const posCheckoutSchema = z.object({
   partyId: nullableUuidSchema,
-  customerName: z.string().trim().max(180).optional().or(z.literal("")).transform((value) => value || null),
+  customerName: nullableTextSchema(180),
   receiptDate: dateSchema.default(() => new Date().toISOString().slice(0, 10)),
   gstRegistrationId: nullableUuidSchema,
   branchId: nullableUuidSchema,
   warehouseId: nullableUuidSchema,
   placeOfSupplyStateCode: z.string().trim().regex(/^\d{2}$/).optional().nullable(),
-  notes: z.string().trim().max(500).optional().or(z.literal("")).transform((value) => value || null),
+  notes: nullableTextSchema(500),
   lines: z.array(posCheckoutLineSchema).min(1),
   payments: z.array(posPaymentSchema).min(1),
 })

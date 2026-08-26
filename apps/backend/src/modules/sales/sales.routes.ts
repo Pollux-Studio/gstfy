@@ -29,7 +29,6 @@ import {
 } from "./sales.schemas.js"
 
 type BusinessAccess = Awaited<ReturnType<typeof requirePrimaryBusinessAccess>>
-
 export async function registerSalesRoutes(app: FastifyInstance) {
   app.get("/sales/invoices", async (request) => {
     const access = await requirePrimaryBusinessAccess(request)
@@ -100,8 +99,8 @@ export async function registerSalesRoutes(app: FastifyInstance) {
     const { id } = invoiceIdParamsSchema.parse(request.params)
     const detail = await getSalesInvoiceDetail(access.business.id, id)
 
-    if (detail.status !== "draft") {
-      throw new HttpError(409, "Only draft invoices can be posted.")
+    if (detail.status !== "draft" && detail.status !== "quotation") {
+      throw new HttpError(409, "Only draft or quotation invoices can be posted.")
     }
 
     const body: CreateSalesInvoiceInput = {

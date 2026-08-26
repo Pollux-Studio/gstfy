@@ -2,7 +2,14 @@ import { and, desc, eq, ilike, or, sql as drizzleSql, type SQL } from "drizzle-o
 import type { FastifyInstance } from "fastify"
 
 import { db } from "../../db/client.js"
-import { posSaleLines, posSalePayments, posSales } from "../../db/schema/index.js"
+import {
+  posSaleLines,
+  posSalePayments,
+  posSales,
+  salesInvoiceLines,
+  salesInvoicePayments,
+  salesInvoices,
+} from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
 import {
   calculateTransactionLines,
@@ -93,11 +100,15 @@ async function checkoutPosSale(access: BusinessAccess, body: PosCheckoutInput) {
     warehouseId: body.warehouseId,
     placeOfSupplyStateCode: body.placeOfSupplyStateCode,
   })
+  const party = await getPartySnapshot(access.business.id, body.partyId)
+  const customerName = body.customerName?.trim() || party?.displayName || "Walk-in customer"
+  const supplyType = party?.gstin ? "b2b" : "b2c"
   const calculated = await calculateTransactionLines(
     access.business.id,
     body.lines,
     context,
-    "pos"
+    "sales",
+    { supplyType }
   )
   const totalCents = toCents(calculated.totals.totalAmount)
   const paidCents = sumPayments(body.payments)
@@ -106,12 +117,10 @@ async function checkoutPosSale(access: BusinessAccess, body: PosCheckoutInput) {
     throw new HttpError(400, "POS checkout payments must exactly match the receipt total.")
   }
 
-  const party = await getPartySnapshot(access.business.id, body.partyId)
-  const customerName = body.customerName?.trim() || party?.displayName || "Walk-in customer"
   const result = await postSalesVoucher({
     access,
     voucherType: "SALES",
-    documentType: "pos",
+    documentType: "invoice",
     transactionDate: body.receiptDate,
     context,
     calculated,
@@ -121,6 +130,45 @@ async function checkoutPosSale(access: BusinessAccess, body: PosCheckoutInput) {
     notes: body.notes,
   })
 
+  const [invoice] = await db
+    .insert(salesInvoices)
+    .values({
+      businessId: access.business.id,
+      voucherId: result.voucher.id,
+      gstRegistrationId: context.gstRegistration.id,
+      branchId: context.branch?.id ?? null,
+      warehouseId: context.warehouseId,
+      partyId: body.partyId ?? null,
+      partySnapshot: party ?? null,
+      customerName,
+      invoiceNumber: result.voucher.voucherNumber,
+      invoiceDate: body.receiptDate,
+      dueDate: null,
+      placeOfSupplyStateCode: context.placeOfSupplyStateCode,
+      supplyType,
+      invoiceType: "tax_invoice",
+      status: "posted",
+      taxableValue: calculated.totals.taxableValue,
+      cgstAmount: calculated.totals.cgstAmount,
+      sgstAmount: calculated.totals.sgstAmount,
+      igstAmount: calculated.totals.igstAmount,
+      cessAmount: calculated.totals.cessAmount,
+      totalAmount: calculated.totals.totalAmount,
+      amountPaid: calculated.totals.totalAmount,
+      amountDue: "0.00",
+      notes: body.notes,
+      createdBy: access.userId,
+      postedBy: access.userId,
+      postedAt: new Date(),
+    })
+    .returning()
+
+  if (!invoice) {
+    throw new HttpError(500, "Unable to create sales invoice.")
+  }
+
+  await insertSalesInvoiceChildren(invoice.id, access.business.id, calculated, body.payments)
+
   const [sale] = await db
     .insert(posSales)
     .values({
@@ -128,10 +176,10 @@ async function checkoutPosSale(access: BusinessAccess, body: PosCheckoutInput) {
       voucherId: result.voucher.id,
       gstRegistrationId: context.gstRegistration.id,
       branchId: context.branch?.id ?? null,
-        warehouseId: context.warehouseId,
-        partyId: body.partyId ?? null,
-        partySnapshot: party ?? null,
-        customerName,
+      warehouseId: context.warehouseId,
+      partyId: body.partyId ?? null,
+      partySnapshot: party ?? null,
+      customerName,
       receiptNumber: result.voucher.voucherNumber,
       receiptDate: body.receiptDate,
       placeOfSupplyStateCode: context.placeOfSupplyStateCode,
@@ -157,6 +205,59 @@ async function checkoutPosSale(access: BusinessAccess, body: PosCheckoutInput) {
   await insertPosChildren(sale.id, access.business.id, calculated, body.payments)
 
   return getPosSaleDetail(access.business.id, sale.id)
+}
+
+async function insertSalesInvoiceChildren(
+  invoiceId: string,
+  businessId: string,
+  calculated: CalculatedTransaction,
+  payments: PosCheckoutInput["payments"]
+) {
+  await db.insert(salesInvoiceLines).values(
+    calculated.lines.map((line, index) => ({
+      businessId,
+      salesInvoiceId: invoiceId,
+      itemId: line.itemId,
+      itemNameSnapshot: line.itemName,
+      hsnSacCode: line.hsnSacCode ?? null,
+      quantity: line.quantity,
+      unit: line.unit,
+      rate: normalizeMoney(line.rate),
+      taxableValue: line.taxableValue,
+      gstRate: normalizeMoney(line.gstRate),
+      taxability: line.taxability,
+      classification: line.classification,
+      supplyLocationTreatment: line.supplyLocationTreatment,
+      grossValue: line.grossValue,
+      discountAmount: line.discountAmount,
+      taxableCharges: line.taxableCharges,
+      nonTaxableCharges: line.nonTaxableCharges,
+      cgstRate: line.cgstRate,
+      cgstAmount: line.cgstAmount,
+      sgstRate: line.sgstRate,
+      sgstAmount: line.sgstAmount,
+      igstRate: line.igstRate,
+      igstAmount: line.igstAmount,
+      cessRuleId: line.cessRuleId,
+      cessAmount: line.cessAmount,
+      taxRuleId: line.taxRuleId,
+      taxRuleVersion: line.taxRuleVersion,
+      reverseCharge: line.reverseCharge,
+      roundOff: line.roundOff,
+      lineTotal: line.lineTotal,
+      sortOrder: index,
+    }))
+  )
+
+  await db.insert(salesInvoicePayments).values(
+    payments.map((payment) => ({
+      businessId,
+      salesInvoiceId: invoiceId,
+      paymentMode: payment.paymentMode,
+      amount: normalizeMoney(payment.amount),
+      referenceNumber: payment.referenceNumber ?? null,
+    }))
+  )
 }
 
 async function insertPosChildren(

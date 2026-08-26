@@ -13,6 +13,7 @@ import {
   caPractices,
   cessRules,
   gstRegistrations,
+  invoiceSeries,
   sessions,
   users,
 } from "../../db/schema/index.js"
@@ -373,6 +374,25 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
       .update(businessPreferences)
       .set(invoicePatch)
       .where(eq(businessPreferences.businessId, access.business.id))
+
+    if (body.invoicePrefix !== undefined || body.invoiceNextNumber !== undefined) {
+      await db
+        .update(invoiceSeries)
+        .set(
+          removeUndefined({
+            prefix: body.invoicePrefix,
+            nextNumber: body.invoiceNextNumber,
+            updatedAt: new Date(),
+          })
+        )
+        .where(
+          and(
+            eq(invoiceSeries.businessId, access.business.id),
+            eq(invoiceSeries.documentType, "invoice"),
+            eq(invoiceSeries.status, "active")
+          )
+        )
+    }
 
     return getSettingsResponse(access)
   })
