@@ -26,6 +26,7 @@
     "@framecn": "https://www.framecn.dev/r/{name}.json",
     "@ogimagecn": "https://www.ogimagecn.com/r/{name}.json",
     "@emailcn": "https://emailcn.run/r/{name}.json",
-    "@mapcn": "https://mapcn.dev/r/{name}.json"
+    "@mapcn": "https://mapcn.dev/r/{name}.json",
+    "@spell": "https://spell.sh/r/{name}.json"
   }
 }

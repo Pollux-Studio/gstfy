@@ -16,6 +16,7 @@ import { registerCaRoutes } from "./modules/ca/ca.routes.js"
 import { registerCoreRoutes } from "./modules/core/core.routes.js"
 import { registerDashboardRoutes } from "./modules/dashboard/dashboard.routes.js"
 import { registerEInvoiceRoutes } from "./modules/e-invoice/e-invoice.routes.js"
+import { registerFeedbackRoutes } from "./modules/feedback/feedback.routes.js"
 import { registerInventoryRoutes } from "./modules/inventory/inventory.routes.js"
 import { registerGstFilingRoutes } from "./modules/gst-filing/gst-filing.routes.js"
 import { registerGstReconciliationRoutes } from "./modules/gst-reconciliation/gst-reconciliation.routes.js"
@@ -159,7 +160,13 @@ export async function buildApp() {
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Authorization", "Content-Type", "X-GSTFY-Tenant"],
+    allowedHeaders: [
+      "Authorization",
+      "Content-Type",
+      "Idempotency-Key",
+      "X-GSTFY-Tenant",
+      "X-GSTFY-Account-Type",
+    ],
   })
   await app.register(cookie)
   await app.register(multipart, {
@@ -260,6 +267,7 @@ async function registerBackendRoutes(app: Parameters<typeof registerAuthRoutes>[
   await registerAuthRoutes(app)
   await registerOpsRoutes(app)
   await registerAutomationRoutes(app)
+  await registerFeedbackRoutes(app)
   await registerCaRoutes(app)
   await registerAccountRoutes(app)
   await registerSettingsRoutes(app)

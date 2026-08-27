@@ -49,7 +49,10 @@ export function DashboardShell({
     pathname === "/dashboard" ||
     pathname.startsWith("/dashboard/clients") ||
     pathname.startsWith("/dashboard/referral-codes")
-  const isCaRoute = isLegacyCaRoute || (isCaHost && (isCaDashboardRoute || pathname === "/account"))
+  const isGlobalDashboardRoute = pathname === "/account" || pathname === "/feedback"
+  const isCaRoute =
+    isLegacyCaRoute ||
+    (isCaHost && (isCaDashboardRoute || isGlobalDashboardRoute))
   const { data: currentUser } = useQuery({
     queryKey: ["auth", "current-user", accountType, userId],
     queryFn: () => getCurrentUser(accessToken),

@@ -3495,6 +3495,35 @@ export const auditLogs = pgTable(
   })
 )
 
+export const userFeedback = pgTable(
+  "user_feedback",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id").references(() => businesses.id, {
+      onDelete: "set null",
+    }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    accountType: text("account_type").notNull(),
+    category: text("category").notNull(),
+    rating: integer("rating").notNull(),
+    effortScore: integer("effort_score").notNull(),
+    message: text("message").notNull(),
+    pageUrl: text("page_url"),
+    contactConsent: boolean("contact_consent").notNull().default(false),
+    status: text("status").notNull().default("new"),
+    metadata: jsonb("metadata").notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("user_feedback_business_id_idx").on(
+      table.businessId,
+      table.createdAt
+    ),
+    userIndex: index("user_feedback_user_id_idx").on(table.userId, table.createdAt),
+    statusIndex: index("user_feedback_status_idx").on(table.status, table.createdAt),
+  })
+)
+
 export const accountingPeriods = pgTable(
   "accounting_periods",
   {
@@ -4751,6 +4780,7 @@ export type BusinessAutomationSettingsRecord =
 export type AutomationJobRecord = typeof automationJobs.$inferSelect
 export type AutomationJobEventRecord = typeof automationJobEvents.$inferSelect
 export type AuditLogRecord = typeof auditLogs.$inferSelect
+export type UserFeedbackRecord = typeof userFeedback.$inferSelect
 export type PartyRecord = typeof parties.$inferSelect
 export type PartyGstRegistrationRecord = typeof partyGstRegistrations.$inferSelect
 export type PartyAddressRecord = typeof partyAddresses.$inferSelect

@@ -85,6 +85,7 @@ export type CurrentUserResponse = {
         delete: boolean
       }
     >
+    branch_count?: number
   }>
 }
 

@@ -16,11 +16,11 @@ import {
   HandCoinsIcon,
   KeyRoundIcon,
   LayoutDashboardIcon,
+  MessageSquareMoreIcon,
   NotebookTextIcon,
   PackageIcon,
   PrinterIcon,
   ReceiptTextIcon,
-  Settings2Icon,
   ShieldCheckIcon,
   ShoppingCartIcon,
   SlidersHorizontalIcon,
@@ -381,6 +381,15 @@ const commandGroups: DashboardCommandGroup[] = [
   {
     heading: "Settings",
     commands: [
+      {
+        id: "feedback",
+        label: "Send feedback",
+        description: "Share a bug, confusing flow, speed issue, or feature request.",
+        href: "/feedback",
+        icon: MessageSquareMoreIcon,
+        badge: "Survey",
+        keywords: ["feedback", "survey", "bug", "feature request", "improve"],
+      },
       {
         id: "account-settings",
         label: "Account settings",

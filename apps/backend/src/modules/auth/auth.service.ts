@@ -1,5 +1,5 @@
 import argon2 from "argon2"
-import { and, eq, gt, inArray, isNull } from "drizzle-orm"
+import { and, eq, gt, inArray, isNull, sql as drizzleSql } from "drizzle-orm"
 import { SignJWT } from "jose"
 
 import { getEnv } from "../../config/env.js"
@@ -145,6 +145,26 @@ export class AuthService {
       .leftJoin(businessProfiles, eq(businessProfiles.businessId, businesses.id))
       .where(eq(businessMembers.userId, user.id))
     const membershipIds = memberships.map((membership) => membership.membershipId)
+    const businessIds = memberships.map((membership) => membership.businessId)
+    const branchCountRows =
+      businessIds.length > 0 ?
+        await db
+          .select({
+            businessId: businessBranches.businessId,
+            branchCount: drizzleSql<number>`count(*)::int`,
+          })
+          .from(businessBranches)
+          .where(
+            and(
+              inArray(businessBranches.businessId, businessIds),
+              eq(businessBranches.status, "active")
+            )
+          )
+          .groupBy(businessBranches.businessId)
+      : []
+    const branchCountsByBusinessId = new Map(
+      branchCountRows.map((row) => [row.businessId, Number(row.branchCount) || 0])
+    )
     const permissionRows =
       membershipIds.length > 0 ?
         await db
@@ -194,6 +214,7 @@ export class AuthService {
         gstin: membership.gstin,
         registration_date: membership.registrationDate,
         logo_url: membership.logoUrl,
+        branch_count: branchCountsByBusinessId.get(membership.businessId) ?? 0,
         permissions:
           membership.role === "owner" || membership.role === "admin" ?
             {}

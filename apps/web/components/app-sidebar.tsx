@@ -255,7 +255,11 @@ export function AppSidebar({
             </SidebarMenuItem>
           ) : null}
           <SidebarMenuItem>
-            <SidebarMenuButton render={<a href="#" />}>
+            <SidebarMenuButton
+              render={<Link href="/feedback" />}
+              data-active={pathname === "/feedback"}
+              tooltip="Feedback"
+            >
               <MessageSquareMoreIcon />
               <span>Feedback</span>
             </SidebarMenuButton>
@@ -325,6 +329,7 @@ function buildSidebarTeam(
       "GSTFY Workspace",
     logo: <GalleryVerticalEndIcon />,
     logoUrl: primaryMembership?.logo_url ?? null,
+    branchCount: primaryMembership?.branch_count ?? 0,
     plan: primaryMembership?.gstin ?? `${planLabels[currentPlan]} plan`,
   }
 }
