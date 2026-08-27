@@ -23,6 +23,7 @@ import {
   type ItemRecord,
 } from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
+import { enqueueOpeningStockAutomation } from "../automation/automation.triggers.js"
 import { requirePrimaryBusinessAccess } from "../businesses/business-access.js"
 import { formatCents, normalizeMoney, toCents } from "../core/core.validation.js"
 import {
@@ -294,6 +295,15 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
 
       return movement
     })
+
+    await enqueueOpeningStockAutomation(
+      access,
+      {
+        sourceId,
+        transactionId: result.transaction.id,
+      },
+      request.log
+    )
 
     return result
   })

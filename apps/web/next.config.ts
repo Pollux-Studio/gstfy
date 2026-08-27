@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "pub-777a4807ff3840c68f3e9eee2a113dba.r2.dev",
       },
+      {
+        protocol: "https",
+        hostname: "**.r2.dev",
+      },
     ],
   },
   reactCompiler: true,

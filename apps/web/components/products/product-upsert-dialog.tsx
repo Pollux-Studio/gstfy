@@ -1014,6 +1014,7 @@ function ProductImagePicker({
             alt="Product preview"
             width={112}
             height={112}
+            unoptimized
             className="size-full object-cover"
           />
         ) : (

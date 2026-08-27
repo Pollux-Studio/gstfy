@@ -4,6 +4,7 @@ import type { PurchaseBillDetail } from "@/lib/purchases/api"
 export type PurchaseInvoiceBusinessInfo = {
   legalName?: string | null
   tradeName?: string | null
+  logoUrl?: string | null
   gstin?: string | null
   addressLine1?: string | null
   addressLine2?: string | null

@@ -4,6 +4,7 @@ import type { SalesInvoiceDetail } from "@/lib/sales/api"
 export type SalesInvoiceBusinessInfo = {
   legalName?: string | null
   tradeName?: string | null
+  logoUrl?: string | null
   gstin?: string | null
   addressLine1?: string | null
   addressLine2?: string | null

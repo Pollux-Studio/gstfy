@@ -180,8 +180,8 @@ export function BankReconciliationPage() {
       })
     },
     onSuccess: async () => {
-      toast.success("Bank entry reconciled.")
       closeDialog()
+      toast.success("Bank entry reconciled.")
       await invalidateReconciliation(queryClient)
     },
     onError: (error) => toast.error(getErrorMessage(error)),
@@ -203,9 +203,9 @@ export function BankReconciliationPage() {
         csvText: importCsvText,
       }),
     onSuccess: async (response) => {
-      toast.success(`${response.imported} bank statement lines imported.`)
       setImportOpen(false)
       resetImportForm()
+      toast.success(`${response.imported} bank statement lines imported.`)
       await invalidateReconciliation(queryClient)
     },
     onError: (error) => toast.error(getErrorMessage(error)),

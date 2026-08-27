@@ -24,6 +24,8 @@ import {
 } from "@/lib/auth/workspace-url"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 
+const currentUserQueryStaleTimeMs = 1000 * 60 * 5
+
 export function DashboardShell({
   children,
 }: Readonly<{
@@ -51,9 +53,8 @@ export function DashboardShell({
   const { data: currentUser } = useQuery({
     queryKey: ["auth", "current-user", accountType, userId],
     queryFn: () => getCurrentUser(accessToken),
-    enabled: hasSession && accountType === "business" && userId.length > 0,
-    refetchOnMount: "always",
-    staleTime: 1000 * 60 * 5,
+    enabled: hasSession && userId.length > 0,
+    staleTime: currentUserQueryStaleTimeMs,
   })
   const currentUserForSession =
     currentUser?.auth.userId === storedSession?.user.id ? currentUser : undefined
@@ -247,9 +248,15 @@ export function DashboardShell({
 
   return (
     <SidebarProvider>
-      <AppSidebar />
+      <AppSidebar
+        storedSession={storedSession}
+        currentUser={currentUserForSession}
+      />
       <SidebarInset>
-        <DashboardTopbar />
+        <DashboardTopbar
+          storedSession={storedSession}
+          currentUser={currentUserForSession}
+        />
         {children}
         {storedSession?.user.mustChangePassword ? (
           <ForcePasswordChangeDialog

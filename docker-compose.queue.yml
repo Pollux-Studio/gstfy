@@ -1,0 +1,20 @@
+name: gstfy-queue
+
+services:
+  redis:
+    build:
+      context: ./docker/redis
+    container_name: gstfy-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - gstfy-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  gstfy-redis-data:

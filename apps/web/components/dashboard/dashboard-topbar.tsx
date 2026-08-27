@@ -1,19 +1,20 @@
 "use client"
 
 import Image from "next/image"
-import { useQuery } from "@tanstack/react-query"
-import { memo, useEffect, useState } from "react"
+import { memo, useMemo, useState } from "react"
 import { BellIcon, SearchIcon } from "lucide-react"
 
 import { DashboardCommandMenu } from "@/components/dashboard/dashboard-command-menu"
 import { LocaleSwitcher } from "@/components/locale-switcher"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { getCurrentUser } from "@/lib/auth/api"
+import type { CurrentUserResponse } from "@/lib/auth/api"
+import type { StoredAuthSession } from "@/lib/auth/session"
 import {
-  AUTH_SESSION_CHANGE_EVENT,
-  getStoredAuthSession,
-  type StoredAuthSession,
-} from "@/lib/auth/session"
+  canManageWorkspace,
+  canViewModule,
+  getActiveBusinessMembership,
+} from "@/lib/auth/permissions"
+import type { PermissionModuleKey } from "@/lib/dashboard/modules"
 import { Button } from "@/components/ui/button"
 import { SidebarInput, SidebarTrigger } from "@/components/ui/sidebar"
 import {
@@ -23,39 +24,40 @@ import {
 } from "@/components/ui/tooltip"
 import { getGstStateMeta } from "@/lib/gst-state"
 
-export const DashboardTopbar = memo(function DashboardTopbar() {
+type DashboardTopbarProps = {
+  storedSession: StoredAuthSession
+  currentUser?: CurrentUserResponse
+}
+
+export const DashboardTopbar = memo(function DashboardTopbar({
+  storedSession,
+  currentUser,
+}: DashboardTopbarProps) {
   const [isCommandOpen, setIsCommandOpen] = useState(false)
-  const [storedSession, setStoredSession] = useState<StoredAuthSession | null>(() =>
-    getStoredAuthSession()
+  const accountType = storedSession.accountType
+  const isCaAccount = accountType === "ca"
+  const currentUserForSession = currentUser
+  const activeBusinessMembership = useMemo(
+    () => getActiveBusinessMembership(currentUserForSession, storedSession.tenant?.id),
+    [currentUserForSession, storedSession.tenant?.id]
   )
-  const accountType = storedSession?.accountType ?? "business"
-  const userId = storedSession?.user.id ?? ""
-  const accessToken = storedSession?.session.accessToken ?? ""
-  const { data: currentUser } = useQuery({
-    queryKey: ["auth", "current-user", accountType, userId],
-    queryFn: () => getCurrentUser(accessToken),
-    enabled: accessToken.length > 0 && userId.length > 0,
-    refetchOnMount: "always",
-    staleTime: 1000 * 60 * 5,
-  })
-  const currentUserForSession =
-    currentUser?.auth.userId === storedSession?.user.id ? currentUser : undefined
+  const canManageBusinessWorkspace = canManageWorkspace(activeBusinessMembership)
+  const visibleCommandModules = useMemo<Partial<Record<PermissionModuleKey, boolean>>>(
+    () => ({
+      overview: isCaAccount || canViewModule(activeBusinessMembership, "overview"),
+      invoices: !isCaAccount && canViewModule(activeBusinessMembership, "invoices"),
+      pos: !isCaAccount && canViewModule(activeBusinessMembership, "pos"),
+      purchases: !isCaAccount && canViewModule(activeBusinessMembership, "purchases"),
+      inventory: !isCaAccount && canViewModule(activeBusinessMembership, "inventory"),
+      parties: !isCaAccount && canViewModule(activeBusinessMembership, "parties"),
+      accounting: !isCaAccount && canViewModule(activeBusinessMembership, "accounting"),
+      gstr: !isCaAccount && canViewModule(activeBusinessMembership, "gstr"),
+      einvoice: !isCaAccount && canViewModule(activeBusinessMembership, "einvoice"),
+    }),
+    [activeBusinessMembership, isCaAccount]
+  )
   const activeGstin = currentUserForSession?.memberships[0]?.gstin ?? null
   const stateMeta = activeGstin ? getGstStateMeta(activeGstin) : null
-
-  useEffect(() => {
-    function syncStoredSession() {
-      setStoredSession(getStoredAuthSession())
-    }
-
-    window.addEventListener(AUTH_SESSION_CHANGE_EVENT, syncStoredSession)
-    window.addEventListener("storage", syncStoredSession)
-
-    return () => {
-      window.removeEventListener(AUTH_SESSION_CHANGE_EVENT, syncStoredSession)
-      window.removeEventListener("storage", syncStoredSession)
-    }
-  }, [])
 
   return (
     <>
@@ -83,7 +85,7 @@ export const DashboardTopbar = memo(function DashboardTopbar() {
             <SidebarInput
               readOnly
               value=""
-              placeholder="Search invoices, parties, filings..."
+              placeholder="Search services, settings, actions..."
               className="cursor-pointer bg-background pl-8 pr-16 text-sm text-foreground placeholder:text-muted-foreground"
               aria-label="Search dashboard"
               tabIndex={-1}
@@ -151,6 +153,9 @@ export const DashboardTopbar = memo(function DashboardTopbar() {
       <DashboardCommandMenu
         open={isCommandOpen}
         onOpenChange={setIsCommandOpen}
+        accountType={accountType}
+        canManageBusinessWorkspace={canManageBusinessWorkspace}
+        visibleModules={visibleCommandModules}
       />
     </>
   )

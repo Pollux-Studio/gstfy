@@ -31,6 +31,17 @@ psql postgres://postgres:postgres@localhost:5432/gstfy -f apps/backend/drizzle/0
 
 Set `AUTO_RUN_MIGRATIONS=false` only if migrations are managed outside the app.
 
+## Logging
+
+Backend logs use Pino. Local development and test runs use readable pretty logs by default, while production uses structured JSON logs by default.
+
+```env
+LOG_LEVEL=info
+LOG_PRETTY=auto
+```
+
+Use `LOG_PRETTY=true` to force pretty logs or `LOG_PRETTY=false` to force JSON logs. Authorization headers, cookies, passwords, tokens, and common secret fields are redacted before logging.
+
 ## SMTP Email
 
 Nodemailer sends registration verification, password reset, and CA client invite emails. Configure these values in `apps/backend/.env`:
@@ -76,6 +87,35 @@ R2_FORCE_PATH_STYLE=true
 `R2_PUBLIC_BASE_URL` must point to a public bucket URL, custom domain, or Worker route that can serve uploaded objects. If the bucket is private, uploads will still succeed but product thumbnails will not render publicly until a public delivery path is configured.
 
 Product uploads perform one S3 `PutObject` call per successful image upload. The backend does not list, head, or read objects during product list/detail rendering; image display uses the stored public URL directly from the browser with lazy loading and immutable cache headers.
+
+## Redis + BullMQ
+
+BullMQ runs inside the backend process and uses Redis as its queue backend. Start local Redis from the monorepo root:
+
+```bash
+docker compose -f docker-compose.queue.yml up -d --build
+```
+
+Then enable the queue worker in `apps/backend/.env`:
+
+```env
+REDIS_URL=redis://localhost:6379
+QUEUE_WORKER_ENABLED=true
+QUEUE_CONCURRENCY=3
+QUEUE_JOB_TIMEOUT_MS=30000
+QUEUE_MAX_ATTEMPTS=3
+QUEUE_BACKOFF_BASE_MS=2000
+```
+
+Useful local commands:
+
+```bash
+docker compose -f docker-compose.queue.yml ps
+docker compose -f docker-compose.queue.yml logs -f redis
+docker compose -f docker-compose.queue.yml down
+```
+
+Redis data is persisted in the `gstfy-redis-data` Docker volume. The Redis config uses append-only persistence and `noeviction`, which is the safer policy for BullMQ because jobs should fail loudly instead of being silently evicted.
 
 ## Current Endpoints
 

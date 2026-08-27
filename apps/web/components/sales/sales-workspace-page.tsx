@@ -1224,8 +1224,8 @@ function SalesBillDialog({
     mutationFn: (payload: CreateSalesInvoicePayload) =>
       createSalesInvoice(accessToken, payload),
     onSuccess: async ({ invoice }) => {
-      toast.success(invoice.status === "posted" ? "Sales bill posted." : "Sales draft saved.")
       onOpenChange(false)
+      toast.success(invoice.status === "posted" ? "Sales bill posted." : "Sales draft saved.")
       await invalidateSalesWorkspace(queryClient)
     },
     onError: (error) => toast.error(getErrorMessage(error)),
@@ -1805,8 +1805,8 @@ function SalesAdjustmentDialog({
       })
     },
     onSuccess: async () => {
-      toast.success("Draft adjustment created.")
       onOpenChange(false)
+      toast.success("Draft adjustment created.")
       await invalidateSalesWorkspace(queryClient)
     },
     onError: (error) => toast.error(getErrorMessage(error)),

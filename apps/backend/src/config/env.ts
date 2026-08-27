@@ -31,11 +31,51 @@ const envBoolean = (defaultValue: boolean) =>
     return value
   }, z.boolean().default(defaultValue))
 
+const envLogPretty = () =>
+  z.preprocess((value) => {
+    if (value === undefined || value === "") {
+      return "auto"
+    }
+
+    if (typeof value === "string") {
+      const normalizedValue = value.trim().toLowerCase()
+
+      if (["true", "1", "yes", "on"].includes(normalizedValue)) {
+        return "true"
+      }
+
+      if (["false", "0", "no", "off"].includes(normalizedValue)) {
+        return "false"
+      }
+
+      if (normalizedValue === "auto") {
+        return "auto"
+      }
+    }
+
+    return value
+  }, z.enum(["auto", "true", "false"]).default("auto"))
+
+const envOptionalUrl = () =>
+  z.preprocess((value) => {
+    if (value === undefined || value === "") {
+      return undefined
+    }
+
+    if (typeof value === "string") {
+      const trimmedValue = value.trim()
+      return trimmedValue.length > 0 ? trimmedValue : undefined
+    }
+
+    return value
+  }, z.string().url().optional())
+
 const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+  LOG_PRETTY: envLogPretty(),
   PORT: z.coerce.number().int().positive().default(4000),
   HOST: z.string().default("0.0.0.0"),
   DATABASE_URL: z
@@ -79,6 +119,13 @@ const envSchema = z.object({
   R2_BUCKET_NAME: z.string().default("gstfy"),
   R2_PUBLIC_BASE_URL: z.string().url().optional(),
   R2_FORCE_PATH_STYLE: envBoolean(true),
+  REDIS_URL: envOptionalUrl(),
+  QUEUE_WORKER_ENABLED: envBoolean(false),
+  QUEUE_CONCURRENCY: z.coerce.number().int().positive().default(3),
+  QUEUE_JOB_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  QUEUE_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
+  QUEUE_BACKOFF_BASE_MS: z.coerce.number().int().positive().default(2_000),
+  OPS_ADMIN_EMAILS: z.string().default(""),
 }).superRefine((env, ctx) => {
   if (
     env.NODE_ENV === "production" &&
@@ -109,6 +156,14 @@ const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["R2_ACCESS_KEY_ID"],
       message: "R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY are required for R2 uploads.",
+    })
+  }
+
+  if (env.QUEUE_WORKER_ENABLED && !env.REDIS_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["REDIS_URL"],
+      message: "REDIS_URL is required when QUEUE_WORKER_ENABLED is true.",
     })
   }
 })

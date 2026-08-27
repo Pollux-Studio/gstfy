@@ -13,7 +13,7 @@ import { HttpError } from "../../utils/http-error.js"
 import { getTenantSlugFromRequest } from "../../utils/tenant-context.js"
 import { requireAuthenticatedUser } from "../auth/auth.guard.js"
 
-type BusinessAccess = {
+export type BusinessAccess = {
   userId: string
   user: UserRecord
   business: BusinessRecord

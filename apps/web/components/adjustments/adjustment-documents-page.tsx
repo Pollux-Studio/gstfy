@@ -5,7 +5,6 @@ import Link from "next/link"
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowDownLeftIcon,
-  ArrowLeftRightIcon,
   ArrowUpRightIcon,
   BanIcon,
   DownloadIcon,
@@ -198,8 +197,8 @@ export function AdjustmentDocumentsPage({ mode }: { mode: AdjustmentMode }) {
   const deleteMutation = useMutation({
     mutationFn: (documentId: string) => deleteAdjustment(accessToken, mode, documentId),
     onSuccess: async () => {
-      toast.success("Draft adjustment deleted.")
       setDeletingDocument(null)
+      toast.success("Draft adjustment deleted.")
       await invalidateAdjustmentQueries(queryClient, mode)
     },
     onError: (error) => toast.error(getErrorMessage(error)),
@@ -208,9 +207,9 @@ export function AdjustmentDocumentsPage({ mode }: { mode: AdjustmentMode }) {
     mutationFn: (input: { id: string; reason: string }) =>
       reverseAdjustment(accessToken, mode, input.id, input.reason),
     onSuccess: async () => {
-      toast.success("Adjustment reversed.")
       setReversingDocument(null)
       setReverseReason("")
+      toast.success("Adjustment reversed.")
       await invalidateAdjustmentQueries(queryClient, mode)
     },
     onError: (error) => toast.error(getErrorMessage(error)),
@@ -614,16 +613,17 @@ function AdjustmentCreateDialog({
       })
     },
     onSuccess: async () => {
-      toast.success("Draft adjustment created.")
       onOpenChange(false)
+      toast.success("Draft adjustment created.")
       await invalidateAdjustmentQueries(queryClient, config.mode)
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   })
 
-  React.useEffect(() => {
+  function selectSourceDocument(nextSourceDocumentId: string) {
+    setSourceDocumentId(nextSourceDocumentId)
     setLineValues({})
-  }, [sourceDocumentId])
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -663,7 +663,7 @@ function AdjustmentCreateDialog({
                         "border-blue-500 bg-blue-500/5"
                       : "hover:bg-muted/50")
                     }
-                    onClick={() => setSourceDocumentId(source.id)}
+                    onClick={() => selectSourceDocument(source.id)}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-mono text-xs">{source.number}</span>

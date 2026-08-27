@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { API_BASE_PATH, API_BASE_URL } from "@/lib/api/config"
+import { getCachedInvoiceLogoDataUrl } from "@/lib/invoices/logo-cache"
 import type { PurchaseInvoiceTemplateCode } from "@/lib/invoices/templates/purchase"
 import type { PurchaseBillDetail } from "@/lib/purchases/api"
 import {
@@ -129,13 +130,16 @@ async function getPurchaseInvoiceRenderSettings(headers: Headers): Promise<{
       invoiceTemplate?: PurchaseInvoiceTemplateCode | null
       purchaseInvoiceTemplate?: PurchaseInvoiceTemplateCode | null
       invoiceWatermarkText?: string | null
+      logoUrl?: string | null
     }
   }
+  const logoDataUrl = await getCachedInvoiceLogoDataUrl(payload.invoiceSettings?.logoUrl)
 
   return {
     buyer: {
       legalName: payload.business?.legalName,
       tradeName: payload.business?.tradeName,
+      logoUrl: logoDataUrl,
       gstin: payload.registration?.gstin,
       addressLine1: payload.registration?.principalAddressLine1,
       addressLine2: payload.registration?.principalAddressLine2,

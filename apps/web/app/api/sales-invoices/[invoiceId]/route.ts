@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { API_BASE_PATH, API_BASE_URL } from "@/lib/api/config"
+import { getCachedInvoiceLogoDataUrl } from "@/lib/invoices/logo-cache"
 import type { SalesInvoiceTemplateCode } from "@/lib/invoices/templates/sales"
 import type { SalesInvoiceDetail } from "@/lib/sales/api"
 import {
@@ -130,13 +131,16 @@ async function getSalesInvoiceRenderSettings(headers: Headers): Promise<{
       invoiceTemplate?: SalesInvoiceTemplateCode | null
       salesInvoiceTemplate?: SalesInvoiceTemplateCode | null
       invoiceWatermarkText?: string | null
+      logoUrl?: string | null
     }
   }
+  const logoDataUrl = await getCachedInvoiceLogoDataUrl(payload.invoiceSettings?.logoUrl)
 
   return {
     seller: {
       legalName: payload.business?.legalName,
       tradeName: payload.business?.tradeName,
+      logoUrl: logoDataUrl,
       gstin: payload.registration?.gstin,
       addressLine1: payload.registration?.principalAddressLine1,
       addressLine2: payload.registration?.principalAddressLine2,

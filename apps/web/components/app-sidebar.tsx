@@ -32,7 +32,7 @@ import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
 import { getProfileAvatarUrl } from "@/lib/avatar"
-import { getCurrentUser, type CurrentUserResponse } from "@/lib/auth/api"
+import type { CurrentUserResponse } from "@/lib/auth/api"
 import { getCaDashboard, type CaDashboardResponse } from "@/lib/ca/api"
 import {
   currentPlan,
@@ -45,8 +45,6 @@ import {
   getActiveBusinessMembership,
 } from "@/lib/auth/permissions"
 import {
-  AUTH_SESSION_CHANGE_EVENT,
-  getStoredAuthSession,
   type StoredAuthSession,
 } from "@/lib/auth/session"
 import {
@@ -68,27 +66,25 @@ type SidebarNavItem = {
   disabled?: boolean
 }
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
+  storedSession: StoredAuthSession
+  currentUser?: CurrentUserResponse
+}
+
+export function AppSidebar({
+  storedSession,
+  currentUser,
+  ...props
+}: AppSidebarProps) {
   const pathname = usePathname()
-  const [storedSession, setStoredSession] = React.useState<StoredAuthSession | null>(
-    () => getStoredAuthSession()
-  )
-  const accountType = storedSession?.accountType ?? "business"
+  const accountType = storedSession.accountType
   const isCaAccount = accountType === "ca"
-  const userId = storedSession?.user.id ?? ""
-  const accessToken = storedSession?.session.accessToken ?? ""
-  const { data: currentUser } = useQuery({
-    queryKey: ["auth", "current-user", accountType, userId],
-    queryFn: () => getCurrentUser(accessToken),
-    enabled: accessToken.length > 0 && userId.length > 0,
-    refetchOnMount: "always",
-    staleTime: 1000 * 60 * 5,
-  })
-  const currentUserForSession =
-    currentUser?.auth.userId === storedSession?.user.id ? currentUser : undefined
+  const userId = storedSession.user.id
+  const accessToken = storedSession.session.accessToken
+  const currentUserForSession = currentUser
   const activeBusinessMembership = React.useMemo(
-    () => getActiveBusinessMembership(currentUserForSession, storedSession?.tenant?.id),
-    [currentUserForSession, storedSession?.tenant?.id]
+    () => getActiveBusinessMembership(currentUserForSession, storedSession.tenant?.id),
+    [currentUserForSession, storedSession.tenant?.id]
   )
   const canManageBusinessWorkspace = canManageWorkspace(activeBusinessMembership)
   const { data: caDashboard } = useQuery({
@@ -97,20 +93,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     enabled: isCaAccount && accessToken.length > 0 && userId.length > 0,
     staleTime: 1000 * 60 * 3,
   })
-
-  React.useEffect(() => {
-    function syncStoredSession() {
-      setStoredSession(getStoredAuthSession())
-    }
-
-    window.addEventListener(AUTH_SESSION_CHANGE_EVENT, syncStoredSession)
-    window.addEventListener("storage", syncStoredSession)
-
-    return () => {
-      window.removeEventListener(AUTH_SESSION_CHANGE_EVENT, syncStoredSession)
-      window.removeEventListener("storage", syncStoredSession)
-    }
-  }, [])
 
   const overviewItem: SidebarNavItem | null = React.useMemo(() => {
     if (isCaAccount) {
@@ -234,8 +216,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   ])
 
   const sidebarUser = React.useMemo(
-    () => buildSidebarUser(storedSession?.user ?? null, currentUserForSession),
-    [storedSession?.user, currentUserForSession]
+    () => buildSidebarUser(storedSession.user, currentUserForSession),
+    [storedSession.user, currentUserForSession]
   )
   const sidebarTeam = React.useMemo(
     () => buildSidebarTeam(accountType, currentUserForSession, caDashboard),
@@ -342,6 +324,7 @@ function buildSidebarTeam(
       currentUser?.profile?.display_name ??
       "GSTFY Workspace",
     logo: <GalleryVerticalEndIcon />,
+    logoUrl: primaryMembership?.logo_url ?? null,
     plan: primaryMembership?.gstin ?? `${planLabels[currentPlan]} plan`,
   }
 }

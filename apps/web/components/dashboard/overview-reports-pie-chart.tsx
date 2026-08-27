@@ -2,7 +2,7 @@
 
 import { Pie, PieChart, Cell, ResponsiveContainer, Tooltip } from "recharts"
 
-import type { OverallReportSlice } from "@/lib/dashboard/mock-overview"
+import type { OverallReportSlice } from "@/lib/dashboard/api"
 
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
   style: "currency",

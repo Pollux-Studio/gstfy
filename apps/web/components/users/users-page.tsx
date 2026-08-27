@@ -452,8 +452,7 @@ export function UsersPage() {
     getNextPageParam: (lastPage) =>
       lastPage.pagination.hasMore ? lastPage.pagination.page + 1 : undefined,
     enabled: accessToken.length > 0,
-    refetchOnMount: "always",
-    staleTime: 0,
+    staleTime: 1000 * 30,
   })
   const data = usersQuery.data?.pages[0]
   const isLoading = usersQuery.isLoading

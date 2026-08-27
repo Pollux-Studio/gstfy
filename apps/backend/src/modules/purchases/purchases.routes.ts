@@ -13,6 +13,7 @@ import {
   warehouses,
 } from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
+import { enqueuePostedDocumentAutomation } from "../automation/automation.triggers.js"
 import {
   calculateTransactionLines,
   createDraftDocumentNumber,
@@ -103,9 +104,22 @@ export async function registerPurchasesRoutes(app: FastifyInstance) {
   app.post("/purchase-bills", async (request) => {
     const access = await requirePrimaryBusinessAccess(request)
     const body = createPurchaseBillSchema.parse(request.body)
+    const bill = await createPurchaseBill(access, body)
+
+    if (bill.status === "posted") {
+      await enqueuePostedDocumentAutomation(
+        access,
+        {
+          sourceType: "purchase_bill",
+          sourceId: bill.id,
+          voucherId: bill.voucherId,
+        },
+        request.log
+      )
+    }
 
     return {
-      bill: await createPurchaseBill(access, body),
+      bill,
     }
   })
 
@@ -174,9 +188,18 @@ export async function registerPurchasesRoutes(app: FastifyInstance) {
       })
       .where(and(eq(purchaseBills.businessId, access.business.id), eq(purchaseBills.id, id)))
 
-    return {
-      bill: await getPurchaseBillDetail(access.business.id, id),
-    }
+    const bill = await getPurchaseBillDetail(access.business.id, id)
+    await enqueuePostedDocumentAutomation(
+      access,
+      {
+        sourceType: "purchase_bill",
+        sourceId: bill.id,
+        voucherId: bill.voucherId,
+      },
+      request.log
+    )
+
+    return { bill }
   })
 }
 

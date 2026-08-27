@@ -322,8 +322,8 @@ export function InventoryPage() {
   const openingMutation = useMutation({
     mutationFn: (payload: OpeningStockPayload) => postOpeningStock(payload, accessToken),
     onSuccess: async () => {
-      toast.success("Starting stock saved")
       setMovementDialog(null)
+      toast.success("Starting stock saved")
       await refreshInventory()
     },
     onError: showToastError("Starting stock failed"),
@@ -333,8 +333,8 @@ export function InventoryPage() {
     mutationFn: (payload: InventoryAdjustmentPayload) =>
       postInventoryAdjustment(payload, accessToken),
     onSuccess: async () => {
-      toast.success("Stock correction saved")
       setMovementDialog(null)
+      toast.success("Stock correction saved")
       await refreshInventory()
     },
     onError: showToastError("Adjustment failed"),
@@ -344,9 +344,9 @@ export function InventoryPage() {
     mutationFn: (payload: CreateInventoryTransferPayload) =>
       createInventoryTransfer(payload, accessToken),
     onSuccess: async () => {
-      toast.success("Stock transfer created")
       setTransferDialogOpen(false)
       setTransferForm(initialTransferForm)
+      toast.success("Stock transfer created")
       await refreshInventory()
     },
     onError: showToastError("Transfer creation failed"),

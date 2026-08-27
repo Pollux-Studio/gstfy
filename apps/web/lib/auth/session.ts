@@ -7,6 +7,7 @@ export const AUTH_SESSION_CHANGE_EVENT = "gstfy.auth.session_changed"
 export const AUTH_LOGGED_IN_COOKIE_NAME = "gstfy.auth.logged_in"
 export const AUTH_ACCOUNT_TYPE_COOKIE_NAME = "gstfy.auth.account_type"
 const AUTH_REFRESH_BEFORE_EXPIRY_SECONDS = 60
+const AUTH_REFRESH_TIMEOUT_MS = 10_000
 
 export type AuthAccountType = "business" | "ca"
 
@@ -40,6 +41,8 @@ type RefreshSessionResponse = {
 }
 
 let activeRefreshPromise: Promise<StoredAuthSession | null> | null = null
+let cachedSessionRawValue: string | null = null
+let cachedStoredAuthSession: StoredAuthSession | null = null
 
 export function getStoredAuthSession(): StoredAuthSession | null {
   if (typeof window === "undefined") {
@@ -49,7 +52,13 @@ export function getStoredAuthSession(): StoredAuthSession | null {
   const rawValue = window.sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY)
 
   if (!rawValue) {
+    cachedSessionRawValue = null
+    cachedStoredAuthSession = null
     return null
+  }
+
+  if (rawValue === cachedSessionRawValue) {
+    return cachedStoredAuthSession
   }
 
   try {
@@ -59,7 +68,7 @@ export function getStoredAuthSession(): StoredAuthSession | null {
       throw new Error("Invalid auth session payload")
     }
 
-    return {
+    const nextSession: StoredAuthSession = {
       isAuthenticated: true,
       accountType: getSafeAccountType(parsedValue.accountType),
       user: {
@@ -69,8 +78,15 @@ export function getStoredAuthSession(): StoredAuthSession | null {
       session: parsedValue.session,
       tenant: parsedValue.tenant ?? null,
     }
+
+    cachedSessionRawValue = rawValue
+    cachedStoredAuthSession = nextSession
+
+    return nextSession
   } catch {
     window.sessionStorage.removeItem(AUTH_SESSION_STORAGE_KEY)
+    cachedSessionRawValue = null
+    cachedStoredAuthSession = null
     clearAuthCookie()
     return null
   }
@@ -103,16 +119,18 @@ export function setStoredAuthSession(value: StoredAuthSessionInput) {
     return
   }
 
-  window.sessionStorage.setItem(
-    AUTH_SESSION_STORAGE_KEY,
-    JSON.stringify({
-      isAuthenticated: true,
-      accountType: value.accountType ?? "business",
-      user: value.user,
-      session: value.session,
-      tenant: value.tenant ?? null,
-    } satisfies StoredAuthSession)
-  )
+  const nextSession = {
+    isAuthenticated: true,
+    accountType: value.accountType ?? "business",
+    user: value.user,
+    session: value.session,
+    tenant: value.tenant ?? null,
+  } satisfies StoredAuthSession
+  const rawValue = JSON.stringify(nextSession)
+
+  window.sessionStorage.setItem(AUTH_SESSION_STORAGE_KEY, rawValue)
+  cachedSessionRawValue = rawValue
+  cachedStoredAuthSession = nextSession
   setAuthCookie(value.accountType ?? "business")
   notifyAuthSessionChange()
 }
@@ -123,6 +141,8 @@ export function clearStoredAuthSession() {
   }
 
   window.sessionStorage.removeItem(AUTH_SESSION_STORAGE_KEY)
+  cachedSessionRawValue = null
+  cachedStoredAuthSession = null
   clearAuthCookie()
   notifyAuthSessionChange()
 }
@@ -182,11 +202,7 @@ async function refreshAuthSession() {
   const currentSession = getStoredAuthSession()
 
   try {
-    const response = await fetch(`${API_BASE_URL}${API_BASE_PATH}/auth/session`, {
-      method: "GET",
-      credentials: "include",
-      cache: "no-store",
-    })
+    const response = await fetchAuthSessionWithTimeout()
 
     if (!response.ok) {
       if (response.status === 401) {
@@ -227,6 +243,24 @@ async function refreshAuthSession() {
     } satisfies StoredAuthSession
   } catch {
     return null
+  }
+}
+
+async function fetchAuthSessionWithTimeout() {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => {
+    controller.abort()
+  }, AUTH_REFRESH_TIMEOUT_MS)
+
+  try {
+    return await fetch(`${API_BASE_URL}${API_BASE_PATH}/auth/session`, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 

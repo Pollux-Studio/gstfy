@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 
 import {
@@ -28,6 +29,7 @@ export function TeamSwitcher({
   teams: {
     name: string
     logo: React.ReactNode
+    logoUrl?: string | null
     plan: string
   }[]
   label?: string
@@ -51,9 +53,7 @@ export function TeamSwitcher({
               />
             }
           >
-            <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-              {activeTeam.logo}
-            </div>
+            <TeamLogo team={activeTeam} size="lg" />
             <div className="grid flex-1 text-left text-sm leading-tight">
               <span className="truncate font-medium">{activeTeam.name}</span>
               <span className="truncate text-xs">{activeTeam.plan}</span>
@@ -75,9 +75,7 @@ export function TeamSwitcher({
                   key={team.name}
                   className="gap-2 p-2"
                 >
-                  <div className="flex size-6 items-center justify-center rounded-md border">
-                    {team.logo}
-                  </div>
+                  <TeamLogo team={team} size="sm" />
                   {team.name}
                 </DropdownMenuItem>
               ))}
@@ -101,5 +99,49 @@ export function TeamSwitcher({
         </DropdownMenu>
       </SidebarMenuItem>
     </SidebarMenu>
+  )
+}
+
+function TeamLogo({
+  team,
+  size,
+}: {
+  team: {
+    name: string
+    logo: React.ReactNode
+    logoUrl?: string | null
+  }
+  size: "sm" | "lg"
+}) {
+  const logoUrl = team.logoUrl?.trim()
+  const className =
+    size === "lg" ?
+      "relative flex aspect-square size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-sidebar-border bg-background text-sidebar-primary"
+    : "relative flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-background text-muted-foreground"
+
+  if (logoUrl) {
+    return (
+      <div className={className}>
+        <Image
+          src={logoUrl}
+          alt={`${team.name} logo`}
+          fill
+          sizes={size === "lg" ? "32px" : "24px"}
+          className="rounded-[inherit] object-cover"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={
+        size === "lg" ?
+          "flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
+        : "flex size-6 shrink-0 items-center justify-center rounded-md border"
+      }
+    >
+      {team.logo}
+    </div>
   )
 }

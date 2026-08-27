@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto"
 import { getEnv } from "../config/env.js"
 import { HttpError } from "./http-error.js"
 
-const productImageMimeTypes = new Map([
+const imageMimeTypes = new Map([
   ["image/jpeg", "jpg"],
   ["image/png", "png"],
   ["image/webp", "webp"],
@@ -12,13 +12,20 @@ const productImageMimeTypes = new Map([
 
 export const productImageMaxBytes = 15 * 1024 * 1024
 export const productImageMaxSizeLabel = "15 MB"
+export const businessLogoMaxBytes = 2 * 1024 * 1024
+export const businessLogoMaxSizeLabel = "2 MB"
+export const r2MultipartMaxBytes = Math.max(productImageMaxBytes, businessLogoMaxBytes)
 let cachedClient: S3Client | null = null
 
-type UploadProductImageInput = {
+type UploadImageInput = {
   body: Buffer
   businessId: string
   contentType: string
   fileName?: string | null
+  folder: "products" | "logos" | "invoice-logos"
+  maxBytes: number
+  maxSizeLabel: string
+  label: string
 }
 
 export type UploadedObject = {
@@ -33,23 +40,81 @@ export async function uploadProductImageObject({
   businessId,
   contentType,
   fileName,
-}: UploadProductImageInput): Promise<UploadedObject> {
-  const extension = productImageMimeTypes.get(contentType)
+}: Omit<UploadImageInput, "folder" | "maxBytes" | "maxSizeLabel" | "label">): Promise<UploadedObject> {
+  return uploadImageObject({
+    body,
+    businessId,
+    contentType,
+    fileName,
+    folder: "products",
+    label: "Product image",
+    maxBytes: productImageMaxBytes,
+    maxSizeLabel: productImageMaxSizeLabel,
+  })
+}
+
+export async function uploadBusinessLogoObject({
+  body,
+  businessId,
+  contentType,
+  fileName,
+}: Omit<UploadImageInput, "folder" | "maxBytes" | "maxSizeLabel" | "label">): Promise<UploadedObject> {
+  return uploadImageObject({
+    body,
+    businessId,
+    contentType,
+    fileName,
+    folder: "logos",
+    label: "Business logo",
+    maxBytes: businessLogoMaxBytes,
+    maxSizeLabel: businessLogoMaxSizeLabel,
+  })
+}
+
+export async function uploadInvoiceLogoObject({
+  body,
+  businessId,
+  contentType,
+  fileName,
+}: Omit<UploadImageInput, "folder" | "maxBytes" | "maxSizeLabel" | "label">): Promise<UploadedObject> {
+  return uploadImageObject({
+    body,
+    businessId,
+    contentType,
+    fileName,
+    folder: "invoice-logos",
+    label: "Invoice logo",
+    maxBytes: businessLogoMaxBytes,
+    maxSizeLabel: businessLogoMaxSizeLabel,
+  })
+}
+
+async function uploadImageObject({
+  body,
+  businessId,
+  contentType,
+  fileName,
+  folder,
+  label,
+  maxBytes,
+  maxSizeLabel,
+}: UploadImageInput): Promise<UploadedObject> {
+  const extension = imageMimeTypes.get(contentType)
 
   if (!extension) {
-    throw new HttpError(400, "Only JPG, PNG, and WebP product images are supported.")
+    throw new HttpError(400, `Only JPG, PNG, and WebP ${label.toLowerCase()} files are supported.`)
   }
 
   if (body.byteLength === 0) {
     throw new HttpError(400, "Image file is empty.")
   }
 
-  if (body.byteLength > productImageMaxBytes) {
-    throw new HttpError(400, `Product image must be ${productImageMaxSizeLabel} or smaller.`)
+  if (body.byteLength > maxBytes) {
+    throw new HttpError(400, `${label} must be ${maxSizeLabel} or smaller.`)
   }
 
   const env = getEnv()
-  const objectKey = `businesses/${businessId}/products/${randomUUID()}.${extension}`
+  const objectKey = `businesses/${businessId}/${folder}/${randomUUID()}.${extension}`
 
   try {
     await getR2Client().send(

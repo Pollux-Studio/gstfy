@@ -71,6 +71,7 @@ export type CurrentUserResponse = {
     business_name: string
     tenant_slug: string
     tenant_url: string
+    logo_url?: string | null
     role: string
     status: string
     gstin: string | null

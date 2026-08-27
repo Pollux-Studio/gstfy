@@ -141,6 +141,9 @@ type ProductColumnKey =
   | "inventory"
   | "status";
 
+const productImageMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const productImageMaxBytes = 15 * 1024 * 1024;
+
 const itemTypeLabels: Record<ProductItemType, string> = {
   GOODS: "Goods",
   SERVICE: "Service",
@@ -488,14 +491,17 @@ export function ProductsPage() {
       return createProduct(buildCreatePayload(payload.form), accessToken);
     },
     onSuccess: async (response) => {
-      toast.success(
-        sheetMode === "edit" ? "Product updated" : "Product created",
-        {
-          description: `${response.product.name} is ready for transaction resolution.`,
-        },
-      );
+      const title = sheetMode === "edit" ? "Product updated" : "Product created";
+      const description = `${response.product.name} is ready for transaction resolution.`;
+
       await queryClient.invalidateQueries({ queryKey: ["products"] });
       closeSheet();
+      toast.success(
+        title,
+        {
+          description,
+        },
+      );
     },
     onError: (error) => {
       toast.error("Product save failed", {
@@ -567,14 +573,28 @@ export function ProductsPage() {
     },
   });
 
+  function handleProductImageUpload(file: File) {
+    if (!productImageMimeTypes.has(file.type)) {
+      toast.error("Upload a JPG, PNG, or WebP product image.");
+      return;
+    }
+
+    if (file.size > productImageMaxBytes) {
+      toast.error("Product image must be 15 MB or smaller.");
+      return;
+    }
+
+    uploadImageMutation.mutate(file);
+  }
+
   const archiveMutation = useMutation({
     mutationFn: (productId: string) => archiveProduct(productId, accessToken),
     onSuccess: async () => {
+      setPendingArchive(null);
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
       toast.success("Product archived", {
         description: "The product is hidden from normal selection.",
       });
-      await queryClient.invalidateQueries({ queryKey: ["products"] });
-      setPendingArchive(null);
     },
     onError: (error) => {
       toast.error("Archive failed", {
@@ -620,12 +640,14 @@ export function ProductsPage() {
       );
     },
     onSuccess: async () => {
-      toast.success("Products archived", {
-        description: `${selectedArchivableProducts.length} product${selectedArchivableProducts.length === 1 ? "" : "s"} moved out of normal selection.`,
-      });
-      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      const archivedCount = selectedArchivableProducts.length;
+
       setSelectedProductIds([]);
       setBulkArchiveOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      toast.success("Products archived", {
+        description: `${archivedCount} product${archivedCount === 1 ? "" : "s"} moved out of normal selection.`,
+      });
     },
     onError: (error) => {
       toast.error("Bulk archive failed", {
@@ -1439,7 +1461,7 @@ export function ProductsPage() {
         onCreateBrand={(name) => createBrandMutation.mutate(name)}
         onCreateCategory={(name) => createCategoryMutation.mutate(name)}
         onGenerateBarcode={generateBarcodeForProduct}
-        onImageUpload={(file) => uploadImageMutation.mutate(file)}
+        onImageUpload={handleProductImageUpload}
         onBarcodeKeyDown={handlePrimaryBarcodeKeyDown}
       />
 
@@ -1680,6 +1702,7 @@ function ProductImageThumb({
           alt={label}
           width={size === "lg" ? 80 : 36}
           height={size === "lg" ? 80 : 36}
+          unoptimized
           className="size-full object-cover"
         />
       ) : (

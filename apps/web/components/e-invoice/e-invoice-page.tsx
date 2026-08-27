@@ -157,10 +157,10 @@ export function EInvoicePage() {
         idempotencyKey: `einv-create-${invoice.id}-${Date.now().toString(36)}`,
       }),
     onSuccess: async (response) => {
-      toast.success("E-invoice record prepared.")
       setSourceDialogOpen(false)
       setSelectedSource(null)
       setDetailId(response.eInvoice.id)
+      toast.success("E-invoice record prepared.")
       await invalidateEInvoiceQueries(queryClient)
     },
     onError: (error) => toast.error(getErrorMessage(error)),
@@ -208,9 +208,9 @@ export function EInvoicePage() {
       return cancelEInvoice(accessToken, cancelRecord.id, cancelReason)
     },
     onSuccess: async () => {
-      toast.success("E-invoice cancelled.")
       setCancelRecord(null)
       setCancelReason("")
+      toast.success("E-invoice cancelled.")
       await invalidateEInvoiceQueries(queryClient)
     },
     onError: (error) => toast.error(getErrorMessage(error)),

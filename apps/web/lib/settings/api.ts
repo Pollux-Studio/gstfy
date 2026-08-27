@@ -15,6 +15,12 @@ export type SettingsResponse = {
     primaryContactName: string
     primaryContactMobile: string
     primaryContactEmail: string
+    logoObjectKey: string | null
+    logoUrl: string | null
+    logoFileName: string | null
+    logoContentType: string | null
+    logoFileSizeBytes: number | null
+    logoUploadedAt: string | null
   }
   registration: {
     id: string
@@ -64,6 +70,12 @@ export type SettingsResponse = {
     purchaseInvoiceTemplate: InvoiceTemplateCode
     invoicePrefix: string
     invoiceWatermarkText: string
+    logoObjectKey: string | null
+    logoUrl: string | null
+    logoFileName: string | null
+    logoContentType: string | null
+    logoFileSizeBytes: number | null
+    logoUploadedAt: string | null
     previewInvoiceNumber: string
   }
   gstRateSettings: {
@@ -172,6 +184,30 @@ export function updateBusinessDetails(
     method: "PATCH",
     body: payload,
     accessToken,
+  })
+}
+
+export function uploadBusinessLogo(file: File, accessToken: string) {
+  const formData = new FormData()
+  formData.set("file", file)
+
+  return apiRequest<SettingsResponse>("/settings/business/logo", {
+    method: "POST",
+    body: formData,
+    accessToken,
+    retry: false,
+  })
+}
+
+export function uploadInvoiceLogo(file: File, accessToken: string) {
+  const formData = new FormData()
+  formData.set("file", file)
+
+  return apiRequest<SettingsResponse>("/settings/invoice/logo", {
+    method: "POST",
+    body: formData,
+    accessToken,
+    retry: false,
   })
 }
 

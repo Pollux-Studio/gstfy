@@ -31,6 +31,7 @@ import {
 } from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
 import { requirePrimaryBusinessAccess } from "../businesses/business-access.js"
+import { enqueueBankAutoMatchAutomation } from "../automation/automation.triggers.js"
 import {
   createDraftDocumentNumber,
   ensureDefaultLedgerAccountMap,
@@ -290,6 +291,7 @@ export async function registerPaymentReceiptRoutes(app: FastifyInstance) {
       postBody,
       async () => {
         const receipt = await postMoneyDocument(access, "receipt", id, postBody)
+        await enqueueMoneyDocumentBankAutomation(access, "receipt", receipt.id, request.log)
 
         return {
           receipt: await getMoneyDocumentDetail(access.business.id, "receipt", receipt.id),
@@ -442,6 +444,7 @@ export async function registerPaymentReceiptRoutes(app: FastifyInstance) {
       postBody,
       async () => {
         const payment = await postMoneyDocument(access, "payment", id, postBody)
+        await enqueueMoneyDocumentBankAutomation(access, "payment", payment.id, request.log)
 
         return {
           payment: await getMoneyDocumentDetail(access.business.id, "payment", payment.id),
@@ -617,7 +620,18 @@ export async function registerPaymentReceiptRoutes(app: FastifyInstance) {
       `bank-reconciliation:import:${body.fileName}:${body.cashBankAccountId}`,
       idempotencyKey,
       body,
-      async () => importBankStatement(access, body)
+      async () => {
+        const result = await importBankStatement(access, body)
+        await enqueueBankAutoMatchAutomation(
+          access,
+          {
+            importId: result.import.id,
+            cashBankAccountId: body.cashBankAccountId,
+          },
+          request.log
+        )
+        return result
+      }
     )
   })
 
@@ -647,6 +661,56 @@ export async function registerPaymentReceiptRoutes(app: FastifyInstance) {
 
     return { success: true }
   })
+}
+
+export async function processBankAutoMatchAutomation(
+  access: BusinessAccess,
+  body: BankAutoMatchInput
+) {
+  await assertCanUseMoney(access, "edit")
+  return autoMatchBankStatementLines(access, body)
+}
+
+async function enqueueMoneyDocumentBankAutomation(
+  access: BusinessAccess,
+  kind: MoneyDocumentKind,
+  documentId: string,
+  logger: Parameters<typeof enqueueBankAutoMatchAutomation>[2]
+) {
+  const document = await getMoneyDocumentRecord(access.business.id, kind, documentId)
+
+  if (!document || !isBankLikePaymentMethod(document.paymentMethod)) {
+    return
+  }
+
+  await enqueueBankAutoMatchAutomation(
+    access,
+    {
+      cashBankAccountId: document.cashBankAccountId,
+      triggerSourceType: kind,
+      triggerSourceId: document.id,
+    },
+    logger
+  )
+}
+
+async function getMoneyDocumentRecord(
+  businessId: string,
+  kind: MoneyDocumentKind,
+  documentId: string
+) {
+  const table = kind === "receipt" ? receipts : paymentDocuments
+  const [document] = await db
+    .select()
+    .from(table)
+    .where(and(eq(table.businessId, businessId), eq(table.id, documentId)))
+    .limit(1)
+
+  return (document ?? null) as MoneyDocumentRecord | null
+}
+
+function isBankLikePaymentMethod(paymentMethod: string) {
+  return paymentMethod === "bank" || paymentMethod === "upi" || paymentMethod === "card" || paymentMethod === "cheque"
 }
 
 async function runMoneyOperationIdempotency<T>(

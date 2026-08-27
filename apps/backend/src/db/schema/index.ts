@@ -111,6 +111,12 @@ export const businessProfiles = pgTable("business_profiles", {
   stateCode: text("state_code"),
   possessionType: text("possession_type"),
   locationSource: text("location_source").notNull().default("manual"),
+  logoObjectKey: text("logo_object_key"),
+  logoPublicUrl: text("logo_public_url"),
+  logoFileName: text("logo_file_name"),
+  logoContentType: text("logo_content_type"),
+  logoFileSizeBytes: integer("logo_file_size_bytes"),
+  logoUploadedAt: timestamp("logo_uploaded_at", { withTimezone: true }),
   ...timestamps,
 })
 
@@ -3364,6 +3370,108 @@ export const posSalePayments = pgTable(
   })
 )
 
+export const businessAutomationSettings = pgTable("business_automation_settings", {
+  businessId: uuid("business_id")
+    .primaryKey()
+    .references(() => businesses.id, { onDelete: "cascade" }),
+  autoStockAccountingEnabled: boolean("auto_stock_accounting_enabled")
+    .notNull()
+    .default(true),
+  autoEInvoiceEnabled: boolean("auto_e_invoice_enabled").notNull().default(true),
+  bankAutoMatchHighConfidenceEnabled: boolean(
+    "bank_auto_match_high_confidence_enabled"
+  )
+    .notNull()
+    .default(true),
+  notifyAutomationFailures: boolean("notify_automation_failures")
+    .notNull()
+    .default(true),
+  ...timestamps,
+})
+
+export const automationJobs = pgTable(
+  "automation_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    jobType: text("job_type").notNull(),
+    sourceType: text("source_type").notNull(),
+    sourceId: text("source_id").notNull(),
+    status: text("status").notNull().default("queued"),
+    priority: integer("priority").notNull().default(0),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    runAfter: timestamp("run_after", { withTimezone: true }).notNull().defaultNow(),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    lastErrorCode: text("last_error_code"),
+    lastErrorMessage: text("last_error_message"),
+    payload: jsonb("payload").notNull().default({}),
+    result: jsonb("result"),
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    ...timestamps,
+  },
+  (table) => ({
+    businessSourceUnique: uniqueIndex("automation_jobs_business_source_unique").on(
+      table.businessId,
+      table.jobType,
+      table.sourceType,
+      table.sourceId
+    ),
+    businessIdentityUnique: uniqueIndex(
+      "automation_jobs_id_business_id_unique"
+    ).on(table.id, table.businessId),
+    businessStatusIndex: index("automation_jobs_business_status_idx").on(
+      table.businessId,
+      table.status,
+      table.runAfter
+    ),
+    dueIndex: index("automation_jobs_due_idx").on(
+      table.status,
+      table.runAfter,
+      table.priority,
+      table.createdAt
+    ),
+  })
+)
+
+export const automationJobEvents = pgTable(
+  "automation_job_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => automationJobs.id, { onDelete: "cascade" }),
+    businessId: uuid("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    eventType: text("event_type").notNull(),
+    message: text("message"),
+    metadata: jsonb("metadata").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    jobIndex: index("automation_job_events_job_idx").on(
+      table.jobId,
+      table.createdAt
+    ),
+    businessIndex: index("automation_job_events_business_idx").on(
+      table.businessId,
+      table.createdAt
+    ),
+    jobBusinessFk: foreignKey({
+      columns: [table.jobId, table.businessId],
+      foreignColumns: [automationJobs.id, automationJobs.businessId],
+      name: "automation_job_events_job_business_fk",
+    }).onDelete("cascade"),
+  })
+)
+
 export const auditLogs = pgTable(
   "audit_logs",
   {
@@ -4381,6 +4489,12 @@ export const businessPreferences = pgTable("business_preferences", {
   purchaseInvoiceTemplate: text("purchase_invoice_template").notNull().default("reference-01"),
   invoicePrefix: text("invoice_prefix").notNull().default("INV"),
   invoiceWatermarkText: text("invoice_watermark_text").notNull().default("GSTFY"),
+  invoiceLogoObjectKey: text("invoice_logo_object_key"),
+  invoiceLogoPublicUrl: text("invoice_logo_public_url"),
+  invoiceLogoFileName: text("invoice_logo_file_name"),
+  invoiceLogoContentType: text("invoice_logo_content_type"),
+  invoiceLogoFileSizeBytes: integer("invoice_logo_file_size_bytes"),
+  invoiceLogoUploadedAt: timestamp("invoice_logo_uploaded_at", { withTimezone: true }),
   invoiceNextNumber: integer("invoice_next_number").notNull().default(1),
   enabledGstSlabs: text("enabled_gst_slabs").notNull().default("5,12,18,28"),
   printerPaperSize: text("printer_paper_size").notNull().default("a4"),
@@ -4632,6 +4746,10 @@ export type EInvoiceStatusEventRecord = typeof eInvoiceStatusEvents.$inferSelect
 export type PosSaleRecord = typeof posSales.$inferSelect
 export type PosSaleLineRecord = typeof posSaleLines.$inferSelect
 export type PosSalePaymentRecord = typeof posSalePayments.$inferSelect
+export type BusinessAutomationSettingsRecord =
+  typeof businessAutomationSettings.$inferSelect
+export type AutomationJobRecord = typeof automationJobs.$inferSelect
+export type AutomationJobEventRecord = typeof automationJobEvents.$inferSelect
 export type AuditLogRecord = typeof auditLogs.$inferSelect
 export type PartyRecord = typeof parties.$inferSelect
 export type PartyGstRegistrationRecord = typeof partyGstRegistrations.$inferSelect

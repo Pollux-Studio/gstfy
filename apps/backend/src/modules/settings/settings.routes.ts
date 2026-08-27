@@ -19,6 +19,12 @@ import {
 } from "../../db/schema/index.js"
 import { createProfileImage } from "../../utils/avatar.js"
 import { HttpError } from "../../utils/http-error.js"
+import {
+  businessLogoMaxBytes,
+  businessLogoMaxSizeLabel,
+  uploadBusinessLogoObject,
+  uploadInvoiceLogoObject,
+} from "../../utils/r2-storage.js"
 import { createTenantSlug } from "../../utils/tenant-slug.js"
 import { getTenantUrl } from "../../utils/tenant-url.js"
 import { verifyFirebaseIdToken } from "../firebase/firebase-admin.js"
@@ -48,6 +54,9 @@ const cessPresetCodes = [
 ] as const
 
 type CessPresetCode = (typeof cessPresetCodes)[number]
+type LogoMultipartFile = NonNullable<
+  Awaited<ReturnType<FastifyRequest["file"]>>
+>
 
 const cessPresetDefinitions: Array<{
   code: CessPresetCode
@@ -182,6 +191,90 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         })
         .where(eq(gstRegistrations.businessId, access.business.id))
     }
+
+    return getSettingsResponse(access)
+  })
+
+  app.post("/settings/business/logo", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    assertCanManageBusiness(access.membership)
+
+    if (!request.isMultipart()) {
+      throw new HttpError(
+        400,
+        'Upload the business logo as multipart/form-data with a file field named "file".'
+      )
+    }
+
+    const file = await readLogoFile(request)
+
+    if (!file) {
+      throw new HttpError(400, "Upload a business logo file.")
+    }
+
+    const body = await readLogoBuffer(file)
+    const uploadedObject = await uploadBusinessLogoObject({
+      businessId: access.business.id,
+      body,
+      contentType: file.mimetype,
+      fileName: file.filename,
+    })
+
+    await ensureSettingsRows(access.business.id)
+    await db
+      .update(businessProfiles)
+      .set({
+        logoObjectKey: uploadedObject.objectKey,
+        logoPublicUrl: uploadedObject.publicUrl,
+        logoFileName: file.filename,
+        logoContentType: uploadedObject.contentType,
+        logoFileSizeBytes: uploadedObject.fileSizeBytes,
+        logoUploadedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(businessProfiles.businessId, access.business.id))
+
+    return getSettingsResponse(access)
+  })
+
+  app.post("/settings/invoice/logo", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    assertCanManageBusiness(access.membership)
+
+    if (!request.isMultipart()) {
+      throw new HttpError(
+        400,
+        'Upload the invoice logo as multipart/form-data with a file field named "file".'
+      )
+    }
+
+    const file = await readLogoFile(request)
+
+    if (!file) {
+      throw new HttpError(400, "Upload an invoice logo file.")
+    }
+
+    const body = await readLogoBuffer(file)
+    const uploadedObject = await uploadInvoiceLogoObject({
+      businessId: access.business.id,
+      body,
+      contentType: file.mimetype,
+      fileName: file.filename,
+    })
+
+    await ensureSettingsRows(access.business.id)
+    await db
+      .update(businessPreferences)
+      .set({
+        invoiceLogoObjectKey: uploadedObject.objectKey,
+        invoiceLogoPublicUrl: uploadedObject.publicUrl,
+        invoiceLogoFileName: file.filename,
+        invoiceLogoContentType: uploadedObject.contentType,
+        invoiceLogoFileSizeBytes: uploadedObject.fileSizeBytes,
+        invoiceLogoUploadedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(businessPreferences.businessId, access.business.id))
 
     return getSettingsResponse(access)
   })
@@ -606,6 +699,12 @@ async function getSettingsResponse(
       primaryContactName: profile?.primaryContactName ?? access.user.fullName ?? "",
       primaryContactMobile: profile?.primaryContactMobile ?? "",
       primaryContactEmail: profile?.primaryContactEmail ?? access.user.email ?? "",
+      logoObjectKey: profile?.logoObjectKey ?? null,
+      logoUrl: profile?.logoPublicUrl ?? null,
+      logoFileName: profile?.logoFileName ?? null,
+      logoContentType: profile?.logoContentType ?? null,
+      logoFileSizeBytes: profile?.logoFileSizeBytes ?? null,
+      logoUploadedAt: profile?.logoUploadedAt?.toISOString() ?? null,
     },
     registration: {
       id: access.business.id,
@@ -644,6 +743,12 @@ async function getSettingsResponse(
       ),
       invoicePrefix,
       invoiceWatermarkText: preferences?.invoiceWatermarkText ?? "GSTFY",
+      logoObjectKey: preferences?.invoiceLogoObjectKey ?? null,
+      logoUrl: preferences?.invoiceLogoPublicUrl ?? null,
+      logoFileName: preferences?.invoiceLogoFileName ?? null,
+      logoContentType: preferences?.invoiceLogoContentType ?? null,
+      logoFileSizeBytes: preferences?.invoiceLogoFileSizeBytes ?? null,
+      logoUploadedAt: preferences?.invoiceLogoUploadedAt?.toISOString() ?? null,
       previewInvoiceNumber: `${invoicePrefix}-2026-${String(invoiceNextNumber).padStart(4, "0")}`,
     },
     gstRateSettings: {
@@ -787,6 +892,82 @@ async function getCaReferralState(businessId: string) {
     linkedAt: link.acceptedAt.toISOString(),
     canAdd: false,
   }
+}
+
+async function readLogoFile(request: FastifyRequest) {
+  try {
+    const file = await request.file()
+
+    if (file && file.fieldname !== "file") {
+      throw new HttpError(
+        400,
+        'Upload the logo using a multipart file field named "file".'
+      )
+    }
+
+    return file
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error
+    }
+
+    throw getLogoUploadError(error)
+  }
+}
+
+async function readLogoBuffer(file: LogoMultipartFile) {
+  try {
+    const chunks: Buffer[] = []
+    let totalBytes = 0
+
+    for await (const chunk of file.file) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      totalBytes += buffer.byteLength
+
+      if (totalBytes > businessLogoMaxBytes) {
+        throw new HttpError(
+          400,
+          `Logo must be ${businessLogoMaxSizeLabel} or smaller.`
+        )
+      }
+
+      chunks.push(buffer)
+    }
+
+    return Buffer.concat(chunks, totalBytes)
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error
+    }
+
+    throw getLogoUploadError(error)
+  }
+}
+
+function getLogoUploadError(error: unknown) {
+  const code =
+    error && typeof error === "object" && "code" in error && typeof error.code === "string" ?
+      error.code
+    : ""
+
+  if (code === "FST_REQ_FILE_TOO_LARGE") {
+    return new HttpError(
+      400,
+      `Logo must be ${businessLogoMaxSizeLabel} or smaller.`
+    )
+  }
+
+  if (code === "FST_INVALID_MULTIPART_CONTENT_TYPE") {
+    return new HttpError(
+      400,
+      'Upload the logo as multipart/form-data with a file field named "file".'
+    )
+  }
+
+  return new HttpError(
+    400,
+    'Unable to read logo upload. Use multipart/form-data with one file field named "file".'
+  )
 }
 
 async function ensureSettingsRows(businessId: string) {

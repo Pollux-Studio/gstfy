@@ -8,6 +8,7 @@ import {
   salesInvoices,
 } from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
+import { enqueuePostedDocumentAutomation } from "../automation/automation.triggers.js"
 import { requirePrimaryBusinessAccess } from "../businesses/business-access.js"
 import {
   calculateTransactionLines,
@@ -88,9 +89,23 @@ export async function registerSalesRoutes(app: FastifyInstance) {
   app.post("/sales/invoices", async (request) => {
     const access = await requirePrimaryBusinessAccess(request)
     const body = createSalesInvoiceSchema.parse(request.body)
+    const invoice = await createSalesInvoice(access, body)
+
+    if (invoice.status === "posted") {
+      await enqueuePostedDocumentAutomation(
+        access,
+        {
+          sourceType: "sales_invoice",
+          sourceId: invoice.id,
+          voucherId: invoice.voucherId,
+          sourceDocumentType: "sales_invoice",
+        },
+        request.log
+      )
+    }
 
     return {
-      invoice: await createSalesInvoice(access, body),
+      invoice,
     }
   })
 
@@ -155,9 +170,19 @@ export async function registerSalesRoutes(app: FastifyInstance) {
         .where(and(eq(salesInvoices.businessId, access.business.id), eq(salesInvoices.id, id)))
     })
 
-    return {
-      invoice: await getSalesInvoiceDetail(access.business.id, id),
-    }
+    const invoice = await getSalesInvoiceDetail(access.business.id, id)
+    await enqueuePostedDocumentAutomation(
+      access,
+      {
+        sourceType: "sales_invoice",
+        sourceId: invoice.id,
+        voucherId: invoice.voucherId,
+        sourceDocumentType: "sales_invoice",
+      },
+      request.log
+    )
+
+    return { invoice }
   })
 }
 

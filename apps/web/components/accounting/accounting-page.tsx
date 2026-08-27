@@ -365,9 +365,9 @@ export function AccountingPage() {
     mutationFn: (payload: CreateLedgerAccountPayload) =>
       createLedgerAccount(accessToken, payload),
     onSuccess: async () => {
-      toast.success("Ledger account created.")
       setIsCreateOpen(false)
       setForm(emptyForm)
+      toast.success("Ledger account created.")
       await invalidateAccountingQueries(queryClient)
     },
     onError: (error) => toast.error(getErrorMessage(error)),

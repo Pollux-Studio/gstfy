@@ -2,6 +2,7 @@ import { buildApp } from "./app.js"
 import { getEnv } from "./config/env.js"
 import { closeDatabase } from "./db/client.js"
 import { runPendingMigrations } from "./db/migrations.js"
+import { startAutomationWorker } from "./modules/automation/automation.worker.js"
 
 const env = getEnv()
 const app = await buildApp()
@@ -25,7 +26,10 @@ if (env.AUTO_RUN_MIGRATIONS) {
   )
 }
 
+const automationWorker = await startAutomationWorker(app.log)
+
 const shutdown = async () => {
+  await automationWorker?.close()
   await app.close()
   await closeDatabase()
 }

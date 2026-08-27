@@ -11,6 +11,7 @@ import {
   salesInvoices,
 } from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
+import { enqueuePostedDocumentAutomation } from "../automation/automation.triggers.js"
 import {
   calculateTransactionLines,
   getPartySnapshot,
@@ -203,6 +204,13 @@ async function checkoutPosSale(access: BusinessAccess, body: PosCheckoutInput) {
   }
 
   await insertPosChildren(sale.id, access.business.id, calculated, body.payments)
+  await enqueuePostedDocumentAutomation(access, {
+    sourceType: "pos_sale",
+    sourceId: sale.id,
+    voucherId: result.voucher.id,
+    sourceDocumentType: "sales_invoice",
+    sourceDocumentId: invoice.id,
+  })
 
   return getPosSaleDetail(access.business.id, sale.id)
 }

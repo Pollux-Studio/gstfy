@@ -5,6 +5,7 @@ import type {
   PurchaseInvoiceBusinessInfo,
   PurchaseInvoiceTemplateProps,
 } from "@/lib/invoices/templates/purchase/types"
+import { Image as PdfImage } from "@/lib/pdf-primitives"
 import { Path, Svg } from "@/lib/pdf-svg"
 import type { PurchaseBill, PurchaseBillDetail } from "@/lib/purchases/api"
 
@@ -231,6 +232,7 @@ function BuyerBlock({ buyer }: { buyer: PurchaseInvoiceBusinessInfo | null }) {
       borderTop
       gstn={buyer?.gstin}
       label="Buyer (Bill to)"
+      logoUrl={buyer?.logoUrl}
       name={name}
       stateLine={formatStateNameWithCode(buyer?.stateCode)}
     />
@@ -243,6 +245,7 @@ function PartyIdentityBlock({
   borderTop = false,
   gstn,
   label,
+  logoUrl,
   name,
   stateLine,
 }: {
@@ -251,6 +254,7 @@ function PartyIdentityBlock({
   borderTop?: boolean
   gstn?: string | null
   label?: string
+  logoUrl?: string | null
   name: string
   stateLine: string
 }) {
@@ -262,24 +266,60 @@ function PartyIdentityBlock({
         padding: "9px 10px",
       }}
     >
-      {label ?
-        <p style={{ color: muted, margin: 0 }}>{label}</p>
-      : null}
-      <p style={{ fontSize: 13, fontWeight: 700, margin: label ? "4px 0 0" : 0 }}>
-        {name}
-      </p>
-      <p style={{ fontWeight: 700, margin: "5px 0 0" }}>GSTN : {gstn || "Not provided"}</p>
-      {addressLines.length ?
-        <div style={{ marginTop: 5 }}>
-          {addressLines.map((line, index) => (
-            <p key={`${line}-${index}`} style={{ margin: "2px 0 0" }}>
-              {line}
-            </p>
-          ))}
+      <div
+        style={{
+          alignItems: "flex-start",
+          display: "grid",
+          gap: 8,
+          gridTemplateColumns: logoUrl ? "42px 1fr" : "1fr",
+        }}
+      >
+        {logoUrl ?
+          <div
+            style={{
+              alignItems: "center",
+              border: `1px solid ${lightBorder}`,
+              display: "flex",
+              height: 38,
+              justifyContent: "center",
+              padding: 3,
+              width: 38,
+            }}
+          >
+            <PdfImage
+              src={logoUrl}
+              alt={`${name} logo`}
+              style={{
+                maxHeight: 30,
+                maxWidth: 30,
+                objectFit: "contain",
+              }}
+            />
+          </div>
+        : null}
+        <div>
+          {label ?
+            <p style={{ color: muted, margin: 0 }}>{label}</p>
+          : null}
+          <p style={{ fontSize: 13, fontWeight: 700, margin: label ? "4px 0 0" : 0 }}>
+            {name}
+          </p>
+          <p style={{ fontWeight: 700, margin: "5px 0 0" }}>
+            GSTN : {gstn || "Not provided"}
+          </p>
+          {addressLines.length ?
+            <div style={{ marginTop: 5 }}>
+              {addressLines.map((line, index) => (
+                <p key={`${line}-${index}`} style={{ margin: "2px 0 0" }}>
+                  {line}
+                </p>
+              ))}
+            </div>
+          : <p style={{ margin: "5px 0 0" }}>{addressFallback}</p>
+          }
+          <p style={{ margin: "5px 0 0" }}>State Name : {stateLine}</p>
         </div>
-      : <p style={{ margin: "5px 0 0" }}>{addressFallback}</p>
-      }
-      <p style={{ margin: "5px 0 0" }}>State Name : {stateLine}</p>
+      </div>
     </div>
   )
 }

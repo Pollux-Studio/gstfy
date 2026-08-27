@@ -585,6 +585,7 @@ function ProductImageThumb({
           alt={label}
           width={size === "lg" ? 80 : 36}
           height={size === "lg" ? 80 : 36}
+          unoptimized
           className="size-full object-cover"
         />
       ) : (

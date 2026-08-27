@@ -138,6 +138,7 @@ export class AuthService {
         status: businessMembers.status,
         gstin: businessProfiles.gstin,
         registrationDate: businessProfiles.registrationDate,
+        logoUrl: businessProfiles.logoPublicUrl,
       })
       .from(businessMembers)
       .innerJoin(businesses, eq(businesses.id, businessMembers.businessId))
@@ -192,6 +193,7 @@ export class AuthService {
         status: membership.status,
         gstin: membership.gstin,
         registration_date: membership.registrationDate,
+        logo_url: membership.logoUrl,
         permissions:
           membership.role === "owner" || membership.role === "admin" ?
             {}

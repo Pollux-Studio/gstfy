@@ -261,7 +261,6 @@ function ProtectedPosPage({
     queryKey: ["auth", "current-user", session.accountType, session.user.id],
     queryFn: () => getCurrentUser(accessToken),
     enabled: accessToken.length > 0,
-    refetchOnMount: "always",
     staleTime: 1000 * 60 * 5,
   })
   const canAccessPos =
@@ -1070,6 +1069,7 @@ function ProductTile({
             src={product.primaryImage.publicUrl}
             alt={product.name}
             fill
+            unoptimized
             sizes="(min-width: 1536px) 16vw, (min-width: 1280px) 22vw, (min-width: 640px) 40vw, 90vw"
             className="object-cover"
           />

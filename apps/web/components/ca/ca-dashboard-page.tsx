@@ -35,19 +35,9 @@ import {
   subscribeToAuthSessionChange,
 } from "@/lib/auth/session"
 import {
-  getCaDashboard,
-  type CaClientRecord,
-} from "@/lib/ca/api"
-
-type FilingQueueItem = {
-  client: CaClientRecord
-  period: string
-  status: "ready" | "review" | "missing-gstin"
-  salesAmount: number
-  purchaseAmount: number
-}
-
-const currentFilingPeriod = "Aug 2026"
+  getCaDashboardOverview,
+  type CaDashboardClientReadiness,
+} from "@/lib/dashboard/api"
 
 export function CaDashboardPage() {
   const storedSession = React.useSyncExternalStore(
@@ -60,7 +50,7 @@ export function CaDashboardPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["ca", "dashboard", userId],
-    queryFn: () => getCaDashboard(accessToken),
+    queryFn: () => getCaDashboardOverview(accessToken),
     enabled: accessToken.length > 0 && userId.length > 0,
     staleTime: 1000 * 60 * 3,
   })
@@ -82,10 +72,9 @@ export function CaDashboardPage() {
     )
   }
 
-  const activeClients = data.clients.filter((client) => client.status === "active")
-  const filingQueue = buildFilingQueue(activeClients)
-  const readyQueue = filingQueue.filter((item) => item.status === "ready")
-  const reviewQueue = filingQueue.filter((item) => item.status !== "ready")
+  const filingQueue = data.clientReadiness
+  const readyQueue = filingQueue.filter((item) => item.readinessStatus === "ready")
+  const reviewQueue = filingQueue.filter((item) => item.readinessStatus !== "ready")
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
@@ -132,13 +121,13 @@ export function CaDashboardPage() {
                 <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                   Current filing period
                 </p>
-                <p className="mt-1 text-xl font-semibold">{currentFilingPeriod}</p>
+                <p className="mt-1 text-xl font-semibold">{data.period.label}</p>
               </div>
               <ReceiptTextIcon className="size-8 text-muted-foreground" />
             </div>
             <div className="mt-5 grid grid-cols-2 gap-2">
-              <DeadlinePill label="GSTR-1" date="11 Sep 2026" />
-              <DeadlinePill label="GSTR-3B" date="20 Sep 2026" />
+              <DeadlinePill label="GSTR-1" date={formatDate(data.deadlines.gstr1)} />
+              <DeadlinePill label="GSTR-3B" date={formatDate(data.deadlines.gstr3b)} />
             </div>
           </div>
         </div>
@@ -154,13 +143,13 @@ export function CaDashboardPage() {
         <DashboardMetric
           icon={<DownloadIcon className="size-4" />}
           label="Data extracts ready"
-          value={readyQueue.length}
+          value={data.summary.readyClientsTotal}
           helper="Client workspaces ready to download"
         />
         <DashboardMetric
           icon={<CalendarClockIcon className="size-4" />}
           label="Returns due"
-          value={data.summary.activeClientsTotal * 2}
+          value={data.summary.returnsDueTotal}
           helper="GSTR-1 and GSTR-3B for this period"
         />
         <DashboardMetric
@@ -244,13 +233,13 @@ export function CaDashboardPage() {
           <div className="mt-4 space-y-3">
             <FocusItem
               label="GSTR-1"
-              value="Due 11 Sep"
+              value={`Due ${formatShortDate(data.deadlines.gstr1)}`}
               tone="warning"
               description="Export outward supplies and HSN summary before filing."
             />
             <FocusItem
               label="GSTR-3B"
-              value="Due 20 Sep"
+              value={`Due ${formatShortDate(data.deadlines.gstr3b)}`}
               tone="success"
               description="Confirm ITC, tax payable, and challan amount."
             />
@@ -315,7 +304,7 @@ export function CaDashboardPage() {
                     </TableCell>
                     <TableCell>{item.period}</TableCell>
                     <TableCell>
-                      <FilingStatusBadge status={item.status} />
+                      <FilingStatusBadge status={item.readinessStatus} />
                     </TableCell>
                     <TableCell className="text-right font-mono">
                       {formatCurrency(item.salesAmount)}
@@ -363,29 +352,6 @@ export function CaDashboardPage() {
         </div>
       </section>
     </div>
-  )
-}
-
-function buildFilingQueue(clients: CaClientRecord[]): FilingQueueItem[] {
-  return clients.map((client, index) => {
-    const seed = getClientSeed(client)
-    const status =
-      !client.gstin ? "missing-gstin" : index % 4 === 1 ? "review" : "ready"
-
-    return {
-      client,
-      period: currentFilingPeriod,
-      status,
-      salesAmount: 180000 + (seed % 720000),
-      purchaseAmount: 90000 + (seed % 380000),
-    }
-  })
-}
-
-function getClientSeed(client: CaClientRecord) {
-  return Array.from(client.businessId || client.id || client.businessName).reduce(
-    (total, char) => total + char.charCodeAt(0),
-    0
   )
 }
 
@@ -456,7 +422,11 @@ function FocusItem({
   )
 }
 
-function FilingStatusBadge({ status }: { status: FilingQueueItem["status"] }) {
+function FilingStatusBadge({
+  status,
+}: {
+  status: CaDashboardClientReadiness["readinessStatus"]
+}) {
   if (status === "ready") {
     return (
       <Badge
@@ -477,6 +447,27 @@ function FilingStatusBadge({ status }: { status: FilingQueueItem["status"] }) {
       >
         <TriangleAlertIcon className="size-3.5" />
         GSTIN missing
+      </Badge>
+    )
+  }
+
+  if (status === "blocked") {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1.5 border-destructive/30 bg-destructive/10 text-destructive"
+      >
+        <TriangleAlertIcon className="size-3.5" />
+        Blocked
+      </Badge>
+    )
+  }
+
+  if (status === "no-data") {
+    return (
+      <Badge variant="outline" className="gap-1.5 bg-background">
+        <TriangleAlertIcon className="size-3.5" />
+        No data
       </Badge>
     )
   }
@@ -513,6 +504,31 @@ function formatCurrency(value: number) {
     currency: "INR",
     maximumFractionDigits: 0,
   }).format(value)
+}
+
+function formatDate(value: string) {
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date)
+}
+
+function formatShortDate(value: string) {
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+  }).format(date)
 }
 
 function getErrorMessage(error: unknown) {

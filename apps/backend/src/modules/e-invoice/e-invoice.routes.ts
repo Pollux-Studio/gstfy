@@ -39,6 +39,7 @@ import {
   buildEInvoiceOperationRequestHash,
   canRetryEInvoiceTechnically,
   checkEInvoiceEligibility,
+  eInvoiceSourceDocumentTypes,
   eInvoiceSchemaVersion,
   hashPayload,
   shouldRecoverExistingEInvoiceSubmission,
@@ -251,6 +252,93 @@ export async function registerEInvoiceRoutes(app: FastifyInstance) {
   })
 }
 
+export async function processEInvoiceAutomation(
+  access: BusinessAccess,
+  input: { sourceDocumentType: string; sourceDocumentId: string }
+) {
+  if (!isEInvoiceSourceDocumentType(input.sourceDocumentType)) {
+    return {
+      status: "skipped",
+      reason: "Unsupported e-invoice source document type.",
+    }
+  }
+
+  await assertCanUseEInvoice(access, "create")
+  await assertCanUseEInvoice(access, "edit")
+
+  const eligibility = await getSourceEligibility(access.business.id, {
+    sourceDocumentType: input.sourceDocumentType,
+    sourceDocumentId: input.sourceDocumentId,
+  })
+
+  if (eligibility.status !== "ELIGIBLE") {
+    return {
+      status: "skipped",
+      reason: eligibility.reason,
+      eligibility,
+    }
+  }
+
+  let record = await createEInvoiceRecord(access, {
+    sourceDocumentType: input.sourceDocumentType,
+    sourceDocumentId: input.sourceDocumentId,
+  })
+
+  if (record.submissionStatus === "IRN_GENERATED") {
+    return {
+      status: "completed",
+      eInvoiceId: record.id,
+      submissionStatus: record.submissionStatus,
+      irn: record.irn,
+    }
+  }
+
+  if (canRetryEInvoiceTechnically(record.submissionStatus)) {
+    record = await retryEInvoice(access, record.id, "Automatic retry after provider failure.")
+  }
+
+  if (
+    record.submissionStatus === "ELIGIBLE" ||
+    record.submissionStatus === "VALIDATION_FAILED"
+  ) {
+    const validation = await validateEInvoiceRecord(access, record.id)
+    record = validation.eInvoice
+
+    if (!validation.validation.canSubmit) {
+      return {
+        status: "skipped",
+        reason:
+          validation.validation.blockingIssues[0]?.message ??
+          "E-invoice needs correction before it can be generated.",
+        eInvoiceId: record.id,
+        submissionStatus: record.submissionStatus,
+      }
+    }
+  }
+
+  if (record.submissionStatus !== "READY" && record.submissionStatus !== "FAILED") {
+    return {
+      status: "skipped",
+      reason: `E-invoice is already ${record.submissionStatus}.`,
+      eInvoiceId: record.id,
+      submissionStatus: record.submissionStatus,
+    }
+  }
+
+  const generated = await generateEInvoice(access, record.id, "MOCK_GENERATE")
+
+  if (canRetryEInvoiceTechnically(generated.eInvoice.submissionStatus)) {
+    throw new Error(generated.eInvoice.errorMessage ?? "E-invoice provider request failed.")
+  }
+
+  return {
+    status: "completed",
+    eInvoiceId: generated.eInvoice.id,
+    submissionStatus: generated.eInvoice.submissionStatus,
+    irn: generated.eInvoice.irn,
+  }
+}
+
 async function createEInvoiceRecord(
   access: BusinessAccess,
   input: CreateEInvoiceRecordInput
@@ -323,6 +411,12 @@ async function createEInvoiceRecord(
   await insertAuditLog(access, record.id, "EINV_RECORD_CREATED", null, record, null)
 
   return record
+}
+
+function isEInvoiceSourceDocumentType(
+  value: string
+): value is EInvoiceSourceDocumentType {
+  return eInvoiceSourceDocumentTypes.includes(value as EInvoiceSourceDocumentType)
 }
 
 async function validateEInvoiceRecord(access: BusinessAccess, id: string) {

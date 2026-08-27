@@ -30,12 +30,32 @@ function ToastViewport({ className, ...props }: ToastPrimitive.Viewport.Props) {
     <ToastPrimitive.Viewport
       data-slot="toast-viewport"
       className={cn(
-        "pointer-events-none fixed right-4 bottom-4 z-50 w-[calc(100vw-2rem)] max-w-sm outline-none sm:w-full",
+        "pointer-events-none fixed right-4 bottom-4 z-[9999] w-[calc(100vw-2rem)] max-w-sm outline-none sm:w-full",
         className
       )}
       {...props}
     />
   )
+}
+
+function getToastVariantClass(type: string | undefined) {
+  if (type === "success") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-950 shadow-emerald-950/10 [&_[data-slot=toast-close]]:text-emerald-700/70 [&_[data-slot=toast-close]:hover]:text-emerald-950 [&_[data-slot=toast-description]]:text-emerald-900/75 [&_[data-slot=toast-icon]]:text-emerald-600 dark:border-emerald-900/60 dark:bg-emerald-950 dark:text-emerald-50 dark:shadow-emerald-950/30 dark:[&_[data-slot=toast-close]]:text-emerald-200/70 dark:[&_[data-slot=toast-close]:hover]:text-emerald-50 dark:[&_[data-slot=toast-description]]:text-emerald-100/75 dark:[&_[data-slot=toast-icon]]:text-emerald-300"
+  }
+
+  if (type === "error") {
+    return "border-red-200 bg-red-50 text-red-950 shadow-red-950/10 [&_[data-slot=toast-close]]:text-red-700/70 [&_[data-slot=toast-close]:hover]:text-red-950 [&_[data-slot=toast-description]]:text-red-900/75 [&_[data-slot=toast-icon]]:text-red-600 dark:border-red-900/60 dark:bg-red-950 dark:text-red-50 dark:shadow-red-950/30 dark:[&_[data-slot=toast-close]]:text-red-200/70 dark:[&_[data-slot=toast-close]:hover]:text-red-50 dark:[&_[data-slot=toast-description]]:text-red-100/75 dark:[&_[data-slot=toast-icon]]:text-red-300"
+  }
+
+  if (type === "warning") {
+    return "border-orange-200 bg-orange-50 text-orange-950 shadow-orange-950/10 [&_[data-slot=toast-close]]:text-orange-700/70 [&_[data-slot=toast-close]:hover]:text-orange-950 [&_[data-slot=toast-description]]:text-orange-900/75 [&_[data-slot=toast-icon]]:text-orange-600 dark:border-orange-900/60 dark:bg-orange-950 dark:text-orange-50 dark:shadow-orange-950/30 dark:[&_[data-slot=toast-close]]:text-orange-200/70 dark:[&_[data-slot=toast-close]:hover]:text-orange-50 dark:[&_[data-slot=toast-description]]:text-orange-100/75 dark:[&_[data-slot=toast-icon]]:text-orange-300"
+  }
+
+  if (type === "info") {
+    return "border-blue-200 bg-blue-50 text-blue-950 shadow-blue-950/10 [&_[data-slot=toast-close]]:text-blue-700/70 [&_[data-slot=toast-close]:hover]:text-blue-950 [&_[data-slot=toast-description]]:text-blue-900/75 [&_[data-slot=toast-icon]]:text-blue-600 dark:border-blue-900/60 dark:bg-blue-950 dark:text-blue-50 dark:shadow-blue-950/30 dark:[&_[data-slot=toast-close]]:text-blue-200/70 dark:[&_[data-slot=toast-close]:hover]:text-blue-50 dark:[&_[data-slot=toast-description]]:text-blue-100/75 dark:[&_[data-slot=toast-icon]]:text-blue-300"
+  }
+
+  return ""
 }
 
 function Toast({ className, ...props }: ToastPrimitive.Root.Props) {
@@ -163,7 +183,7 @@ function ToastIcon({ type }: { type: string | undefined }) {
 
   if (type === "error") {
     icon = (
-      <OctagonXIcon className="text-destructive" aria-hidden="true" />
+      <OctagonXIcon aria-hidden="true" />
     )
   }
 
@@ -191,7 +211,11 @@ function ToastList() {
   const { toasts } = ToastPrimitive.useToastManager()
 
   return toasts.map((toastItem) => (
-    <Toast key={toastItem.id} toast={toastItem}>
+    <Toast
+      key={toastItem.id}
+      toast={toastItem}
+      className={getToastVariantClass(toastItem.type)}
+    >
       <ToastContent>
         <ToastIcon type={toastItem.type} />
         <div className="flex min-w-0 flex-1 flex-col gap-1">

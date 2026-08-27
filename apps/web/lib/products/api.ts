@@ -260,6 +260,7 @@ export function uploadProductImage(file: File, accessToken: string) {
     method: "POST",
     body: formData,
     accessToken,
+    retry: false,
   });
 }
 

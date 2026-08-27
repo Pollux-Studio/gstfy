@@ -11,7 +11,7 @@ import {
   YAxis,
 } from "recharts"
 
-import type { RevenueStatisticPoint } from "@/lib/dashboard/mock-overview"
+import type { RevenueStatisticPoint } from "@/lib/dashboard/api"
 
 const compactFormatter = new Intl.NumberFormat("en-IN", {
   notation: "compact",

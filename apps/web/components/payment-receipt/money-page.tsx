@@ -298,9 +298,9 @@ export function MoneyDocumentsPage({ mode }: { mode: MoneyMode }) {
       await reversePayment(accessToken, input.id, input.reason)
     },
     onSuccess: async () => {
-      toast.success(`${capitalize(mode)} reversed.`)
       setReversingDocument(null)
       setReverseReason("")
+      toast.success(`${capitalize(mode)} reversed.`)
       await invalidateMoneyQueries(queryClient)
     },
     onError: (error) => toast.error(getErrorMessage(error)),
@@ -315,8 +315,8 @@ export function MoneyDocumentsPage({ mode }: { mode: MoneyMode }) {
       await deletePayment(accessToken, documentId)
     },
     onSuccess: async () => {
-      toast.success(`Draft ${mode} deleted.`)
       setDeletingDocument(null)
+      toast.success(`Draft ${mode} deleted.`)
       await invalidateMoneyQueries(queryClient)
     },
     onError: (error) => toast.error(getErrorMessage(error)),
@@ -1193,8 +1193,8 @@ function MoneyCreateDialog({
       await postPayment(accessToken, documentId, selectedAllocations)
     },
     onSuccess: async () => {
-      toast.success(`${capitalize(mode)} posted.`)
       onOpenChange(false)
+      toast.success(`${capitalize(mode)} posted.`)
       await invalidateMoneyQueries(queryClient)
     },
     onError: (error) => toast.error(getErrorMessage(error)),

@@ -274,10 +274,10 @@ export function GstWorkspacePage() {
       importExternalGstRecords(accessToken, payload),
     onSuccess: async (result) => {
       await invalidateGstQueries(queryClient)
+      setImportOpen(false)
       toast.success("GST import completed", {
         description: `${result.imported} rows imported, ${result.autoMatch.matched} matched.`,
       })
-      setImportOpen(false)
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   })
@@ -485,9 +485,9 @@ export function GstWorkspacePage() {
     },
     onSuccess: async () => {
       await invalidateGstQueries(queryClient)
-      toast.success("GST record updated")
       setActionState(null)
       setActionReason("")
+      toast.success("GST record updated")
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   })

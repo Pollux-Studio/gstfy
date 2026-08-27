@@ -5,19 +5,25 @@ import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { format, parseISO } from "date-fns"
+import Image from "next/image"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   BadgeCheckIcon,
   BarcodeIcon,
   Building2Icon,
   CalendarIcon,
+  CircleCheckIcon,
+  CircleDashedIcon,
   FileTextIcon,
   Globe2Icon,
+  ImageIcon,
   KeyRoundIcon,
   PrinterIcon,
   ReceiptTextIcon,
   RefreshCwIcon,
   SaveIcon,
   Settings2Icon,
+  UploadCloudIcon,
   WarehouseIcon,
 } from "lucide-react"
 import { Controller, useForm, useWatch } from "react-hook-form"
@@ -36,6 +42,7 @@ import {
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { IndianPhoneInput } from "@/components/ui/indian-phone-input"
+import { ImageCropDialog } from "@/components/media/image-crop-dialog"
 import {
   Select,
   SelectContent,
@@ -47,6 +54,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getStoredAuthSession, setStoredAuthSession } from "@/lib/auth/session"
+import {
+  getAutomationJobs,
+  getAutomationSettings,
+  updateAutomationSettings,
+  type UpdateAutomationSettingsPayload,
+} from "@/lib/automation/api"
 import {
   barcodeSubmitKeyOptions,
   getBarcodeSubmitKeyFromKeyboardEventKey,
@@ -75,6 +88,8 @@ import {
   updateGstRateSettings,
   updateInvoiceSettings,
   updatePrinterSettings,
+  uploadBusinessLogo,
+  uploadInvoiceLogo,
   verifyBusinessCaReferral,
   type SettingsResponse,
 } from "@/lib/settings/api"
@@ -84,6 +99,9 @@ const phonePattern = /^\d{10}$/
 const pincodePattern = /^\d{6}$/
 const invoicePrefixPattern = /^[A-Z0-9-]{2,10}$/
 const tenantSlugPattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/
+const businessLogoMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"])
+const businessLogoSourceMaxBytes = 10 * 1024 * 1024
+const businessLogoUploadMaxBytes = 2 * 1024 * 1024
 const reservedTenantSlugs = new Set([
   "api",
   "app",
@@ -168,6 +186,8 @@ type BarcodeScannerTestResult = {
   capturedAt: string
 }
 
+type LogoCropTarget = "workspace" | "invoice"
+
 const standardInvoiceTemplate = getInvoiceTemplateOptions("sales")[0]!
 
 const gstSlabOptions = [5, 12, 18, 28] as const
@@ -228,6 +248,47 @@ const valuationMethodOptions: Array<{
   },
 ]
 
+const automationSettingOptions: Array<{
+  key: keyof UpdateAutomationSettingsPayload
+  label: string
+  description: string
+  enabledLabel: string
+  disabledLabel: string
+}> = [
+  {
+    key: "autoStockAccountingEnabled",
+    label: "Stock posting",
+    description:
+      "After purchase, sales, POS, and opening stock entries, GSTFY checks that inventory ledgers are synced.",
+    enabledLabel: "Automatic",
+    disabledLabel: "Manual review",
+  },
+  {
+    key: "autoEInvoiceEnabled",
+    label: "E-invoice generation",
+    description:
+      "Eligible B2B documents can be queued for IRN generation without asking the dealer to repeat work.",
+    enabledLabel: "Queue eligible bills",
+    disabledLabel: "Manual only",
+  },
+  {
+    key: "bankAutoMatchHighConfidenceEnabled",
+    label: "Bank auto-match",
+    description:
+      "Imported statement lines and posted bank/UPI/card entries are matched when amount, date, and reference are confident.",
+    enabledLabel: "Auto-match",
+    disabledLabel: "Manual matching",
+  },
+  {
+    key: "notifyAutomationFailures",
+    label: "Failure alerts",
+    description:
+      "Show automation failures so the owner can fix missing data before GST filing or reconciliation.",
+    enabledLabel: "Notify",
+    disabledLabel: "Silent",
+  },
+]
+
 const possessionOptions = [
   { value: "own", label: "Own" },
   { value: "rented", label: "Rented" },
@@ -269,6 +330,12 @@ const settingsTabs = [
     icon: <WarehouseIcon className="size-4" />,
   },
   {
+    value: "automation",
+    label: "Automation",
+    description: "Background posting and matching",
+    icon: <Settings2Icon className="size-4" />,
+  },
+  {
     value: "connectors",
     label: "Connectors",
     description: "Scanners and local devices",
@@ -276,9 +343,17 @@ const settingsTabs = [
   },
 ] as const
 
+type SettingsTabValue = (typeof settingsTabs)[number]["value"]
+const defaultSettingsTab: SettingsTabValue = "business"
+const settingsTabValues = new Set<string>(settingsTabs.map((tab) => tab.value))
+
 export function SettingsPage() {
   const storedSession = getStoredAuthSession()
   const accessToken = storedSession?.session.accessToken ?? ""
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const activeSettingsTab = getSettingsTabValue(searchParams.get("tab"))
   const queryClient = useQueryClient()
   const [isBusinessEditing, setIsBusinessEditing] = React.useState(false)
   const [caReferralCode, setCaReferralCode] = React.useState("")
@@ -295,6 +370,13 @@ export function SettingsPage() {
   const [barcodeTestResult, setBarcodeTestResult] =
     React.useState<BarcodeScannerTestResult | null>(null)
   const barcodeTestStartRef = React.useRef<number | null>(null)
+  const businessLogoInputRef = React.useRef<HTMLInputElement | null>(null)
+  const invoiceLogoInputRef = React.useRef<HTMLInputElement | null>(null)
+  const [logoCrop, setLogoCrop] = React.useState<{
+    file: File
+    target: LogoCropTarget
+  } | null>(null)
+  const [isLogoCropOpen, setIsLogoCropOpen] = React.useState(false)
 
   const {
     data,
@@ -310,6 +392,18 @@ export function SettingsPage() {
     queryKey: ["inventory", "settings"],
     queryFn: () => getInventorySettings(accessToken),
     enabled: accessToken.length > 0,
+  })
+  const automationSettingsQuery = useQuery({
+    queryKey: ["automation", "settings"],
+    queryFn: () => getAutomationSettings(accessToken),
+    enabled: accessToken.length > 0,
+    staleTime: 1000 * 60 * 5,
+  })
+  const automationJobsQuery = useQuery({
+    queryKey: ["automation", "jobs", "recent"],
+    queryFn: () => getAutomationJobs(accessToken),
+    enabled: accessToken.length > 0,
+    refetchInterval: 30_000,
   })
 
   const businessForm = useForm<BusinessDetailsFormValues>({
@@ -464,6 +558,29 @@ export function SettingsPage() {
     },
   })
 
+  const businessLogoMutation = useMutation({
+    mutationFn: (file: File) => uploadBusinessLogo(file, accessToken),
+    onSuccess: (nextSettings) => {
+      setSettingsCache(queryClient, nextSettings)
+      void queryClient.invalidateQueries({ queryKey: ["auth", "current-user"] })
+      toast.success("Workspace logo updated.")
+    },
+    onError: (mutationError) => {
+      toast.error(getErrorMessage(mutationError))
+    },
+  })
+
+  const invoiceLogoMutation = useMutation({
+    mutationFn: (file: File) => uploadInvoiceLogo(file, accessToken),
+    onSuccess: (nextSettings) => {
+      setSettingsCache(queryClient, nextSettings)
+      toast.success("Invoice logo updated.")
+    },
+    onError: (mutationError) => {
+      toast.error(getErrorMessage(mutationError))
+    },
+  })
+
   const tenantMutation = useMutation({
     mutationFn: () => {
       const tenantSlug = normalizeTenantSlugInput(tenantSlugInput)
@@ -587,6 +704,18 @@ export function SettingsPage() {
       toast.error(getErrorMessage(mutationError))
     },
   })
+  const automationMutation = useMutation({
+    mutationFn: (values: UpdateAutomationSettingsPayload) =>
+      updateAutomationSettings(values, accessToken),
+    onSuccess: (nextAutomationSettings) => {
+      queryClient.setQueryData(["automation", "settings"], nextAutomationSettings)
+      queryClient.invalidateQueries({ queryKey: ["automation", "jobs", "recent"] })
+      toast.success("Automation settings updated.")
+    },
+    onError: (mutationError) => {
+      toast.error(getErrorMessage(mutationError))
+    },
+  })
 
   const businessStateMeta =
     data ?
@@ -624,6 +753,8 @@ export function SettingsPage() {
     data.business.tenantUrl ||
     (currentTenantSlug ? `${currentTenantSlug}.gstfy.in` : "Not set")
   const inventorySettings = inventorySettingsQuery.data?.settings
+  const automationSettings = automationSettingsQuery.data?.settings
+  const automationJobs = automationJobsQuery.data?.jobs ?? []
 
   function updateBarcodeScannerSettings(
     nextSettings: Partial<BarcodeScannerConnectorSettings>
@@ -682,8 +813,90 @@ export function SettingsPage() {
     updateBarcodeScannerSettings({ submitKey })
   }
 
+  function handleBusinessLogoInputChange(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    handleLogoInputChange(event, "workspace")
+  }
+
+  function handleInvoiceLogoInputChange(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    handleLogoInputChange(event, "invoice")
+  }
+
+  function handleLogoInputChange(
+    event: React.ChangeEvent<HTMLInputElement>,
+    target: LogoCropTarget
+  ) {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+
+    if (!file) {
+      return
+    }
+
+    if (!businessLogoMimeTypes.has(file.type)) {
+      toast.error("Upload a JPG, PNG, or WebP logo.")
+      return
+    }
+
+    if (file.size > businessLogoSourceMaxBytes) {
+      toast.error("Logo source image must be 10 MB or smaller.")
+      return
+    }
+
+    setLogoCrop({ file, target })
+    setIsLogoCropOpen(true)
+  }
+
+  function handleLogoCropCancel() {
+    setIsLogoCropOpen(false)
+    setLogoCrop(null)
+  }
+
+  function handleLogoCrop(croppedFile: File) {
+    const target = logoCrop?.target ?? "workspace"
+    setIsLogoCropOpen(false)
+    setLogoCrop(null)
+
+    if (croppedFile.size > businessLogoUploadMaxBytes) {
+      toast.error("Cropped logo must be 2 MB or smaller.")
+      return
+    }
+
+    if (target === "invoice") {
+      invoiceLogoMutation.mutate(croppedFile)
+      return
+    }
+
+    businessLogoMutation.mutate(croppedFile)
+  }
+
+  function handleSettingsTabChange(value: string) {
+    const nextTab = getSettingsTabValue(value)
+    const params = new URLSearchParams(searchParams.toString())
+
+    if (nextTab === defaultSettingsTab) {
+      params.delete("tab")
+    } else {
+      params.set("tab", nextTab)
+    }
+
+    const nextSearch = params.toString()
+    router.replace(nextSearch ? `${pathname}?${nextSearch}` : pathname, {
+      scroll: false,
+    })
+  }
+
   return (
-    <Tabs defaultValue="business" className="contents">
+    <>
+    <Tabs
+      value={activeSettingsTab}
+      defaultValue={defaultSettingsTab}
+      onValueChange={handleSettingsTabChange}
+      className="contents"
+    >
       <div className="grid w-full flex-1 p-3 pt-3 sm:p-4 lg:grid-cols-[164px_minmax(0,760px)] lg:gap-8 lg:p-5 lg:pt-4 xl:grid-cols-[176px_minmax(0,760px)] xl:gap-7">
         <aside className="hidden lg:block">
           <div className="sticky top-20 pr-4">
@@ -706,22 +919,6 @@ export function SettingsPage() {
         </aside>
 
         <main className="min-w-0 space-y-6">
-          <section className="scroll-mt-20 border-b border-border pb-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <Settings2Icon className="size-4 text-muted-foreground" />
-                <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
-              </div>
-              <Badge
-                variant="outline"
-                className="w-fit gap-1.5 bg-background font-mono text-[11px] tracking-[0.16em]"
-              >
-                <ReceiptTextIcon className="size-3.5" />
-                {data.registration.gstin}
-              </Badge>
-            </div>
-          </section>
-
           <TabsList className="grid h-auto grid-cols-2 gap-2 rounded-none border-0 bg-transparent p-0 shadow-none lg:hidden">
             {settingsTabs.map((tab) => (
               <TabsTrigger
@@ -775,6 +972,28 @@ export function SettingsPage() {
                       }
                     />
                   </div>
+
+                  <BusinessLogoPanel
+                    title="Workspace logo"
+                    badgeLabel="Sidebar"
+                    emptyDescription="Shown in the sidebar and workspace switcher. It will be cropped square before saving."
+                    imageAlt="Workspace logo"
+                    logoUrl={data.business.logoUrl}
+                    fileName={data.business.logoFileName}
+                    fileSizeBytes={data.business.logoFileSizeBytes}
+                    uploadedAt={data.business.logoUploadedAt}
+                    canEdit={canEditBusiness}
+                    uploading={businessLogoMutation.isPending}
+                    onPick={() => businessLogoInputRef.current?.click()}
+                    previewVariant="square"
+                  />
+                  <input
+                    ref={businessLogoInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handleBusinessLogoInputChange}
+                  />
 
                   <section className="rounded-xl border border-border bg-background px-3 py-3">
                     <div className="flex flex-col gap-3 md:flex-row md:items-end">
@@ -1223,6 +1442,29 @@ export function SettingsPage() {
             title="Invoice settings"
             description="Set the default invoice style and numbering prefix used when new sales invoices are created."
           >
+            <div className="space-y-5">
+              <BusinessLogoPanel
+                title="Invoice logo"
+                badgeLabel="Invoice PDF"
+                emptyDescription="Shown on sales and purchase invoice PDFs. It will keep a wide logo shape."
+                imageAlt="Invoice logo"
+                logoUrl={data.invoiceSettings.logoUrl}
+                fileName={data.invoiceSettings.logoFileName}
+                fileSizeBytes={data.invoiceSettings.logoFileSizeBytes}
+                uploadedAt={data.invoiceSettings.logoUploadedAt}
+                canEdit={canEditBusiness}
+                uploading={invoiceLogoMutation.isPending}
+                onPick={() => invoiceLogoInputRef.current?.click()}
+                previewVariant="wide"
+              />
+              <input
+                ref={invoiceLogoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleInvoiceLogoInputChange}
+              />
+
             <form onSubmit={invoiceForm.handleSubmit((values) => invoiceMutation.mutate(values))}>
               <FieldGroup>
                 <Field>
@@ -1328,6 +1570,7 @@ export function SettingsPage() {
                 </Button>
               </div>
             </form>
+            </div>
           </SettingsSection>
         </TabsContent>
 
@@ -1751,6 +1994,166 @@ export function SettingsPage() {
           </SettingsSection>
         </TabsContent>
 
+        <TabsContent value="automation" className="mt-0">
+          <SettingsSection
+            icon={<Settings2Icon className="size-4" />}
+            title="Automation"
+            description="Let GSTFY handle low-risk background work after the dealer posts a bill, imports a statement, or creates an eligible GST document."
+            badgeLabel={
+              automationSettings?.autoStockAccountingEnabled ?
+                "Smart actions on"
+              : "Manual controls"
+            }
+          >
+            {automationSettingsQuery.isLoading ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <Skeleton className="h-28 rounded-2xl" />
+                <Skeleton className="h-28 rounded-2xl" />
+                <Skeleton className="h-28 rounded-2xl" />
+                <Skeleton className="h-28 rounded-2xl" />
+              </div>
+            ) : automationSettings ? (
+              <div className="space-y-5">
+                <div className="grid gap-3 md:grid-cols-2">
+                  {automationSettingOptions.map((option) => {
+                    const enabled = Boolean(automationSettings?.[option.key])
+
+                    return (
+                      <button
+                        key={option.key}
+                        type="button"
+                        disabled={
+                          !canEditBusiness ||
+                          automationMutation.isPending ||
+                          !automationSettings
+                        }
+                        onClick={() =>
+                          automationMutation.mutate({
+                            [option.key]: !enabled,
+                          })
+                        }
+                        className={cn(
+                          "rounded-2xl border p-4 text-left transition-colors",
+                          enabled ?
+                            "border-emerald-500/30 bg-emerald-500/10"
+                          : "border-border bg-background hover:bg-muted/30",
+                          (!canEditBusiness ||
+                            automationMutation.isPending ||
+                            !automationSettings) &&
+                            "cursor-not-allowed opacity-60"
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 space-y-1">
+                            <p className="text-sm font-medium">{option.label}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {option.description}
+                            </p>
+                          </div>
+                          <span
+                            className={cn(
+                              "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border",
+                              enabled ?
+                                "border-emerald-500 bg-emerald-500 text-white"
+                              : "border-muted-foreground/30 bg-background text-muted-foreground"
+                            )}
+                          >
+                            {enabled ? (
+                              <CircleCheckIcon className="size-3.5" />
+                            ) : (
+                              <CircleDashedIcon className="size-3.5" />
+                            )}
+                          </span>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "mt-4 bg-background",
+                            enabled && "border-emerald-500/30 text-emerald-700"
+                          )}
+                        >
+                          {enabled ? option.enabledLabel : option.disabledLabel}
+                        </Badge>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div className="rounded-2xl border border-border bg-muted/20">
+                  <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+                    <div>
+                      <h3 className="text-sm font-medium">Recent automation</h3>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Queued background actions for stock checks, e-invoice, and bank matching.
+                      </p>
+                    </div>
+                    {automationMutation.isPending ? (
+                      <Badge variant="outline" className="gap-1.5 bg-background">
+                        <Spinner className="size-3.5" />
+                        Saving
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-background">
+                        Auto-run
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="divide-y divide-border">
+                    {automationJobsQuery.isLoading ? (
+                      <>
+                        <AutomationJobSkeleton />
+                        <AutomationJobSkeleton />
+                        <AutomationJobSkeleton />
+                      </>
+                    ) : automationJobs.length > 0 ? (
+                      automationJobs.map((job) => (
+                        <div
+                          key={job.id}
+                          className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">
+                              {formatAutomationJobType(job.jobType)}
+                            </p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {job.sourceType} · {formatAutomationTime(job.updatedAt)}
+                            </p>
+                            {job.lastErrorMessage ? (
+                              <p className="mt-1 line-clamp-2 text-xs text-destructive">
+                                {job.lastErrorMessage}
+                              </p>
+                            ) : null}
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "w-fit justify-self-start bg-background sm:justify-self-end",
+                              getAutomationStatusClassName(job.status)
+                            )}
+                          >
+                            {formatAutomationJobStatus(job.status)}
+                          </Badge>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="flex items-center gap-3 px-4 py-6 text-sm text-muted-foreground">
+                        <CircleCheckIcon className="size-5 text-emerald-600" />
+                        No background work has been queued yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                {getErrorMessage(automationSettingsQuery.error) ||
+                  "Unable to load automation settings."}
+              </div>
+            )}
+          </SettingsSection>
+        </TabsContent>
+
         <TabsContent value="connectors" className="mt-0">
           <SettingsSection
             icon={<BarcodeIcon className="size-4" />}
@@ -1977,6 +2380,24 @@ export function SettingsPage() {
         </main>
       </div>
     </Tabs>
+    {logoCrop ? (
+      <ImageCropDialog
+        key={`${logoCrop.target}-${logoCrop.file.name}-${logoCrop.file.lastModified}`}
+        open={isLogoCropOpen}
+        file={logoCrop.file}
+        title={logoCrop.target === "invoice" ? "Crop invoice logo" : "Crop workspace logo"}
+        description={
+          logoCrop.target === "invoice" ?
+            "Crop the invoice logo as a wide rectangle so it fits the invoice header cleanly."
+          : "Make the workspace logo square so it fits the sidebar and account switcher cleanly."
+        }
+        outputWidth={logoCrop.target === "invoice" ? 960 : 512}
+        outputHeight={logoCrop.target === "invoice" ? 320 : 512}
+        onCancel={handleLogoCropCancel}
+        onCrop={handleLogoCrop}
+      />
+    ) : null}
+    </>
   )
 }
 
@@ -2012,6 +2433,68 @@ function SettingsSection({
       {children}
     </section>
   )
+}
+
+function AutomationJobSkeleton() {
+  return (
+    <div className="grid gap-2 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-44" />
+        <Skeleton className="h-3 w-64 max-w-full" />
+      </div>
+      <Skeleton className="h-6 w-24 rounded-md" />
+    </div>
+  )
+}
+
+function formatAutomationJobType(jobType: string) {
+  const labels: Record<string, string> = {
+    "stock.posted-document.sync": "Stock ledger check",
+    "stock.opening-stock.sync": "Opening stock check",
+    "einvoice.generate": "E-invoice generation",
+    "bank-reconciliation.auto-match": "Bank auto-match",
+    "gst-report.refresh": "GST report refresh",
+    "filing-review.prepare": "Filing review",
+  }
+
+  return labels[jobType] ?? jobType
+}
+
+function formatAutomationJobStatus(status: string) {
+  const labels: Record<string, string> = {
+    queued: "Queued",
+    running: "Running",
+    completed: "Completed",
+    failed: "Failed",
+    retry_scheduled: "Retrying",
+    skipped: "Skipped",
+  }
+
+  return labels[status] ?? status
+}
+
+function getAutomationStatusClassName(status: string) {
+  if (status === "completed") {
+    return "border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+  }
+
+  if (status === "failed") {
+    return "border-destructive/30 text-destructive"
+  }
+
+  if (status === "running" || status === "retry_scheduled") {
+    return "border-amber-500/30 text-amber-700 dark:text-amber-300"
+  }
+
+  return "text-muted-foreground"
+}
+
+function formatAutomationTime(value: string) {
+  try {
+    return format(parseISO(value), "dd MMM yyyy, h:mm a")
+  } catch {
+    return "Just now"
+  }
 }
 
 function InvoiceTemplatePreview({
@@ -2174,6 +2657,99 @@ function ReadOnlyDetail({
   )
 }
 
+function BusinessLogoPanel({
+  badgeLabel,
+  canEdit,
+  emptyDescription,
+  fileName,
+  fileSizeBytes,
+  imageAlt,
+  logoUrl,
+  onPick,
+  previewVariant = "square",
+  title,
+  uploadedAt,
+  uploading,
+}: {
+  badgeLabel: string
+  canEdit: boolean
+  emptyDescription: string
+  fileName: string | null
+  fileSizeBytes: number | null
+  imageAlt: string
+  logoUrl: string | null
+  onPick: () => void
+  previewVariant?: "square" | "wide"
+  title: string
+  uploadedAt: string | null
+  uploading: boolean
+}) {
+  const isWidePreview = previewVariant === "wide"
+
+  return (
+    <section
+      className={cn(
+        "grid gap-3 rounded-xl border border-border bg-background px-3 py-3 sm:items-center",
+        isWidePreview ?
+          "sm:grid-cols-[10.5rem_minmax(0,1fr)_auto]"
+        : "sm:grid-cols-[4.5rem_minmax(0,1fr)_auto]"
+      )}
+    >
+      <div
+        className={cn(
+          "relative flex items-center justify-center overflow-hidden border border-border bg-muted/30 text-muted-foreground",
+          isWidePreview ? "h-16 w-40 rounded-lg" : "size-16 rounded-xl",
+          logoUrl && "border-transparent bg-background"
+        )}
+      >
+        {logoUrl ? (
+          <Image
+            src={logoUrl}
+            alt={imageAlt}
+            width={isWidePreview ? 160 : 64}
+            height={64}
+            unoptimized
+            className={cn(
+              "rounded-[inherit]",
+              isWidePreview ? "h-full w-full object-contain" : "size-full object-cover"
+            )}
+          />
+        ) : (
+          <ImageIcon className="size-6" />
+        )}
+      </div>
+      <div className="min-w-0 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-medium">{title}</h3>
+          <Badge
+            variant="outline"
+            className="bg-background text-[11px] font-normal text-muted-foreground"
+          >
+            {badgeLabel}
+          </Badge>
+        </div>
+        <p className="text-xs leading-5 text-muted-foreground">
+          {fileName ?
+            `${fileName}${fileSizeBytes ? ` · ${formatFileSize(fileSizeBytes)}` : ""}${
+              uploadedAt ? ` · ${formatDate(uploadedAt)}` : ""
+            }`
+          : emptyDescription}
+        </p>
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-8 gap-1.5 text-xs"
+        disabled={!canEdit || uploading}
+        onClick={onPick}
+      >
+        {uploading ? <Spinner /> : <UploadCloudIcon className="size-3.5" />}
+        {uploading ? "" : logoUrl ? "Change logo" : "Upload logo"}
+      </Button>
+    </section>
+  )
+}
+
 function ConnectorDetail({
   label,
   value,
@@ -2225,6 +2801,10 @@ function setSettingsCache(
   queryClient.setQueryData(["settings"], nextSettings)
 }
 
+function getSettingsTabValue(value: string | null): SettingsTabValue {
+  return value && settingsTabValues.has(value) ? (value as SettingsTabValue) : defaultSettingsTab
+}
+
 function toggleGstSlab(
   currentSlabs: GstRateSettingsFormValues["enabledGstSlabs"],
   targetSlab: GstRateSettingsFormValues["enabledGstSlabs"][number]
@@ -2266,6 +2846,14 @@ function formatDate(value: string) {
     month: "short",
     year: "numeric",
   }).format(new Date(value))
+}
+
+function formatFileSize(value: number) {
+  if (value < 1024 * 1024) {
+    return `${Math.max(1, Math.round(value / 1024))} KB`
+  }
+
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function formatDateTime(value: string) {

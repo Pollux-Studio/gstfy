@@ -1201,9 +1201,9 @@ function PurchaseBillDialog({
     mutationFn: (payload: CreatePurchaseBillPayload) =>
       createPurchaseBill(accessToken, payload),
     onSuccess: async ({ bill }) => {
-      toast.success(bill.status === "posted" ? "Purchase bill posted." : "Purchase draft saved.")
       setForm(initialForm)
       onOpenChange(false)
+      toast.success(bill.status === "posted" ? "Purchase bill posted." : "Purchase draft saved.")
       await invalidatePurchaseWorkspace(queryClient)
     },
     onError: (error) => toast.error(getErrorMessage(error)),
@@ -1708,11 +1708,11 @@ function PurchaseAdjustmentDialog({
       })
     },
     onSuccess: async () => {
-      toast.success("Draft adjustment created.")
       setSourceDocumentId("")
       setLineValues({})
       setReason("")
       onOpenChange(false)
+      toast.success("Draft adjustment created.")
       await invalidatePurchaseWorkspace(queryClient)
     },
     onError: (error) => toast.error(getErrorMessage(error)),
