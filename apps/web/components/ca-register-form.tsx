@@ -13,7 +13,7 @@ import {
   MailIcon,
   UserRoundIcon,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState, useSyncExternalStore } from "react"
 import { useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
 
@@ -32,9 +32,9 @@ import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
-  InputGroupInput,
 } from "@/components/ui/input-group"
 import { Spinner } from "@/components/ui/spinner"
+import { SmoothInputGroupInput } from "@/components/ui/skiper-ui/skiper106"
 import { cn } from "@/lib/utils"
 
 type CaRegisterValues = {
@@ -53,7 +53,11 @@ export function CaRegisterForm({
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [submitError, setSubmitError] = useState("")
-  const [caLoginHref, setCaLoginHref] = useState("/auth/ca/login")
+  const caLoginHref = useSyncExternalStore(
+    subscribeToLocationSnapshot,
+    getCaLoginHrefSnapshot,
+    getCaLoginHrefServerSnapshot
+  )
 
   const schema = useMemo(
     () =>
@@ -101,10 +105,6 @@ export function CaRegisterForm({
   const registerMutation = useMutation({
     mutationFn: caRegister,
   })
-
-  useEffect(() => {
-    setCaLoginHref(getAuthSubdomainUrl("/auth/ca/login"))
-  }, [])
 
   async function handleSubmit(formValues: CaRegisterValues) {
     setSubmitError("")
@@ -158,7 +158,7 @@ export function CaRegisterForm({
               <InputGroupAddon>
                 <UserRoundIcon className="size-4" />
               </InputGroupAddon>
-              <InputGroupInput
+              <SmoothInputGroupInput
                 id="ca-full-name"
                 placeholder="Prasanth Kumar"
                 autoComplete="name"
@@ -175,7 +175,7 @@ export function CaRegisterForm({
               <InputGroupAddon>
                 <BriefcaseBusinessIcon className="size-4" />
               </InputGroupAddon>
-              <InputGroupInput
+              <SmoothInputGroupInput
                 id="ca-practice-name"
                 placeholder="Prasanth & Co"
                 autoComplete="organization"
@@ -192,7 +192,7 @@ export function CaRegisterForm({
               <InputGroupAddon>
                 <MailIcon className="size-4" />
               </InputGroupAddon>
-              <InputGroupInput
+              <SmoothInputGroupInput
                 id="ca-register-email"
                 type="email"
                 placeholder="ca@gstfy.in"
@@ -210,7 +210,7 @@ export function CaRegisterForm({
               <InputGroupAddon>
                 <LockKeyholeIcon className="size-4" />
               </InputGroupAddon>
-              <InputGroupInput
+              <SmoothInputGroupInput
                 id="ca-register-password"
                 type={showPassword ? "text" : "password"}
                 placeholder="Create a password"
@@ -240,7 +240,7 @@ export function CaRegisterForm({
               <InputGroupAddon>
                 <LockKeyholeIcon className="size-4" />
               </InputGroupAddon>
-              <InputGroupInput
+              <SmoothInputGroupInput
                 id="ca-confirm-password"
                 type={showConfirmPassword ? "text" : "password"}
                 placeholder="Re-enter your password"
@@ -333,6 +333,18 @@ function navigateAfterCaAuth(redirectTo: string, router: ReturnType<typeof useRo
   }
 
   router.push(normalizedRedirect)
+}
+
+function subscribeToLocationSnapshot() {
+  return () => {}
+}
+
+function getCaLoginHrefSnapshot() {
+  return getAuthSubdomainUrl("/auth/ca/login")
+}
+
+function getCaLoginHrefServerSnapshot() {
+  return "/auth/ca/login"
 }
 
 function normalizeCaRedirectPath(path: string) {

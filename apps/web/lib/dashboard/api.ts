@@ -87,6 +87,16 @@ export type BusinessDashboardOverview = {
   }
 }
 
+export type DashboardLowStockResponse = {
+  totalCount: number
+  items: DashboardLowStockItem[]
+}
+
+export type DashboardRecentActivityResponse = {
+  sales: DashboardRecentDocument[]
+  purchases: DashboardRecentDocument[]
+}
+
 export type CaDashboardClientReadiness = {
   client: {
     id: string
@@ -151,6 +161,26 @@ export function getBusinessDashboard(
 ) {
   return apiRequest<BusinessDashboardOverview>(
     `/dashboard/overview${toQueryString(query)}`,
+    {
+      method: "GET",
+      accessToken,
+    }
+  )
+}
+
+export function getDashboardLowStock(accessToken: string, limit = 10) {
+  return apiRequest<DashboardLowStockResponse>(
+    `/dashboard/low-stock${toQueryString({ limit })}`,
+    {
+      method: "GET",
+      accessToken,
+    }
+  )
+}
+
+export function getDashboardRecentActivity(accessToken: string, limit = 3) {
+  return apiRequest<DashboardRecentActivityResponse>(
+    `/dashboard/recent-activity${toQueryString({ limit })}`,
     {
       method: "GET",
       accessToken,

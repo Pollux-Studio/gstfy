@@ -6,12 +6,12 @@ import * as React from "react"
 import {
   InputGroup,
   InputGroupAddon,
-  InputGroupInput,
   InputGroupText,
 } from "@/components/ui/input-group"
+import { SmoothInputGroupInput } from "@/components/ui/skiper-ui/skiper106"
 import { cn } from "@/lib/utils"
 
-type IndianPhoneInputProps = React.ComponentProps<typeof InputGroupInput> & {
+type IndianPhoneInputProps = React.ComponentProps<typeof SmoothInputGroupInput> & {
   endAddon?: React.ReactNode
   inputClassName?: string
   numericOnly?: boolean
@@ -60,7 +60,7 @@ function IndianPhoneInput({
           <span>+91</span>
         </InputGroupText>
       </InputGroupAddon>
-      <InputGroupInput
+      <SmoothInputGroupInput
         className={cn(numericOnly && "font-mono", inputClassName, className)}
         maxLength={computedMaxLength}
         inputMode={inputMode ?? (numericOnly ? "numeric" : undefined)}

@@ -2,9 +2,12 @@
 
 import * as React from "react"
 import { OTPInput, OTPInputContext } from "input-otp"
+import { LayoutGroup, motion, useReducedMotion } from "motion/react"
 
 import { cn } from "@/lib/utils"
 import { MinusIcon } from "lucide-react"
+
+const SmoothOtpCaretContext = React.createContext("")
 
 function InputOTP({
   className,
@@ -13,17 +16,23 @@ function InputOTP({
 }: React.ComponentProps<typeof OTPInput> & {
   containerClassName?: string
 }) {
+  const caretLayoutId = React.useId()
+
   return (
-    <OTPInput
-      data-slot="input-otp"
-      containerClassName={cn(
-        "cn-input-otp flex items-center has-disabled:opacity-50",
-        containerClassName
-      )}
-      spellCheck={false}
-      className={cn("disabled:cursor-not-allowed", className)}
-      {...props}
-    />
+    <SmoothOtpCaretContext.Provider value={caretLayoutId}>
+      <LayoutGroup id={caretLayoutId}>
+        <OTPInput
+          data-slot="input-otp"
+          containerClassName={cn(
+            "cn-input-otp flex items-center has-disabled:opacity-50",
+            containerClassName
+          )}
+          spellCheck={false}
+          className={cn("disabled:cursor-not-allowed", className)}
+          {...props}
+        />
+      </LayoutGroup>
+    </SmoothOtpCaretContext.Provider>
   )
 }
 
@@ -48,6 +57,8 @@ function InputOTPSlot({
   index: number
 }) {
   const inputOTPContext = React.useContext(OTPInputContext)
+  const caretLayoutId = React.useContext(SmoothOtpCaretContext)
+  const shouldReduceMotion = useReducedMotion()
   const { char, hasFakeCaret, isActive } = inputOTPContext?.slots[index] ?? {}
 
   return (
@@ -62,9 +73,25 @@ function InputOTPSlot({
     >
       {char}
       {hasFakeCaret && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="h-4 w-px animate-caret-blink bg-foreground duration-1000" />
-        </div>
+        <motion.div
+          layoutId={`${caretLayoutId}-caret`}
+          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+          transition={
+            shouldReduceMotion
+              ? { duration: 0 }
+              : { type: "spring", stiffness: 520, damping: 36, mass: 0.45 }
+          }
+        >
+          <motion.div
+            className="h-4 w-0.5 rounded-full bg-blue-600"
+            animate={shouldReduceMotion ? { opacity: 1 } : { opacity: [1, 0.35, 1] }}
+            transition={
+              shouldReduceMotion
+                ? { duration: 0 }
+                : { duration: 1.05, repeat: Infinity, ease: "easeInOut" }
+            }
+          />
+        </motion.div>
       )}
     </div>
   )

@@ -332,5 +332,434 @@
         "generic": "अभी पासवर्ड अपडेट नहीं हो सका। कृपया फिर से प्रयास करें।"
       }
     }
+  },
+  "settings": {
+    "title": "Settings",
+    "common": {
+      "notSet": "सेट नहीं है",
+      "notAdded": "जोड़ा नहीं गया",
+      "notSavedYet": "अभी सेव नहीं हुआ",
+      "datePlaceholder": "DD MMM YYYY",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "yes": "Yes",
+      "no": "No",
+      "saving": "Saving",
+      "justNow": "अभी"
+    },
+    "tabs": {
+      "business": {
+        "label": "Business"
+      },
+      "invoice": {
+        "label": "Invoice"
+      },
+      "gst": {
+        "label": "GST Rate"
+      },
+      "printer": {
+        "label": "Printer"
+      },
+      "inventory": {
+        "label": "Inventory"
+      },
+      "automation": {
+        "label": "Automation"
+      },
+      "connectors": {
+        "label": "Connectors"
+      }
+    },
+    "badges": {
+      "businessAdmin": "Business admin",
+      "viewOnly": "View only",
+      "connected": "Connected",
+      "required": "Required",
+      "selected": "Selected",
+      "fifoConfigured": "FIFO configured",
+      "weightedAverage": "Weighted average",
+      "autoSaved": "Auto-saved",
+      "smartActionsOn": "Smart actions on",
+      "manualControls": "Manual controls",
+      "autoRun": "Auto-run",
+      "scannerEnabled": "Scanner enabled",
+      "scannerDisabled": "Scanner disabled",
+      "keyboardMode": "Keyboard mode",
+      "savedOnDevice": "इस device पर saved"
+    },
+    "actions": {
+      "generate": "Generate",
+      "saveUrl": "URL सेव करें",
+      "verifyAndSave": "Verify और save",
+      "cancel": "रद्द करें",
+      "saveBusinessDetails": "Business details save करें",
+      "editBusinessDetails": "Business details edit करें",
+      "saveInvoiceSettings": "Invoice settings save करें",
+      "saveGstPresets": "GST presets save करें",
+      "savePrinterSettings": "Printer settings save करें",
+      "clearTest": "Test clear करें",
+      "saveConnector": "Connector save करें",
+      "changeLogo": "Logo बदलें",
+      "uploadLogo": "Logo upload करें"
+    },
+    "toast": {
+      "businessUpdated": "Business details updated.",
+      "workspaceLogoUpdated": "Workspace logo updated.",
+      "invoiceLogoUpdated": "Invoice logo updated.",
+      "workspaceUrlUpdated": "Workspace URL updated.",
+      "caReferralLinked": "CA referral verified और linked.",
+      "invoiceUpdated": "Invoice settings updated.",
+      "gstUpdated": "GST presets updated.",
+      "printerUpdated": "Printer settings updated.",
+      "inventoryUpdated": "Inventory policy updated.",
+      "automationUpdated": "Automation settings updated.",
+      "barcodeConnectorSaved": "Barcode scanner connector saved."
+    },
+    "errors": {
+      "unavailableTitle": "Settings उपलब्ध नहीं हैं",
+      "loadSettings": "अभी workspace settings load नहीं हो पाए।",
+      "loadAutomation": "अभी automation settings load नहीं हो पाए।",
+      "generic": "कुछ गलत हुआ। कृपया फिर से प्रयास करें।",
+      "scanMinLength": "कम से कम {{count}} characters scan करें।",
+      "logoType": "JPG, PNG, या WebP logo upload करें।",
+      "logoSourceSize": "Logo source image 10 MB या कम होना चाहिए।",
+      "logoCroppedSize": "Cropped logo 2 MB या कम होना चाहिए।",
+      "tenantSlugMin": "कम से कम 3 characters इस्तेमाल करें।",
+      "tenantSlugMax": "48 characters या कम इस्तेमाल करें।",
+      "tenantSlugInvalid": "सिर्फ letters, numbers, और hyphens इस्तेमाल करें।"
+    },
+    "business": {
+      "title": "Business details",
+      "description": "Registration identity locked रहती है। Contact details और principal place of business यहां update कर सकते हैं।",
+      "fields": {
+        "legalBusinessName": "Legal business name",
+        "tradeName": "Trade name",
+        "state": "State / UT",
+        "gstin": "GSTIN",
+        "pan": "PAN",
+        "constitution": "Constitution",
+        "taxpayerType": "Taxpayer type",
+        "effectiveRegistrationDate": "Effective registration date",
+        "businessEmail": "Business email",
+        "businessMobile": "Business mobile",
+        "primaryContactName": "Primary contact name",
+        "primaryContactMobile": "Primary contact mobile",
+        "primaryContactEmail": "Primary contact email",
+        "principalAddressLine1": "Principal address line 1",
+        "principalAddressLine2": "Principal address line 2",
+        "locality": "Locality / area",
+        "district": "District",
+        "pincode": "Pincode",
+        "possessionType": "Nature of possession"
+      },
+      "workspaceLogo": {
+        "title": "Workspace logo",
+        "badge": "Sidebar",
+        "emptyDescription": "Sidebar और workspace switcher में दिखेगा। Save करने से पहले square crop होगा।",
+        "imageAlt": "Workspace logo"
+      },
+      "workspaceUrl": {
+        "title": "Workspace URL",
+        "locked": "Workspace URL creation के बाद locked रहता है।",
+        "generateHelper": "इस legacy workspace के लिए URL generate करें।"
+      },
+      "editableDetails": {
+        "title": "Editable details",
+        "helper": "Contacts और address update करने के लिए edit क्लिक करें।"
+      },
+      "caReferral": {
+        "title": "CA referral",
+        "defaultCaName": "आपके CA",
+        "description": "अपने CA द्वारा दिया गया referral code दर्ज करें। Verify होने के बाद यह business के लिए locked रहेगा।",
+        "connectedDescription": "यह workspace client filing access के लिए {{practiceName}} से connected है।",
+        "referralCode": "Referral code",
+        "verifiedOn": "{{date}} को verified. यह code बदला नहीं जा सकता।",
+        "verifyHelper": "CA relationship save करने से पहले हम code verify करते हैं।"
+      }
+    },
+    "invoice": {
+      "title": "Invoice settings",
+      "description": "New sales invoices के लिए default invoice style और numbering prefix सेट करें।",
+      "logo": {
+        "title": "Invoice logo",
+        "badge": "Invoice PDF",
+        "emptyDescription": "Sales और purchase invoice PDFs पर दिखेगा। Logo wide shape में रहेगा।",
+        "imageAlt": "Invoice logo"
+      },
+      "template": {
+        "label": "Invoice template",
+        "description": "{{templateDescription}} यही layout sales invoices और purchase invoice exports के लिए इस्तेमाल होगा।",
+        "helper": "सभी document samples एक ही GST invoice structure use करते हैं, इसलिए GSTFY एक standard invoice template रखता है।"
+      },
+      "fields": {
+        "invoicePrefix": "Invoice number prefix",
+        "invoicePrefixHelper": "Prefix में uppercase letters, numbers, और hyphens ही allowed हैं।",
+        "watermark": "Invoice watermark text",
+        "watermarkHelper": "Light background watermark की तरह print होगा। Hide करने के लिए blank छोड़ें।"
+      },
+      "preview": {
+        "title": "Preview",
+        "template": "{{template}} template"
+      }
+    },
+    "gst": {
+      "title": "GST rate slabs",
+      "description": "Invoices बनाते समय कौन से GST slabs दिखेंगे, यह control करें। Product-level tax HSN के अनुसार अलग हो सकता है।",
+      "enabledSlabs": {
+        "label": "Enabled invoice slabs",
+        "helper": "सिर्फ वही slabs enable करें जो आपकी team invoice choices में देखे।"
+      },
+      "cess": {
+        "label": "Compensation cess categories",
+        "description": "क्या {{businessName}} ऐसे products बेचता है जिन पर GST compensation cess लग सकता है? Product master में सिर्फ जरूरी categories enable करें।",
+        "helper": "ये system-created product-selectable cess rules हैं। Live billing से पहले exact cess rates review करें क्योंकि compensation cess notified goods पर depend करता है और बदल सकता है।"
+      }
+    },
+    "printer": {
+      "title": "Printer settings",
+      "description": "ये preferences browser-based invoice printing और PDF print layouts को control करते हैं। Web app किसी physical printer device से direct bind नहीं होता।",
+      "fields": {
+        "paperSize": "Paper size",
+        "orientation": "Orientation",
+        "autoPrintDialog": "Browser print dialog automatically खोलें",
+        "compactLayout": "Compact print layout",
+        "compactLayoutHelper": "Compact layout छोटे formats पर tighter printouts के लिए spacing कम करता है।"
+      }
+    },
+    "inventory": {
+      "title": "Inventory policy",
+      "description": "Product stock, POS, sales, purchases, transfers, और adjustments में stock postings कैसे behave करें, यह control करें।",
+      "fields": {
+        "negativeStockPolicy": "Negative stock policy",
+        "valuationMethod": "Valuation method"
+      },
+      "postingBehavior": {
+        "title": "Posting behavior",
+        "description": "Inventory screens अब operational work पर focus करते हैं। Policy changes यहां रहती हैं ताकि stock controls पूरे business के लिए एक बार configure हों।"
+      }
+    },
+    "automation": {
+      "title": "Automation",
+      "description": "Dealer bill post करे, statement import करे, या eligible GST document बनाए, उसके बाद low-risk background work GSTFY handle करे।",
+      "recent": {
+        "title": "Recent automation",
+        "description": "Stock checks, e-invoice, और bank matching के queued background actions.",
+        "empty": "अभी कोई background work queued नहीं है।"
+      },
+      "jobTypes": {
+        "stockPostedDocument": "Stock ledger check",
+        "openingStock": "Opening stock check",
+        "eInvoice": "E-invoice generation",
+        "bankAutoMatch": "Bank auto-match",
+        "gstReportRefresh": "GST report refresh",
+        "filingReview": "Filing review"
+      },
+      "status": {
+        "queued": "Queued",
+        "running": "Running",
+        "completed": "Completed",
+        "failed": "Failed",
+        "retrying": "Retrying",
+        "skipped": "Skipped"
+      }
+    },
+    "connectors": {
+      "title": "Connectors",
+      "barcode": {
+        "title": "Barcode scanner",
+        "description": "USB और Bluetooth barcode scanners अक्सर keyboard की तरह काम करते हैं। Scanner connect करें, cursor barcode field में रखें, फिर scan करें। GSTFY configured suffix key को सुनता है।"
+      },
+      "test": {
+        "title": "Test scanner input",
+        "description": "Input क्लिक करें, एक product barcode scan करें, फिर detected result check करें।",
+        "scanLabel": "Scan test",
+        "scanPlaceholder": "यहां क्लिक करके barcode scan करें",
+        "scanHelper": "अगर scanner configure हो सकता है, suffix को Enter या Tab सेट करें।",
+        "detectedBarcode": "Detected barcode",
+        "noScanCaptured": "अभी कोई scan capture नहीं हुआ",
+        "detectedSuffix": "Detected suffix",
+        "waitingForSuffix": "Enter या Tab का इंतजार",
+        "scanSpeed": "Scan speed",
+        "notMeasured": "Measured नहीं",
+        "durationMs": "{{duration}} ms"
+      },
+      "behavior": {
+        "title": "Scanner behavior",
+        "description": "ये preferences इस browser/device पर product और POS barcode fields के लिए use होंगी।",
+        "suffixKey": "Suffix key",
+        "minLength": "Minimum barcode length",
+        "status": "Connector status",
+        "autoSearch": "Scan के बाद auto-search",
+        "autoSearchHelper": "Enabled होने पर scanner suffix मिलते ही POS/product fields तुरंत search कर सकते हैं।",
+        "lastSaved": "Last saved:"
+      }
+    },
+    "logoCrop": {
+      "invoiceTitle": "Invoice logo crop करें",
+      "workspaceTitle": "Workspace logo crop करें",
+      "invoiceDescription": "Invoice header में साफ fit होने के लिए invoice logo को wide rectangle में crop करें।",
+      "workspaceDescription": "Sidebar और account switcher में साफ fit होने के लिए workspace logo को square रखें।"
+    },
+    "placeholders": {
+      "possessionType": "Possession type चुनें",
+      "paperSize": "Paper size चुनें",
+      "orientation": "Orientation चुनें",
+      "negativeStockPolicy": "Negative stock policy चुनें",
+      "valuationMethod": "Valuation method चुनें",
+      "suffixKey": "Suffix key चुनें"
+    },
+    "options": {
+      "possession": {
+        "own": "Own",
+        "rented": "Rented",
+        "leased": "Leased",
+        "consent": "Consent",
+        "shared": "Shared",
+        "other": "Other"
+      },
+      "paperSize": {
+        "A4": "A4",
+        "A5": "A5",
+        "THERMAL_80MM": "Thermal 80mm"
+      },
+      "printOrientation": {
+        "portrait": "Portrait",
+        "landscape": "Landscape"
+      },
+      "negativeStockPolicy": {
+        "BLOCK": {
+          "label": "Transactions block करें",
+          "description": "ऐसी sales, transfers, और adjustments रोकें जिनसे stock negative हो जाए।"
+        },
+        "WARN": {
+          "label": "Warn करके allow करें",
+          "description": "Warning दिखाएं लेकिन controlled exceptions के लिए transaction allow करें।"
+        },
+        "ALLOW": {
+          "label": "Silently allow करें",
+          "description": "बिना interruption negative stock allow करें। इसे सिर्फ loose stock control के लिए use करें।"
+        }
+      },
+      "valuationMethod": {
+        "WEIGHTED_AVERAGE": {
+          "label": "Weighted average",
+          "description": "Stock purchase या adjust होने पर average cost recalculate करें।"
+        },
+        "FIFO": {
+          "label": "FIFO foundation",
+          "description": "Future batch-layer valuation workflows के लिए FIFO configured रखें।"
+        }
+      },
+      "automation": {
+        "autoStockAccountingEnabled": {
+          "label": "Stock posting",
+          "description": "Purchase, sales, POS, और opening stock entries के बाद GSTFY inventory ledgers synced हैं या नहीं check करता है।",
+          "enabled": "Automatic",
+          "disabled": "Manual review"
+        },
+        "autoEInvoiceEnabled": {
+          "label": "E-invoice generation",
+          "description": "Eligible B2B documents dealer से repeat work कराए बिना IRN generation के लिए queue हो सकते हैं।",
+          "enabled": "Queue eligible bills",
+          "disabled": "Manual only"
+        },
+        "bankAutoMatchHighConfidenceEnabled": {
+          "label": "Bank auto-match",
+          "description": "Imported statement lines और posted bank/UPI/card entries amount, date, और reference confident होने पर match होते हैं।",
+          "enabled": "Auto-match",
+          "disabled": "Manual matching"
+        },
+        "notifyAutomationFailures": {
+          "label": "Failure alerts",
+          "description": "Automation failures दिखाएं ताकि owner GST filing या reconciliation से पहले missing data fix कर सके।",
+          "enabled": "Notify",
+          "disabled": "Silent"
+        }
+      },
+      "barcodeSubmitKey": {
+        "enter": "Enter",
+        "tab": "Tab",
+        "none": "No suffix"
+      }
+    }
+  },
+  "feedback": {
+    "stepCounter": "चरण {{current}} / {{total}}",
+    "hero": {
+      "title": "अगला GSTFY सुधार बताएं",
+      "subtitle": "आपका feedback सीधे सुधार बनता है।",
+      "description": "Billing, GST filing, inventory या payments में कहाँ रुकावट आई, बताइए। बार-बार आने वाले feedback से हम अगला product fix तय करते हैं।",
+      "compactDescription": "Area चुनें, effort rate करें, और exact fix लिखें।",
+      "meta": "2 मिनट survey · dealer-first fixes · support ticket नहीं"
+    },
+    "steps": {
+      "category": {
+        "title": "हमें क्या सुधारना चाहिए?",
+        "description": "सबसे पहले जिस area पर ध्यान चाहिए, उसे चुनें।"
+      },
+      "feeling": {
+        "title": "अनुभव कैसा रहा?",
+        "description": "एक tap में overall experience बताइए।"
+      },
+      "effort": {
+        "title": "कितनी मेहनत लगी?",
+        "description": "इससे हमें पता चलता है कि कौन सा workflow आसान बनाना है।"
+      },
+      "feedback": {
+        "title": "क्या बदलना चाहिए?",
+        "description": "सही issue या improvement लिखें। Practical रखें।"
+      }
+    },
+    "categories": {
+      "ease_of_use": "इस्तेमाल में आसानी",
+      "billing_pos": "Billing या POS",
+      "gst_filing": "GST filing",
+      "inventory": "Inventory",
+      "payments": "Payments",
+      "performance": "Speed",
+      "bug": "Bug",
+      "feature_request": "Feature",
+      "other": "Other"
+    },
+    "ratings": {
+      "1": "खराब",
+      "2": "कठिन",
+      "3": "ठीक",
+      "4": "अच्छा",
+      "5": "बहुत अच्छा"
+    },
+    "efforts": {
+      "1": "बहुत कठिन",
+      "2": "धीमा",
+      "3": "मैनेज हो गया",
+      "4": "आसान",
+      "5": "बहुत आसान"
+    },
+    "form": {
+      "feedbackLabel": "Feedback",
+      "placeholder": "कौन सी screen पर क्या गलत लगा, बताइए।",
+      "contactConsent": "जरूरत हो तो मुझसे संपर्क करें"
+    },
+    "actions": {
+      "startSurvey": "Survey शुरू करें",
+      "cancel": "रद्द करें",
+      "back": "वापस",
+      "next": "आगे",
+      "send": "भेजें"
+    },
+    "toast": {
+      "sentTitle": "Feedback भेज दिया गया।",
+      "sentDescription": "हमें आपका survey response मिल गया।"
+    },
+    "submitted": {
+      "title": "आपका feedback submit हो गया",
+      "sentOn": "भेजा गया: {{date}}",
+      "cooldown": "साफ signals के लिए हम repeat feedback को 7 दिनों तक lock रखते हैं। अगला feedback {{date}} के बाद भेज सकते हैं।",
+      "fallbackDate": "cooldown खत्म होने पर"
+    },
+    "errors": {
+      "signInAgain": "Feedback भेजने के लिए फिर से sign in करें।",
+      "generic": "अभी feedback भेज नहीं पाए।"
+    }
   }
 }

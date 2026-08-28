@@ -25,6 +25,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { VerifiedBadge } from "@/components/ui/verified-badge"
 import { ChevronsUpDownIcon, BadgeCheckIcon, CreditCardIcon, LogOutIcon } from "lucide-react"
 
 export function NavUser({
@@ -36,6 +37,7 @@ export function NavUser({
     name: string
     email: string
     avatar: string
+    isOwner?: boolean
   }
   logoutPath?: string
   showAccountLinks?: boolean
@@ -75,7 +77,17 @@ export function NavUser({
               <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium">{user.name}</span>
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate font-medium">{user.name}</span>
+                {user.isOwner ? (
+                  <VerifiedBadge
+                    aria-label="Workspace owner"
+                    size="sm"
+                    tone="brand"
+                    variant="static"
+                  />
+                ) : null}
+              </span>
               <span className="truncate text-xs">{user.email}</span>
             </div>
             <ChevronsUpDownIcon className="ml-auto size-4" />
@@ -94,7 +106,17 @@ export function NavUser({
                     <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-medium">{user.name}</span>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate font-medium">{user.name}</span>
+                      {user.isOwner ? (
+                        <VerifiedBadge
+                          aria-label="Workspace owner"
+                          size="sm"
+                          tone="brand"
+                          variant="static"
+                        />
+                      ) : null}
+                    </span>
                     <span className="truncate text-xs">{user.email}</span>
                   </div>
                 </div>

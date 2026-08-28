@@ -332,5 +332,434 @@
         "generic": "இப்போது கடவுச்சொல்லை புதுப்பிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்."
       }
     }
+  },
+  "settings": {
+    "title": "Settings",
+    "common": {
+      "notSet": "அமைக்கப்படவில்லை",
+      "notAdded": "சேர்க்கப்படவில்லை",
+      "notSavedYet": "இன்னும் save செய்யப்படவில்லை",
+      "datePlaceholder": "DD MMM YYYY",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "yes": "Yes",
+      "no": "No",
+      "saving": "Saving",
+      "justNow": "இப்போது"
+    },
+    "tabs": {
+      "business": {
+        "label": "Business"
+      },
+      "invoice": {
+        "label": "Invoice"
+      },
+      "gst": {
+        "label": "GST Rate"
+      },
+      "printer": {
+        "label": "Printer"
+      },
+      "inventory": {
+        "label": "Inventory"
+      },
+      "automation": {
+        "label": "Automation"
+      },
+      "connectors": {
+        "label": "Connectors"
+      }
+    },
+    "badges": {
+      "businessAdmin": "Business admin",
+      "viewOnly": "View only",
+      "connected": "Connected",
+      "required": "Required",
+      "selected": "Selected",
+      "fifoConfigured": "FIFO configured",
+      "weightedAverage": "Weighted average",
+      "autoSaved": "Auto-saved",
+      "smartActionsOn": "Smart actions on",
+      "manualControls": "Manual controls",
+      "autoRun": "Auto-run",
+      "scannerEnabled": "Scanner enabled",
+      "scannerDisabled": "Scanner disabled",
+      "keyboardMode": "Keyboard mode",
+      "savedOnDevice": "இந்த device-ல் saved"
+    },
+    "actions": {
+      "generate": "Generate",
+      "saveUrl": "URL save செய்",
+      "verifyAndSave": "Verify செய்து save செய்",
+      "cancel": "ரத்து செய்",
+      "saveBusinessDetails": "Business details save செய்",
+      "editBusinessDetails": "Business details edit செய்",
+      "saveInvoiceSettings": "Invoice settings save செய்",
+      "saveGstPresets": "GST presets save செய்",
+      "savePrinterSettings": "Printer settings save செய்",
+      "clearTest": "Test clear செய்",
+      "saveConnector": "Connector save செய்",
+      "changeLogo": "Logo மாற்று",
+      "uploadLogo": "Logo upload செய்"
+    },
+    "toast": {
+      "businessUpdated": "Business details updated.",
+      "workspaceLogoUpdated": "Workspace logo updated.",
+      "invoiceLogoUpdated": "Invoice logo updated.",
+      "workspaceUrlUpdated": "Workspace URL updated.",
+      "caReferralLinked": "CA referral verified மற்றும் linked.",
+      "invoiceUpdated": "Invoice settings updated.",
+      "gstUpdated": "GST presets updated.",
+      "printerUpdated": "Printer settings updated.",
+      "inventoryUpdated": "Inventory policy updated.",
+      "automationUpdated": "Automation settings updated.",
+      "barcodeConnectorSaved": "Barcode scanner connector saved."
+    },
+    "errors": {
+      "unavailableTitle": "Settings கிடைக்கவில்லை",
+      "loadSettings": "இப்போது workspace settings load செய்ய முடியவில்லை.",
+      "loadAutomation": "இப்போது automation settings load செய்ய முடியவில்லை.",
+      "generic": "ஏதோ தவறு ஏற்பட்டது. மீண்டும் முயற்சிக்கவும்.",
+      "scanMinLength": "குறைந்தது {{count}} characters scan செய்யுங்கள்.",
+      "logoType": "JPG, PNG, அல்லது WebP logo upload செய்யுங்கள்.",
+      "logoSourceSize": "Logo source image 10 MB அல்லது அதற்கு குறைவாக இருக்க வேண்டும்.",
+      "logoCroppedSize": "Cropped logo 2 MB அல்லது அதற்கு குறைவாக இருக்க வேண்டும்.",
+      "tenantSlugMin": "குறைந்தது 3 characters பயன்படுத்துங்கள்.",
+      "tenantSlugMax": "48 characters அல்லது அதற்கு குறைவாக பயன்படுத்துங்கள்.",
+      "tenantSlugInvalid": "Letters, numbers, hyphens மட்டும் பயன்படுத்துங்கள்."
+    },
+    "business": {
+      "title": "Business details",
+      "description": "Registration identity locked ஆக இருக்கும். Contact details மற்றும் principal place of business-ஐ இங்கே update செய்யலாம்.",
+      "fields": {
+        "legalBusinessName": "Legal business name",
+        "tradeName": "Trade name",
+        "state": "State / UT",
+        "gstin": "GSTIN",
+        "pan": "PAN",
+        "constitution": "Constitution",
+        "taxpayerType": "Taxpayer type",
+        "effectiveRegistrationDate": "Effective registration date",
+        "businessEmail": "Business email",
+        "businessMobile": "Business mobile",
+        "primaryContactName": "Primary contact name",
+        "primaryContactMobile": "Primary contact mobile",
+        "primaryContactEmail": "Primary contact email",
+        "principalAddressLine1": "Principal address line 1",
+        "principalAddressLine2": "Principal address line 2",
+        "locality": "Locality / area",
+        "district": "District",
+        "pincode": "Pincode",
+        "possessionType": "Nature of possession"
+      },
+      "workspaceLogo": {
+        "title": "Workspace logo",
+        "badge": "Sidebar",
+        "emptyDescription": "Sidebar மற்றும் workspace switcher-ல் காட்டப்படும். Save செய்வதற்கு முன் square crop செய்யப்படும்.",
+        "imageAlt": "Workspace logo"
+      },
+      "workspaceUrl": {
+        "title": "Workspace URL",
+        "locked": "Workspace URL create செய்த பிறகு locked ஆக இருக்கும்.",
+        "generateHelper": "இந்த legacy workspace-க்கு URL generate செய்யுங்கள்."
+      },
+      "editableDetails": {
+        "title": "Editable details",
+        "helper": "Contacts மற்றும் address update செய்ய edit கிளிக் செய்யுங்கள்."
+      },
+      "caReferral": {
+        "title": "CA referral",
+        "defaultCaName": "உங்கள் CA",
+        "description": "உங்கள் CA கொடுத்த referral code-ஐ உள்ளிடுங்கள். Verify ஆன பிறகு இது business-க்கு locked ஆகும்.",
+        "connectedDescription": "இந்த workspace client filing access-க்காக {{practiceName}} உடன் connected ஆக உள்ளது.",
+        "referralCode": "Referral code",
+        "verifiedOn": "{{date}} அன்று verified. இந்த code-ஐ மாற்ற முடியாது.",
+        "verifyHelper": "CA relationship save செய்வதற்கு முன் code-ஐ verify செய்கிறோம்."
+      }
+    },
+    "invoice": {
+      "title": "Invoice settings",
+      "description": "New sales invoices-க்கு default invoice style மற்றும் numbering prefix அமைக்கவும்.",
+      "logo": {
+        "title": "Invoice logo",
+        "badge": "Invoice PDF",
+        "emptyDescription": "Sales மற்றும் purchase invoice PDFs-ல் காட்டப்படும். Logo wide shape-ல் இருக்கும்.",
+        "imageAlt": "Invoice logo"
+      },
+      "template": {
+        "label": "Invoice template",
+        "description": "{{templateDescription}} இதே layout sales invoices மற்றும் purchase invoice exports-க்கு பயன்படுத்தப்படும்.",
+        "helper": "அனைத்து document samples ஒரே GST invoice structure-ஐ பயன்படுத்துவதால், GSTFY ஒரு standard invoice template-ஐ வைத்திருக்கிறது."
+      },
+      "fields": {
+        "invoicePrefix": "Invoice number prefix",
+        "invoicePrefixHelper": "Prefix-ல் uppercase letters, numbers, hyphens மட்டும் allowed.",
+        "watermark": "Invoice watermark text",
+        "watermarkHelper": "Light background watermark ஆக print செய்யப்படும். மறைக்க blank விடுங்கள்."
+      },
+      "preview": {
+        "title": "Preview",
+        "template": "{{template}} template"
+      }
+    },
+    "gst": {
+      "title": "GST rate slabs",
+      "description": "Invoices உருவாக்கும்போது எந்த GST slabs காட்ட வேண்டும் என்பதை control செய்யுங்கள். Product-level tax HSN அடிப்படையில் மாறலாம்.",
+      "enabledSlabs": {
+        "label": "Enabled invoice slabs",
+        "helper": "Invoice choices-ல் team பார்க்க வேண்டிய slabs மட்டும் enable செய்யுங்கள்."
+      },
+      "cess": {
+        "label": "Compensation cess categories",
+        "description": "{{businessName}} GST compensation cess வரக்கூடிய products விற்கிறதா? Product master-ல் தேவையான categories மட்டும் enable செய்யுங்கள்.",
+        "helper": "இவை system-created product-selectable cess rules. Live billing-க்கு முன் exact cess rates review செய்ய வேண்டும், ஏனெனில் compensation cess notified goods அடிப்படையில் மாறலாம்."
+      }
+    },
+    "printer": {
+      "title": "Printer settings",
+      "description": "இந்த preferences browser-based invoice printing மற்றும் PDF print layouts-ஐ control செய்கின்றன. Web app physical printer device-க்கு direct bind ஆகாது.",
+      "fields": {
+        "paperSize": "Paper size",
+        "orientation": "Orientation",
+        "autoPrintDialog": "Browser print dialog automatically திறக்கவும்",
+        "compactLayout": "Compact print layout",
+        "compactLayoutHelper": "Compact layout சிறிய formats-ல் tighter printouts-க்கு spacing-ஐ குறைக்கும்."
+      }
+    },
+    "inventory": {
+      "title": "Inventory policy",
+      "description": "Product stock, POS, sales, purchases, transfers, adjustments-ல் stock postings எப்படி behave செய்ய வேண்டும் என்பதை control செய்யுங்கள்.",
+      "fields": {
+        "negativeStockPolicy": "Negative stock policy",
+        "valuationMethod": "Valuation method"
+      },
+      "postingBehavior": {
+        "title": "Posting behavior",
+        "description": "Inventory screens இப்போது operational work-ல் focus செய்கின்றன. Policy changes இங்கே இருக்கும், அதனால் stock controls முழு business-க்கும் ஒரே முறை configure செய்யப்படும்."
+      }
+    },
+    "automation": {
+      "title": "Automation",
+      "description": "Dealer bill post செய்த பிறகு, statement import செய்த பிறகு, அல்லது eligible GST document உருவாக்கிய பிறகு low-risk background work-ஐ GSTFY handle செய்யட்டும்.",
+      "recent": {
+        "title": "Recent automation",
+        "description": "Stock checks, e-invoice, bank matching-க்கு queued background actions.",
+        "empty": "இன்னும் background work queued இல்லை."
+      },
+      "jobTypes": {
+        "stockPostedDocument": "Stock ledger check",
+        "openingStock": "Opening stock check",
+        "eInvoice": "E-invoice generation",
+        "bankAutoMatch": "Bank auto-match",
+        "gstReportRefresh": "GST report refresh",
+        "filingReview": "Filing review"
+      },
+      "status": {
+        "queued": "Queued",
+        "running": "Running",
+        "completed": "Completed",
+        "failed": "Failed",
+        "retrying": "Retrying",
+        "skipped": "Skipped"
+      }
+    },
+    "connectors": {
+      "title": "Connectors",
+      "barcode": {
+        "title": "Barcode scanner",
+        "description": "USB மற்றும் Bluetooth barcode scanners பொதுவாக keyboard போலவே வேலை செய்கின்றன. Scanner connect செய்து, cursor-ஐ barcode field-ல் வைத்து scan செய்யுங்கள். Configured suffix key-ஐ GSTFY கேட்கும்."
+      },
+      "test": {
+        "title": "Test scanner input",
+        "description": "Input-ஐ கிளிக் செய்து, ஒரு product barcode scan செய்து, detected result-ஐ check செய்யுங்கள்.",
+        "scanLabel": "Scan test",
+        "scanPlaceholder": "இங்கே கிளிக் செய்து barcode scan செய்யுங்கள்",
+        "scanHelper": "Scanner configure செய்ய முடிந்தால், suffix-ஐ Enter அல்லது Tab ஆக set செய்யுங்கள்.",
+        "detectedBarcode": "Detected barcode",
+        "noScanCaptured": "இன்னும் scan capture ஆகவில்லை",
+        "detectedSuffix": "Detected suffix",
+        "waitingForSuffix": "Enter அல்லது Tab காத்திருக்கிறது",
+        "scanSpeed": "Scan speed",
+        "notMeasured": "Measure செய்யப்படவில்லை",
+        "durationMs": "{{duration}} ms"
+      },
+      "behavior": {
+        "title": "Scanner behavior",
+        "description": "இந்த preferences இந்த browser/device-ல் product மற்றும் POS barcode fields-க்கு பயன்படுத்தப்படும்.",
+        "suffixKey": "Suffix key",
+        "minLength": "Minimum barcode length",
+        "status": "Connector status",
+        "autoSearch": "Scan பிறகு auto-search",
+        "autoSearchHelper": "Enabled இருந்தால் scanner suffix வந்தவுடன் POS/product fields உடனே search செய்யும்.",
+        "lastSaved": "Last saved:"
+      }
+    },
+    "logoCrop": {
+      "invoiceTitle": "Invoice logo crop செய்",
+      "workspaceTitle": "Workspace logo crop செய்",
+      "invoiceDescription": "Invoice header-ல் clean-ஆக fit ஆக invoice logo-ஐ wide rectangle ஆக crop செய்யுங்கள்.",
+      "workspaceDescription": "Sidebar மற்றும் account switcher-ல் clean-ஆக fit ஆக workspace logo-ஐ square ஆக வைத்துக்கொள்ளுங்கள்."
+    },
+    "placeholders": {
+      "possessionType": "Possession type தேர்வு செய்",
+      "paperSize": "Paper size தேர்வு செய்",
+      "orientation": "Orientation தேர்வு செய்",
+      "negativeStockPolicy": "Negative stock policy தேர்வு செய்",
+      "valuationMethod": "Valuation method தேர்வு செய்",
+      "suffixKey": "Suffix key தேர்வு செய்"
+    },
+    "options": {
+      "possession": {
+        "own": "Own",
+        "rented": "Rented",
+        "leased": "Leased",
+        "consent": "Consent",
+        "shared": "Shared",
+        "other": "Other"
+      },
+      "paperSize": {
+        "A4": "A4",
+        "A5": "A5",
+        "THERMAL_80MM": "Thermal 80mm"
+      },
+      "printOrientation": {
+        "portrait": "Portrait",
+        "landscape": "Landscape"
+      },
+      "negativeStockPolicy": {
+        "BLOCK": {
+          "label": "Transactions block செய்",
+          "description": "Stock negative ஆகும் sales, transfers, adjustments-ஐ தடுக்கவும்."
+        },
+        "WARN": {
+          "label": "Warn செய்து allow செய்",
+          "description": "Warning காட்டி controlled exceptions-க்கு transaction allow செய்யவும்."
+        },
+        "ALLOW": {
+          "label": "Silently allow செய்",
+          "description": "Interruption இல்லாமல் negative stock allow செய்யவும். Loose stock control-க்கு மட்டும் பயன்படுத்தவும்."
+        }
+      },
+      "valuationMethod": {
+        "WEIGHTED_AVERAGE": {
+          "label": "Weighted average",
+          "description": "Stock purchase அல்லது adjust ஆகும் போது average cost recalculate செய்யும்."
+        },
+        "FIFO": {
+          "label": "FIFO foundation",
+          "description": "Future batch-layer valuation workflows-க்கு FIFO configured ஆக வைத்திருக்கும்."
+        }
+      },
+      "automation": {
+        "autoStockAccountingEnabled": {
+          "label": "Stock posting",
+          "description": "Purchase, sales, POS, opening stock entries பிறகு inventory ledgers synced உள்ளதா என்பதை GSTFY check செய்கிறது.",
+          "enabled": "Automatic",
+          "disabled": "Manual review"
+        },
+        "autoEInvoiceEnabled": {
+          "label": "E-invoice generation",
+          "description": "Eligible B2B documents dealer repeat work செய்யாமல் IRN generation-க்கு queue ஆகலாம்.",
+          "enabled": "Queue eligible bills",
+          "disabled": "Manual only"
+        },
+        "bankAutoMatchHighConfidenceEnabled": {
+          "label": "Bank auto-match",
+          "description": "Imported statement lines மற்றும் posted bank/UPI/card entries amount, date, reference confident இருந்தால் match ஆகும்.",
+          "enabled": "Auto-match",
+          "disabled": "Manual matching"
+        },
+        "notifyAutomationFailures": {
+          "label": "Failure alerts",
+          "description": "GST filing அல்லது reconciliation-க்கு முன் owner missing data fix செய்ய automation failures-ஐ காட்டுங்கள்.",
+          "enabled": "Notify",
+          "disabled": "Silent"
+        }
+      },
+      "barcodeSubmitKey": {
+        "enter": "Enter",
+        "tab": "Tab",
+        "none": "No suffix"
+      }
+    }
+  },
+  "feedback": {
+    "stepCounter": "படி {{current}} / {{total}}",
+    "hero": {
+      "title": "அடுத்த GSTFY fix-ஐ சொல்லுங்கள்",
+      "subtitle": "உங்கள் feedback நேரடியாக fixes ஆகும்.",
+      "description": "Billing, GST filing, inventory, payments-ல் எங்கு தடை ஏற்பட்டது என்பதை சொல்லுங்கள். மீண்டும் மீண்டும் வரும் feedback அடிப்படையில் அடுத்த product fix-ஐ தேர்வு செய்கிறோம்.",
+      "compactDescription": "Area-வை தேர்வு செய்து, effort rate செய்து, தேவையான exact fix-ஐ எழுதுங்கள்.",
+      "meta": "2 நிமிட survey · dealer-first fixes · support ticket தேவையில்லை"
+    },
+    "steps": {
+      "category": {
+        "title": "எதை சரிசெய்ய வேண்டும்?",
+        "description": "முதலில் கவனம் தேவைப்படும் பகுதியைத் தேர்வு செய்யுங்கள்."
+      },
+      "feeling": {
+        "title": "அனுபவம் எப்படி இருந்தது?",
+        "description": "ஒரு tap-ல் overall experience சொல்லுங்கள்."
+      },
+      "effort": {
+        "title": "எவ்வளவு effort எடுத்தது?",
+        "description": "எந்த workflow-ஐ எளிமைப்படுத்த வேண்டும் என்பதை இது காட்டும்."
+      },
+      "feedback": {
+        "title": "எதை மாற்ற வேண்டும்?",
+        "description": "சரியான issue அல்லது improvement-ஐ practical-ஆக எழுதுங்கள்."
+      }
+    },
+    "categories": {
+      "ease_of_use": "பயன்படுத்த எளிது",
+      "billing_pos": "Billing அல்லது POS",
+      "gst_filing": "GST filing",
+      "inventory": "Inventory",
+      "payments": "Payments",
+      "performance": "வேகம்",
+      "bug": "Bug",
+      "feature_request": "Feature",
+      "other": "Other"
+    },
+    "ratings": {
+      "1": "மோசம்",
+      "2": "கடினம்",
+      "3": "சரி",
+      "4": "நன்று",
+      "5": "மிக நன்று"
+    },
+    "efforts": {
+      "1": "மிக கடினம்",
+      "2": "மெதுவாக இருந்தது",
+      "3": "சமாளிக்க முடிந்தது",
+      "4": "எளிது",
+      "5": "மிக எளிது"
+    },
+    "form": {
+      "feedbackLabel": "Feedback",
+      "placeholder": "எந்த screen-ல் என்ன பிரச்சனை இருந்தது என்பதை சொல்லுங்கள்.",
+      "contactConsent": "தேவைப்பட்டால் என்னை தொடர்பு கொள்ளலாம்"
+    },
+    "actions": {
+      "startSurvey": "Survey தொடங்கு",
+      "cancel": "ரத்து செய்",
+      "back": "பின்",
+      "next": "அடுத்து",
+      "send": "அனுப்பு"
+    },
+    "toast": {
+      "sentTitle": "Feedback அனுப்பப்பட்டது.",
+      "sentDescription": "உங்கள் survey response கிடைத்தது."
+    },
+    "submitted": {
+      "title": "உங்கள் feedback சமர்ப்பிக்கப்பட்டது",
+      "sentOn": "{{date}} அன்று அனுப்பப்பட்டது",
+      "cooldown": "Signals தெளிவாக இருக்க repeat feedback-ஐ 7 நாட்கள் lock செய்கிறோம். அடுத்த feedback-ஐ {{date}}க்கு பிறகு அனுப்பலாம்.",
+      "fallbackDate": "cooldown முடியும் நாள்"
+    },
+    "errors": {
+      "signInAgain": "Feedback அனுப்ப மீண்டும் sign in செய்யுங்கள்.",
+      "generic": "இப்போது feedback அனுப்ப முடியவில்லை."
+    }
   }
 }

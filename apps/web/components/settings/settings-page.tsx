@@ -5,8 +5,10 @@ import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { format, parseISO } from "date-fns"
+import type { TFunction } from "i18next"
 import Image from "next/image"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { useTranslation } from "react-i18next"
 import {
   BadgeCheckIcon,
   BarcodeIcon,
@@ -63,7 +65,6 @@ import {
 import {
   barcodeSubmitKeyOptions,
   getBarcodeSubmitKeyFromKeyboardEventKey,
-  getBarcodeSubmitKeyLabel,
   normalizeBarcodeScannerSettings,
   persistBarcodeScannerSettings,
   readBarcodeScannerSettings,
@@ -348,6 +349,7 @@ const defaultSettingsTab: SettingsTabValue = "business"
 const settingsTabValues = new Set<string>(settingsTabs.map((tab) => tab.value))
 
 export function SettingsPage() {
+  const { t } = useTranslation()
   const storedSession = getStoredAuthSession()
   const accessToken = storedSession?.session.accessToken ?? ""
   const router = useRouter()
@@ -355,6 +357,79 @@ export function SettingsPage() {
   const searchParams = useSearchParams()
   const activeSettingsTab = getSettingsTabValue(searchParams.get("tab"))
   const queryClient = useQueryClient()
+  const translatedSettingsTabs = React.useMemo(
+    () =>
+      settingsTabs.map((tab) => ({
+        ...tab,
+        label: t(`settings.tabs.${tab.value}.label`),
+      })),
+    [t]
+  )
+  const translatedPossessionOptions = React.useMemo(
+    () =>
+      possessionOptions.map((option) => ({
+        ...option,
+        label: t(`settings.options.possession.${option.value}`),
+      })),
+    [t]
+  )
+  const translatedPaperSizeOptions = React.useMemo(
+    () =>
+      paperSizeOptions.map((option) => ({
+        ...option,
+        label: t(`settings.options.paperSize.${option.value}`),
+      })),
+    [t]
+  )
+  const translatedPrinterOrientationOptions = React.useMemo(
+    () =>
+      printerOrientationOptions.map((option) => ({
+        ...option,
+        label: t(`settings.options.printOrientation.${option.value}`),
+      })),
+    [t]
+  )
+  const translatedNegativeStockPolicyOptions = React.useMemo(
+    () =>
+      negativeStockPolicyOptions.map((option) => ({
+        ...option,
+        label: t(`settings.options.negativeStockPolicy.${option.value}.label`),
+        description: t(
+          `settings.options.negativeStockPolicy.${option.value}.description`
+        ),
+      })),
+    [t]
+  )
+  const translatedValuationMethodOptions = React.useMemo(
+    () =>
+      valuationMethodOptions.map((option) => ({
+        ...option,
+        label: t(`settings.options.valuationMethod.${option.value}.label`),
+        description: t(
+          `settings.options.valuationMethod.${option.value}.description`
+        ),
+      })),
+    [t]
+  )
+  const translatedAutomationSettingOptions = React.useMemo(
+    () =>
+      automationSettingOptions.map((option) => ({
+        ...option,
+        label: t(`settings.options.automation.${option.key}.label`),
+        description: t(`settings.options.automation.${option.key}.description`),
+        enabledLabel: t(`settings.options.automation.${option.key}.enabled`),
+        disabledLabel: t(`settings.options.automation.${option.key}.disabled`),
+      })),
+    [t]
+  )
+  const translatedBarcodeSubmitKeyOptions = React.useMemo(
+    () =>
+      barcodeSubmitKeyOptions.map((option) => ({
+        ...option,
+        label: t(`settings.options.barcodeSubmitKey.${option.value}`),
+      })),
+    [t]
+  )
   const [isBusinessEditing, setIsBusinessEditing] = React.useState(false)
   const [caReferralCode, setCaReferralCode] = React.useState("")
   const [tenantSlugDraft, setTenantSlugDraft] = React.useState<{
@@ -551,10 +626,10 @@ export function SettingsPage() {
     onSuccess: (nextSettings) => {
       setSettingsCache(queryClient, nextSettings)
       setIsBusinessEditing(false)
-      toast.success("Business details updated.")
+      toast.success(t("settings.toast.businessUpdated"))
     },
     onError: (mutationError) => {
-      toast.error(getErrorMessage(mutationError))
+      toast.error(getErrorMessage(mutationError, t("settings.errors.generic")))
     },
   })
 
@@ -563,10 +638,10 @@ export function SettingsPage() {
     onSuccess: (nextSettings) => {
       setSettingsCache(queryClient, nextSettings)
       void queryClient.invalidateQueries({ queryKey: ["auth", "current-user"] })
-      toast.success("Workspace logo updated.")
+      toast.success(t("settings.toast.workspaceLogoUpdated"))
     },
     onError: (mutationError) => {
-      toast.error(getErrorMessage(mutationError))
+      toast.error(getErrorMessage(mutationError, t("settings.errors.generic")))
     },
   })
 
@@ -574,17 +649,21 @@ export function SettingsPage() {
     mutationFn: (file: File) => uploadInvoiceLogo(file, accessToken),
     onSuccess: (nextSettings) => {
       setSettingsCache(queryClient, nextSettings)
-      toast.success("Invoice logo updated.")
+      toast.success(t("settings.toast.invoiceLogoUpdated"))
     },
     onError: (mutationError) => {
-      toast.error(getErrorMessage(mutationError))
+      toast.error(getErrorMessage(mutationError, t("settings.errors.generic")))
     },
   })
 
   const tenantMutation = useMutation({
     mutationFn: () => {
       const tenantSlug = normalizeTenantSlugInput(tenantSlugInput)
-      const validationError = getTenantSlugValidationError(tenantSlug)
+      const validationError = getTenantSlugValidationError(tenantSlug, {
+        min: t("settings.errors.tenantSlugMin"),
+        max: t("settings.errors.tenantSlugMax"),
+        invalid: t("settings.errors.tenantSlugInvalid"),
+      })
 
       if (validationError) {
         updateTenantSlugDraft(tenantSlugInput, validationError)
@@ -614,10 +693,10 @@ export function SettingsPage() {
         })
       }
 
-      toast.success("Workspace URL updated.")
+      toast.success(t("settings.toast.workspaceUrlUpdated"))
     },
     onError: (mutationError) => {
-      toast.error(getErrorMessage(mutationError))
+      toast.error(getErrorMessage(mutationError, t("settings.errors.generic")))
     },
   })
 
@@ -632,10 +711,10 @@ export function SettingsPage() {
     onSuccess: (nextSettings) => {
       setSettingsCache(queryClient, nextSettings)
       setCaReferralCode(nextSettings.caReferral.referralCode ?? "")
-      toast.success("CA referral verified and linked.")
+      toast.success(t("settings.toast.caReferralLinked"))
     },
     onError: (mutationError) => {
-      toast.error(getErrorMessage(mutationError))
+      toast.error(getErrorMessage(mutationError, t("settings.errors.generic")))
     },
   })
 
@@ -653,10 +732,10 @@ export function SettingsPage() {
       ),
     onSuccess: (nextSettings) => {
       setSettingsCache(queryClient, nextSettings)
-      toast.success("Invoice settings updated.")
+      toast.success(t("settings.toast.invoiceUpdated"))
     },
     onError: (mutationError) => {
-      toast.error(getErrorMessage(mutationError))
+      toast.error(getErrorMessage(mutationError, t("settings.errors.generic")))
     },
   })
 
@@ -672,10 +751,10 @@ export function SettingsPage() {
     onSuccess: (nextSettings) => {
       setSettingsCache(queryClient, nextSettings)
       queryClient.invalidateQueries({ queryKey: ["tax", "rules"] })
-      toast.success("GST presets updated.")
+      toast.success(t("settings.toast.gstUpdated"))
     },
     onError: (mutationError) => {
-      toast.error(getErrorMessage(mutationError))
+      toast.error(getErrorMessage(mutationError, t("settings.errors.generic")))
     },
   })
 
@@ -684,10 +763,10 @@ export function SettingsPage() {
       updatePrinterSettings(values, accessToken),
     onSuccess: (nextSettings) => {
       setSettingsCache(queryClient, nextSettings)
-      toast.success("Printer settings updated.")
+      toast.success(t("settings.toast.printerUpdated"))
     },
     onError: (mutationError) => {
-      toast.error(getErrorMessage(mutationError))
+      toast.error(getErrorMessage(mutationError, t("settings.errors.generic")))
     },
   })
   const inventoryMutation = useMutation({
@@ -698,10 +777,10 @@ export function SettingsPage() {
     ) => updateInventorySettings(values, accessToken),
     onSuccess: (nextInventorySettings) => {
       queryClient.setQueryData(["inventory", "settings"], nextInventorySettings)
-      toast.success("Inventory policy updated.")
+      toast.success(t("settings.toast.inventoryUpdated"))
     },
     onError: (mutationError) => {
-      toast.error(getErrorMessage(mutationError))
+      toast.error(getErrorMessage(mutationError, t("settings.errors.generic")))
     },
   })
   const automationMutation = useMutation({
@@ -710,10 +789,10 @@ export function SettingsPage() {
     onSuccess: (nextAutomationSettings) => {
       queryClient.setQueryData(["automation", "settings"], nextAutomationSettings)
       queryClient.invalidateQueries({ queryKey: ["automation", "jobs", "recent"] })
-      toast.success("Automation settings updated.")
+      toast.success(t("settings.toast.automationUpdated"))
     },
     onError: (mutationError) => {
-      toast.error(getErrorMessage(mutationError))
+      toast.error(getErrorMessage(mutationError, t("settings.errors.generic")))
     },
   })
 
@@ -730,9 +809,11 @@ export function SettingsPage() {
     return (
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
         <section className="rounded-2xl border border-destructive/30 bg-card/80 p-6">
-          <h1 className="text-lg font-semibold">Settings unavailable</h1>
+          <h1 className="text-lg font-semibold">
+            {t("settings.errors.unavailableTitle")}
+          </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {getErrorMessage(error) || "Unable to load the workspace settings right now."}
+            {getErrorMessage(error, t("settings.errors.loadSettings"))}
           </p>
         </section>
       </div>
@@ -751,7 +832,7 @@ export function SettingsPage() {
   const hasWorkspaceUrl = currentTenantSlug.length > 0
   const tenantDisplayUrl =
     data.business.tenantUrl ||
-    (currentTenantSlug ? `${currentTenantSlug}.gstfy.in` : "Not set")
+    (currentTenantSlug ? `${currentTenantSlug}.gstfy.in` : t("settings.common.notSet"))
   const inventorySettings = inventorySettingsQuery.data?.settings
   const automationSettings = automationSettingsQuery.data?.settings
   const automationJobs = automationJobsQuery.data?.jobs ?? []
@@ -773,7 +854,7 @@ export function SettingsPage() {
 
     setBarcodeScannerSettings(nextSettings)
     persistBarcodeScannerSettings(nextSettings)
-    toast.success("Barcode scanner connector saved.")
+    toast.success(t("settings.toast.barcodeConnectorSaved"))
   }
 
   function handleBarcodeTestChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -796,7 +877,11 @@ export function SettingsPage() {
     const value = barcodeTestValue.trim()
 
     if (value.length < barcodeScannerSettings.minLength) {
-      toast.error(`Scan at least ${barcodeScannerSettings.minLength} characters.`)
+      toast.error(
+        t("settings.errors.scanMinLength", {
+          count: barcodeScannerSettings.minLength,
+        })
+      )
       return
     }
 
@@ -837,12 +922,12 @@ export function SettingsPage() {
     }
 
     if (!businessLogoMimeTypes.has(file.type)) {
-      toast.error("Upload a JPG, PNG, or WebP logo.")
+      toast.error(t("settings.errors.logoType"))
       return
     }
 
     if (file.size > businessLogoSourceMaxBytes) {
-      toast.error("Logo source image must be 10 MB or smaller.")
+      toast.error(t("settings.errors.logoSourceSize"))
       return
     }
 
@@ -861,7 +946,7 @@ export function SettingsPage() {
     setLogoCrop(null)
 
     if (croppedFile.size > businessLogoUploadMaxBytes) {
-      toast.error("Cropped logo must be 2 MB or smaller.")
+      toast.error(t("settings.errors.logoCroppedSize"))
       return
     }
 
@@ -901,10 +986,10 @@ export function SettingsPage() {
         <aside className="hidden lg:block">
           <div className="sticky top-20 pr-4">
             <p className="mb-2 px-2 text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Settings
+              {t("settings.title")}
             </p>
             <TabsList className="flex h-auto flex-col gap-0.5 rounded-none border-0 bg-transparent p-0 shadow-none">
-              {settingsTabs.map((tab) => (
+              {translatedSettingsTabs.map((tab) => (
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
@@ -920,7 +1005,7 @@ export function SettingsPage() {
 
         <main className="min-w-0 space-y-6">
           <TabsList className="grid h-auto grid-cols-2 gap-2 rounded-none border-0 bg-transparent p-0 shadow-none lg:hidden">
-            {settingsTabs.map((tab) => (
+              {translatedSettingsTabs.map((tab) => (
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
@@ -935,9 +1020,13 @@ export function SettingsPage() {
         <TabsContent value="business" className="mt-0">
           <SettingsSection
             icon={<Building2Icon className="size-4" />}
-            title="Business details"
-            description="Registration identity stays locked. Contact details and the principal place of business can be updated here."
-            badgeLabel={canEditBusiness ? "Business admin" : "View only"}
+            title={t("settings.business.title")}
+            description={t("settings.business.description")}
+            badgeLabel={
+              canEditBusiness
+                ? t("settings.badges.businessAdmin")
+                : t("settings.badges.viewOnly")
+            }
           >
             <form onSubmit={businessForm.handleSubmit((values) => businessMutation.mutate(values))}>
               <div className="space-y-6">
@@ -945,39 +1034,50 @@ export function SettingsPage() {
                   <div className="grid gap-3 sm:grid-cols-2">
                     <ReadOnlyDetail
                       className="sm:col-span-2"
-                      label="Legal business name"
+                      label={t("settings.business.fields.legalBusinessName")}
                       value={data.business.legalName}
                     />
-                    <ReadOnlyDetail label="Trade name" value={data.business.tradeName} />
                     <ReadOnlyDetail
-                      label="State / UT"
+                      label={t("settings.business.fields.tradeName")}
+                      value={data.business.tradeName}
+                    />
+                    <ReadOnlyDetail
+                      label={t("settings.business.fields.state")}
                       value={businessStateMeta?.name ?? data.registration.stateCode}
                     />
-                    <ReadOnlyDetail label="GSTIN" value={data.registration.gstin} mono />
-                    <ReadOnlyDetail label="PAN" value={data.business.pan} mono />
                     <ReadOnlyDetail
-                      label="Constitution"
+                      label={t("settings.business.fields.gstin")}
+                      value={data.registration.gstin}
+                      mono
+                    />
+                    <ReadOnlyDetail
+                      label={t("settings.business.fields.pan")}
+                      value={data.business.pan}
+                      mono
+                    />
+                    <ReadOnlyDetail
+                      label={t("settings.business.fields.constitution")}
                       value={formatTitleCase(data.business.constitution)}
                     />
                     <ReadOnlyDetail
-                      label="Taxpayer type"
+                      label={t("settings.business.fields.taxpayerType")}
                       value={formatTitleCase(data.registration.taxpayerType)}
                     />
                     <ReadOnlyDetail
-                      label="Effective registration date"
+                      label={t("settings.business.fields.effectiveRegistrationDate")}
                       value={
                         data.registration.registrationDate ?
                           formatDate(data.registration.registrationDate)
-                        : "Not added"
+                        : t("settings.common.notAdded")
                       }
                     />
                   </div>
 
                   <BusinessLogoPanel
-                    title="Workspace logo"
-                    badgeLabel="Sidebar"
-                    emptyDescription="Shown in the sidebar and workspace switcher. It will be cropped square before saving."
-                    imageAlt="Workspace logo"
+                    title={t("settings.business.workspaceLogo.title")}
+                    badgeLabel={t("settings.business.workspaceLogo.badge")}
+                    emptyDescription={t("settings.business.workspaceLogo.emptyDescription")}
+                    imageAlt={t("settings.business.workspaceLogo.imageAlt")}
                     logoUrl={data.business.logoUrl}
                     fileName={data.business.logoFileName}
                     fileSizeBytes={data.business.logoFileSizeBytes}
@@ -1000,7 +1100,9 @@ export function SettingsPage() {
                       <div className="min-w-0 flex-1 space-y-2">
                         <div className="flex items-center gap-2">
                           <Globe2Icon className="size-4 text-muted-foreground" />
-                          <h3 className="text-sm font-medium">Workspace URL</h3>
+                          <h3 className="text-sm font-medium">
+                            {t("settings.business.workspaceUrl.title")}
+                          </h3>
                         </div>
                         {hasWorkspaceUrl ? (
                           <>
@@ -1013,7 +1115,7 @@ export function SettingsPage() {
                               </p>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              Workspace URL is locked after creation.
+                              {t("settings.business.workspaceUrl.locked")}
                             </p>
                           </>
                         ) : (
@@ -1042,7 +1144,8 @@ export function SettingsPage() {
                                 tenantSlugError ? "text-destructive" : "text-muted-foreground"
                               )}
                             >
-                              {tenantSlugError || "Generate a URL for this legacy workspace."}
+                              {tenantSlugError ||
+                                t("settings.business.workspaceUrl.generateHelper")}
                             </p>
                           </>
                         )}
@@ -1060,7 +1163,7 @@ export function SettingsPage() {
                             }}
                           >
                             <RefreshCwIcon className="size-4" />
-                            Generate
+                            {t("settings.actions.generate")}
                           </Button>
                           <Button
                             type="button"
@@ -1076,7 +1179,7 @@ export function SettingsPage() {
                             ) : (
                               <SaveIcon className="size-4" />
                             )}
-                            Save URL
+                            {t("settings.actions.saveUrl")}
                           </Button>
                         </div>
                       ) : null}
@@ -1087,18 +1190,22 @@ export function SettingsPage() {
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <Building2Icon className="size-4 text-muted-foreground" />
-                        <h3 className="text-sm font-medium">Editable details</h3>
+                        <h3 className="text-sm font-medium">
+                          {t("settings.business.editableDetails.title")}
+                        </h3>
                       </div>
                       {!isBusinessEditing ? (
                         <span className="text-xs text-muted-foreground">
-                          Click edit to update contacts and address.
+                          {t("settings.business.editableDetails.helper")}
                         </span>
                       ) : null}
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
                       <Field>
-                        <FieldLabel htmlFor="settings-business-email">Business email</FieldLabel>
+                        <FieldLabel htmlFor="settings-business-email">
+                          {t("settings.business.fields.businessEmail")}
+                        </FieldLabel>
                         <Input
                           id="settings-business-email"
                           placeholder="billing@gstfy.in"
@@ -1108,7 +1215,9 @@ export function SettingsPage() {
                         <FieldError errors={[businessForm.formState.errors.businessEmail]} />
                       </Field>
                       <Field>
-                        <FieldLabel htmlFor="settings-business-mobile">Business mobile</FieldLabel>
+                        <FieldLabel htmlFor="settings-business-mobile">
+                          {t("settings.business.fields.businessMobile")}
+                        </FieldLabel>
                         <IndianPhoneInput
                           id="settings-business-mobile"
                           disabled={!isBusinessEditing || !canEditBusiness}
@@ -1121,7 +1230,7 @@ export function SettingsPage() {
                     <div className="grid gap-4 md:grid-cols-3">
                       <Field>
                         <FieldLabel htmlFor="settings-primary-contact-name">
-                          Primary contact name
+                          {t("settings.business.fields.primaryContactName")}
                         </FieldLabel>
                         <Input
                           id="settings-primary-contact-name"
@@ -1132,7 +1241,7 @@ export function SettingsPage() {
                       </Field>
                       <Field>
                         <FieldLabel htmlFor="settings-primary-contact-mobile">
-                          Primary contact mobile
+                          {t("settings.business.fields.primaryContactMobile")}
                         </FieldLabel>
                         <IndianPhoneInput
                           id="settings-primary-contact-mobile"
@@ -1143,7 +1252,7 @@ export function SettingsPage() {
                       </Field>
                       <Field>
                         <FieldLabel htmlFor="settings-primary-contact-email">
-                          Primary contact email
+                          {t("settings.business.fields.primaryContactEmail")}
                         </FieldLabel>
                         <Input
                           id="settings-primary-contact-email"
@@ -1157,7 +1266,7 @@ export function SettingsPage() {
                     {canSetRegistrationDate ? (
                       <Field>
                         <FieldLabel htmlFor="settings-registration-date">
-                          Effective registration date
+                          {t("settings.business.fields.effectiveRegistrationDate")}
                         </FieldLabel>
                         <PopoverPrimitive.Root
                           open={isRegistrationDatePickerOpen}
@@ -1181,7 +1290,7 @@ export function SettingsPage() {
                                 <span>
                                   {selectedRegistrationDate
                                     ? format(selectedRegistrationDate, "dd MMM yyyy")
-                                    : "DD MMM YYYY"}
+                                    : t("settings.common.datePlaceholder")}
                                 </span>
                                 <CalendarIcon className="size-4 text-muted-foreground" />
                               </Button>
@@ -1224,7 +1333,7 @@ export function SettingsPage() {
                     <div className="grid gap-4 md:grid-cols-2">
                       <Field>
                         <FieldLabel htmlFor="settings-address-line-1">
-                          Principal address line 1
+                          {t("settings.business.fields.principalAddressLine1")}
                         </FieldLabel>
                         <Input
                           id="settings-address-line-1"
@@ -1236,7 +1345,7 @@ export function SettingsPage() {
 
                       <Field>
                         <FieldLabel htmlFor="settings-address-line-2">
-                          Principal address line 2
+                          {t("settings.business.fields.principalAddressLine2")}
                         </FieldLabel>
                         <Input
                           id="settings-address-line-2"
@@ -1248,7 +1357,9 @@ export function SettingsPage() {
 
                     <div className="grid gap-4 md:grid-cols-3">
                       <Field>
-                        <FieldLabel htmlFor="settings-locality">Locality / area</FieldLabel>
+                        <FieldLabel htmlFor="settings-locality">
+                          {t("settings.business.fields.locality")}
+                        </FieldLabel>
                         <Input
                           id="settings-locality"
                           disabled={!isBusinessEditing || !canEditBusiness}
@@ -1257,7 +1368,9 @@ export function SettingsPage() {
                         <FieldError errors={[businessForm.formState.errors.locality]} />
                       </Field>
                       <Field>
-                        <FieldLabel htmlFor="settings-district">District</FieldLabel>
+                        <FieldLabel htmlFor="settings-district">
+                          {t("settings.business.fields.district")}
+                        </FieldLabel>
                         <Input
                           id="settings-district"
                           disabled={!isBusinessEditing || !canEditBusiness}
@@ -1266,7 +1379,9 @@ export function SettingsPage() {
                         <FieldError errors={[businessForm.formState.errors.district]} />
                       </Field>
                       <Field>
-                        <FieldLabel htmlFor="settings-pincode">Pincode</FieldLabel>
+                        <FieldLabel htmlFor="settings-pincode">
+                          {t("settings.business.fields.pincode")}
+                        </FieldLabel>
                         <Input
                           id="settings-pincode"
                           inputMode="numeric"
@@ -1280,7 +1395,7 @@ export function SettingsPage() {
                     <div className="grid gap-4 md:grid-cols-2">
                       <Field>
                         <FieldLabel htmlFor="settings-possession-type">
-                          Nature of possession
+                          {t("settings.business.fields.possessionType")}
                         </FieldLabel>
                         <Controller
                           control={businessForm.control}
@@ -1294,12 +1409,12 @@ export function SettingsPage() {
                               <SelectTrigger id="settings-possession-type" className="w-full">
                                 <SelectDisplayValue
                                   value={field.value}
-                                  options={possessionOptions}
-                                  placeholder="Choose possession type"
+                                  options={translatedPossessionOptions}
+                                  placeholder={t("settings.placeholders.possessionType")}
                                 />
                               </SelectTrigger>
                               <SelectContent align="start">
-                                {possessionOptions.map((option) => (
+                                {translatedPossessionOptions.map((option) => (
                                   <SelectItem key={option.value} value={option.value}>
                                     {option.label}
                                   </SelectItem>
@@ -1333,7 +1448,9 @@ export function SettingsPage() {
                       </span>
                       <div className="min-w-0 flex-1 space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-sm font-semibold">CA referral</h3>
+                          <h3 className="text-sm font-semibold">
+                            {t("settings.business.caReferral.title")}
+                          </h3>
                           <span
                             className={cn(
                               "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
@@ -1343,20 +1460,26 @@ export function SettingsPage() {
                             )}
                           >
                             <span className="size-1.5 rounded-full bg-current" />
-                            {isCaReferralLinked ? "Connected" : "Required"}
+                            {isCaReferralLinked
+                              ? t("settings.badges.connected")
+                              : t("settings.badges.required")}
                           </span>
                         </div>
                         <p className="text-sm leading-6 text-muted-foreground">
                           {isCaReferralLinked
-                            ? `This workspace is connected to ${data.caReferral.practiceName ?? "your CA"} for client filing access.`
-                            : "Enter the referral code shared by your CA. Once verified, it becomes locked for this business."}
+                            ? t("settings.business.caReferral.connectedDescription", {
+                                practiceName:
+                                  data.caReferral.practiceName ??
+                                  t("settings.business.caReferral.defaultCaName"),
+                              })
+                            : t("settings.business.caReferral.description")}
                         </p>
                       </div>
                     </div>
 
                     <Field>
                       <FieldLabel htmlFor="settings-ca-referral-code">
-                        Referral code
+                        {t("settings.business.caReferral.referralCode")}
                       </FieldLabel>
                       <Input
                         id="settings-ca-referral-code"
@@ -1370,8 +1493,10 @@ export function SettingsPage() {
                       />
                       <FieldDescription>
                         {isCaReferralLinked && data.caReferral.linkedAt
-                          ? `Verified on ${formatDate(data.caReferral.linkedAt)}. This code cannot be changed.`
-                          : "We verify the code before saving the CA relationship."}
+                          ? t("settings.business.caReferral.verifiedOn", {
+                              date: formatDate(data.caReferral.linkedAt),
+                            })
+                          : t("settings.business.caReferral.verifyHelper")}
                       </FieldDescription>
                     </Field>
 
@@ -1391,7 +1516,7 @@ export function SettingsPage() {
                         ) : (
                           <BadgeCheckIcon className="size-4" />
                         )}
-                        Verify and save
+                        {t("settings.actions.verifyAndSave")}
                       </Button>
                     ) : null}
                   </section>
@@ -1409,7 +1534,7 @@ export function SettingsPage() {
                         setIsBusinessEditing(false)
                       }}
                     >
-                      Cancel
+                      {t("settings.actions.cancel")}
                     </Button>
                     <Button
                       type="submit"
@@ -1420,7 +1545,7 @@ export function SettingsPage() {
                       ) : (
                         <SaveIcon className="size-4" />
                       )}
-                      Save business details
+                      {t("settings.actions.saveBusinessDetails")}
                     </Button>
                   </>
                 : <Button
@@ -1428,7 +1553,7 @@ export function SettingsPage() {
                     disabled={!canEditBusiness}
                     onClick={() => setIsBusinessEditing(true)}
                   >
-                    Edit business details
+                    {t("settings.actions.editBusinessDetails")}
                   </Button>
                 }
               </div>
@@ -1439,15 +1564,15 @@ export function SettingsPage() {
         <TabsContent value="invoice" className="mt-0">
           <SettingsSection
             icon={<FileTextIcon className="size-4" />}
-            title="Invoice settings"
-            description="Set the default invoice style and numbering prefix used when new sales invoices are created."
+            title={t("settings.invoice.title")}
+            description={t("settings.invoice.description")}
           >
             <div className="space-y-5">
               <BusinessLogoPanel
-                title="Invoice logo"
-                badgeLabel="Invoice PDF"
-                emptyDescription="Shown on sales and purchase invoice PDFs. It will keep a wide logo shape."
-                imageAlt="Invoice logo"
+                title={t("settings.invoice.logo.title")}
+                badgeLabel={t("settings.invoice.logo.badge")}
+                emptyDescription={t("settings.invoice.logo.emptyDescription")}
+                imageAlt={t("settings.invoice.logo.imageAlt")}
                 logoUrl={data.invoiceSettings.logoUrl}
                 fileName={data.invoiceSettings.logoFileName}
                 fileSizeBytes={data.invoiceSettings.logoFileSizeBytes}
@@ -1469,7 +1594,7 @@ export function SettingsPage() {
               <FieldGroup>
                 <Field>
                   <div className="flex items-center justify-between gap-3">
-                    <FieldLabel>Invoice template</FieldLabel>
+                    <FieldLabel>{t("settings.invoice.template.label")}</FieldLabel>
                     <Badge
                       variant="outline"
                       className="bg-background font-mono text-[11px] uppercase tracking-[0.14em]"
@@ -1485,20 +1610,24 @@ export function SettingsPage() {
                     <div className="flex min-w-0 flex-col justify-center gap-2">
                       <p className="text-sm font-medium">{standardInvoiceTemplate.label}</p>
                       <p className="max-w-xl text-sm leading-6 text-muted-foreground">
-                        {standardInvoiceTemplate.description} The same layout is used for sales
-                        invoices and purchase invoice exports.
+                        {t("settings.invoice.template.description", {
+                          templateDescription: standardInvoiceTemplate.description,
+                        })}
                       </p>
-                      <Badge className="w-fit">Selected</Badge>
+                      <Badge className="w-fit">
+                        {t("settings.badges.selected")}
+                      </Badge>
                     </div>
                   </div>
                   <FieldDescription>
-                    All document samples use the same GST invoice structure, so GSTFY keeps one
-                    standard invoice template.
+                    {t("settings.invoice.template.helper")}
                   </FieldDescription>
                 </Field>
 
                 <Field>
-                  <FieldLabel htmlFor="settings-invoice-prefix">Invoice number prefix</FieldLabel>
+                  <FieldLabel htmlFor="settings-invoice-prefix">
+                    {t("settings.invoice.fields.invoicePrefix")}
+                  </FieldLabel>
                   <Input
                     id="settings-invoice-prefix"
                     value={invoicePreviewPrefix}
@@ -1514,14 +1643,14 @@ export function SettingsPage() {
                     disabled={!canEditBusiness}
                   />
                   <FieldDescription>
-                    Prefix is limited to uppercase letters, numbers, and hyphens.
+                    {t("settings.invoice.fields.invoicePrefixHelper")}
                   </FieldDescription>
                   <FieldError errors={[invoiceForm.formState.errors.invoicePrefix]} />
                 </Field>
 
                 <Field>
                   <FieldLabel htmlFor="settings-invoice-watermark">
-                    Invoice watermark text
+                    {t("settings.invoice.fields.watermark")}
                   </FieldLabel>
                   <Input
                     id="settings-invoice-watermark"
@@ -1538,7 +1667,7 @@ export function SettingsPage() {
                     maxLength={40}
                   />
                   <FieldDescription>
-                    Printed as a light background watermark. Leave blank to hide it.
+                    {t("settings.invoice.fields.watermarkHelper")}
                   </FieldDescription>
                   <FieldError errors={[invoiceForm.formState.errors.invoiceWatermarkText]} />
                 </Field>
@@ -1546,9 +1675,13 @@ export function SettingsPage() {
                 <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium">Preview</p>
+                      <p className="text-sm font-medium">
+                        {t("settings.invoice.preview.title")}
+                      </p>
                       <p className="text-sm text-muted-foreground">
-                        {getTemplateLabel()} template
+                        {t("settings.invoice.preview.template", {
+                          template: getTemplateLabel(),
+                        })}
                       </p>
                     </div>
                     <Badge className="gap-1.5 font-mono">
@@ -1566,7 +1699,7 @@ export function SettingsPage() {
                   ) : (
                     <SaveIcon className="size-4" />
                   )}
-                  Save invoice settings
+                  {t("settings.actions.saveInvoiceSettings")}
                 </Button>
               </div>
             </form>
@@ -1577,13 +1710,13 @@ export function SettingsPage() {
         <TabsContent value="gst" className="mt-0">
           <SettingsSection
             icon={<ReceiptTextIcon className="size-4" />}
-            title="GST rate slabs"
-            description="Control which GST slabs appear while creating invoices. Product-level tax can still differ by HSN."
+            title={t("settings.gst.title")}
+            description={t("settings.gst.description")}
           >
             <form onSubmit={gstForm.handleSubmit((values) => gstMutation.mutate(values))}>
               <FieldGroup>
                 <Field>
-                  <FieldLabel>Enabled invoice slabs</FieldLabel>
+                  <FieldLabel>{t("settings.gst.enabledSlabs.label")}</FieldLabel>
                   <div className="flex flex-wrap gap-2">
                     {gstSlabOptions.map((slab) => {
                       const isActive = currentEnabledSlabs.includes(slab)
@@ -1609,7 +1742,7 @@ export function SettingsPage() {
                     })}
                   </div>
                   <FieldDescription>
-                    Enable only the slabs your team should see as invoice choices.
+                    {t("settings.gst.enabledSlabs.helper")}
                   </FieldDescription>
                   <FieldError errors={[gstForm.formState.errors.enabledGstSlabs]} />
                 </Field>
@@ -1618,11 +1751,11 @@ export function SettingsPage() {
               <div className="mt-5 border-t border-border pt-5">
                 <FieldGroup>
                   <Field>
-                    <FieldLabel>Compensation cess categories</FieldLabel>
+                    <FieldLabel>{t("settings.gst.cess.label")}</FieldLabel>
                     <FieldDescription>
-                      Does {data.business.tradeName || data.business.legalName} sell any products
-                      that may attract GST compensation cess? Enable only the categories you need in
-                      the product master.
+                      {t("settings.gst.cess.description", {
+                        businessName: data.business.tradeName || data.business.legalName,
+                      })}
                     </FieldDescription>
                     <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                       {data.gstRateSettings.cessPresets.map((preset) => {
@@ -1685,9 +1818,7 @@ export function SettingsPage() {
                       })}
                     </div>
                     <FieldDescription>
-                      These are system-created product-selectable cess rules. Exact cess rates must
-                      be reviewed before live billing because compensation cess depends on notified
-                      goods and can change.
+                      {t("settings.gst.cess.helper")}
                     </FieldDescription>
                   </Field>
                 </FieldGroup>
@@ -1700,7 +1831,7 @@ export function SettingsPage() {
                   ) : (
                     <SaveIcon className="size-4" />
                   )}
-                  Save GST presets
+                  {t("settings.actions.saveGstPresets")}
                 </Button>
               </div>
             </form>
@@ -1710,14 +1841,16 @@ export function SettingsPage() {
         <TabsContent value="printer" className="mt-0">
           <SettingsSection
             icon={<PrinterIcon className="size-4" />}
-            title="Printer settings"
-            description="These preferences shape browser-based invoice printing and PDF print layouts. GSTFY does not bind to a physical printer device from the web app."
+            title={t("settings.printer.title")}
+            description={t("settings.printer.description")}
           >
             <form onSubmit={printerForm.handleSubmit((values) => printerMutation.mutate(values))}>
               <FieldGroup>
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field>
-                    <FieldLabel htmlFor="settings-paper-size">Paper size</FieldLabel>
+                    <FieldLabel htmlFor="settings-paper-size">
+                      {t("settings.printer.fields.paperSize")}
+                    </FieldLabel>
                     <Controller
                       control={printerForm.control}
                       name="paperSize"
@@ -1731,12 +1864,12 @@ export function SettingsPage() {
                           <SelectTrigger id="settings-paper-size" className="w-full">
                             <SelectDisplayValue
                               value={field.value}
-                              options={paperSizeOptions}
-                              placeholder="Choose paper size"
+                              options={translatedPaperSizeOptions}
+                              placeholder={t("settings.placeholders.paperSize")}
                             />
                           </SelectTrigger>
                           <SelectContent align="start">
-                            {paperSizeOptions.map((paperSize) => (
+                            {translatedPaperSizeOptions.map((paperSize) => (
                               <SelectItem key={paperSize.value} value={paperSize.value}>
                                 {paperSize.label}
                               </SelectItem>
@@ -1747,7 +1880,9 @@ export function SettingsPage() {
                     />
                   </Field>
                   <Field>
-                    <FieldLabel htmlFor="settings-print-orientation">Orientation</FieldLabel>
+                    <FieldLabel htmlFor="settings-print-orientation">
+                      {t("settings.printer.fields.orientation")}
+                    </FieldLabel>
                     <Controller
                       control={printerForm.control}
                       name="printOrientation"
@@ -1763,12 +1898,12 @@ export function SettingsPage() {
                           <SelectTrigger id="settings-print-orientation" className="w-full">
                             <SelectDisplayValue
                               value={field.value}
-                              options={printerOrientationOptions}
-                              placeholder="Choose orientation"
+                              options={translatedPrinterOrientationOptions}
+                              placeholder={t("settings.placeholders.orientation")}
                             />
                           </SelectTrigger>
                           <SelectContent align="start">
-                            {printerOrientationOptions.map((orientation) => (
+                            {translatedPrinterOrientationOptions.map((orientation) => (
                               <SelectItem key={orientation.value} value={orientation.value}>
                                 {orientation.label}
                               </SelectItem>
@@ -1781,7 +1916,7 @@ export function SettingsPage() {
                 </div>
 
                 <Field>
-                  <FieldLabel>Open browser print dialog automatically</FieldLabel>
+                  <FieldLabel>{t("settings.printer.fields.autoPrintDialog")}</FieldLabel>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
@@ -1794,7 +1929,7 @@ export function SettingsPage() {
                         })
                       }
                     >
-                      Yes
+                      {t("settings.common.yes")}
                     </Button>
                     <Button
                       type="button"
@@ -1807,13 +1942,13 @@ export function SettingsPage() {
                         })
                       }
                     >
-                      No
+                      {t("settings.common.no")}
                     </Button>
                   </div>
                 </Field>
 
                 <Field>
-                  <FieldLabel>Compact print layout</FieldLabel>
+                  <FieldLabel>{t("settings.printer.fields.compactLayout")}</FieldLabel>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
@@ -1826,7 +1961,7 @@ export function SettingsPage() {
                         })
                       }
                     >
-                      Enabled
+                      {t("settings.common.enabled")}
                     </Button>
                     <Button
                       type="button"
@@ -1839,11 +1974,11 @@ export function SettingsPage() {
                         })
                       }
                     >
-                      Disabled
+                      {t("settings.common.disabled")}
                     </Button>
                   </div>
                   <FieldDescription>
-                    Compact layout reduces spacing for tighter printouts on smaller formats.
+                    {t("settings.printer.fields.compactLayoutHelper")}
                   </FieldDescription>
                 </Field>
               </FieldGroup>
@@ -1855,7 +1990,7 @@ export function SettingsPage() {
                   ) : (
                     <SaveIcon className="size-4" />
                   )}
-                  Save printer settings
+                  {t("settings.actions.savePrinterSettings")}
                 </Button>
               </div>
             </form>
@@ -1865,12 +2000,12 @@ export function SettingsPage() {
         <TabsContent value="inventory" className="mt-0">
           <SettingsSection
             icon={<WarehouseIcon className="size-4" />}
-            title="Inventory policy"
-            description="Control how stock postings behave across product stock, POS, sales, purchases, transfers, and adjustments."
+            title={t("settings.inventory.title")}
+            description={t("settings.inventory.description")}
             badgeLabel={
               inventorySettings?.valuationMethod === "FIFO" ?
-                "FIFO configured"
-              : "Weighted average"
+                t("settings.badges.fifoConfigured")
+              : t("settings.badges.weightedAverage")
             }
           >
             {inventorySettingsQuery.isLoading ? (
@@ -1883,7 +2018,7 @@ export function SettingsPage() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field>
                     <FieldLabel htmlFor="settings-negative-stock-policy">
-                      Negative stock policy
+                      {t("settings.inventory.fields.negativeStockPolicy")}
                     </FieldLabel>
                     <Select
                       value={inventorySettings?.negativeStockPolicy ?? "WARN"}
@@ -1901,12 +2036,12 @@ export function SettingsPage() {
                       >
                         <SelectDisplayValue
                           value={inventorySettings?.negativeStockPolicy ?? "WARN"}
-                          options={negativeStockPolicyOptions}
-                          placeholder="Choose negative stock policy"
+                          options={translatedNegativeStockPolicyOptions}
+                          placeholder={t("settings.placeholders.negativeStockPolicy")}
                         />
                       </SelectTrigger>
                       <SelectContent align="start">
-                        {negativeStockPolicyOptions.map((option) => (
+                        {translatedNegativeStockPolicyOptions.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>
@@ -1915,7 +2050,7 @@ export function SettingsPage() {
                     </Select>
                     <FieldDescription>
                       {
-                        negativeStockPolicyOptions.find(
+                        translatedNegativeStockPolicyOptions.find(
                           (option) =>
                             option.value ===
                             (inventorySettings?.negativeStockPolicy ?? "WARN")
@@ -1926,7 +2061,7 @@ export function SettingsPage() {
 
                   <Field>
                     <FieldLabel htmlFor="settings-valuation-method">
-                      Valuation method
+                      {t("settings.inventory.fields.valuationMethod")}
                     </FieldLabel>
                     <Select
                       value={inventorySettings?.valuationMethod ?? "WEIGHTED_AVERAGE"}
@@ -1943,12 +2078,12 @@ export function SettingsPage() {
                           value={
                             inventorySettings?.valuationMethod ?? "WEIGHTED_AVERAGE"
                           }
-                          options={valuationMethodOptions}
-                          placeholder="Choose valuation method"
+                          options={translatedValuationMethodOptions}
+                          placeholder={t("settings.placeholders.valuationMethod")}
                         />
                       </SelectTrigger>
                       <SelectContent align="start">
-                        {valuationMethodOptions.map((option) => (
+                        {translatedValuationMethodOptions.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>
@@ -1957,7 +2092,7 @@ export function SettingsPage() {
                     </Select>
                     <FieldDescription>
                       {
-                        valuationMethodOptions.find(
+                        translatedValuationMethodOptions.find(
                           (option) =>
                             option.value ===
                             (inventorySettings?.valuationMethod ?? "WEIGHTED_AVERAGE")
@@ -1970,21 +2105,21 @@ export function SettingsPage() {
                 <div className="rounded-2xl border border-border bg-muted/20 p-4">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <h3 className="text-sm font-medium">Posting behavior</h3>
+                      <h3 className="text-sm font-medium">
+                        {t("settings.inventory.postingBehavior.title")}
+                      </h3>
                       <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                        Inventory screens now focus on operational work. Policy changes
-                        live here so stock controls are configured once for the whole
-                        business.
+                        {t("settings.inventory.postingBehavior.description")}
                       </p>
                     </div>
                     {inventoryMutation.isPending ? (
                       <Badge variant="outline" className="w-fit gap-1.5 bg-background">
                         <Spinner className="size-3.5" />
-                        Saving
+                        {t("settings.common.saving")}
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="w-fit bg-background">
-                        Auto-saved
+                        {t("settings.badges.autoSaved")}
                       </Badge>
                     )}
                   </div>
@@ -1997,12 +2132,12 @@ export function SettingsPage() {
         <TabsContent value="automation" className="mt-0">
           <SettingsSection
             icon={<Settings2Icon className="size-4" />}
-            title="Automation"
-            description="Let GSTFY handle low-risk background work after the dealer posts a bill, imports a statement, or creates an eligible GST document."
+            title={t("settings.automation.title")}
+            description={t("settings.automation.description")}
             badgeLabel={
               automationSettings?.autoStockAccountingEnabled ?
-                "Smart actions on"
-              : "Manual controls"
+                t("settings.badges.smartActionsOn")
+              : t("settings.badges.manualControls")
             }
           >
             {automationSettingsQuery.isLoading ? (
@@ -2015,7 +2150,7 @@ export function SettingsPage() {
             ) : automationSettings ? (
               <div className="space-y-5">
                 <div className="grid gap-3 md:grid-cols-2">
-                  {automationSettingOptions.map((option) => {
+                  {translatedAutomationSettingOptions.map((option) => {
                     const enabled = Boolean(automationSettings?.[option.key])
 
                     return (
@@ -2082,19 +2217,21 @@ export function SettingsPage() {
                 <div className="rounded-2xl border border-border bg-muted/20">
                   <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
                     <div>
-                      <h3 className="text-sm font-medium">Recent automation</h3>
+                      <h3 className="text-sm font-medium">
+                        {t("settings.automation.recent.title")}
+                      </h3>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        Queued background actions for stock checks, e-invoice, and bank matching.
+                        {t("settings.automation.recent.description")}
                       </p>
                     </div>
                     {automationMutation.isPending ? (
                       <Badge variant="outline" className="gap-1.5 bg-background">
                         <Spinner className="size-3.5" />
-                        Saving
+                        {t("settings.common.saving")}
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="bg-background">
-                        Auto-run
+                        {t("settings.badges.autoRun")}
                       </Badge>
                     )}
                   </div>
@@ -2114,10 +2251,10 @@ export function SettingsPage() {
                         >
                           <div className="min-w-0">
                             <p className="truncate font-medium">
-                              {formatAutomationJobType(job.jobType)}
+                              {formatAutomationJobType(job.jobType, t)}
                             </p>
                             <p className="truncate text-xs text-muted-foreground">
-                              {job.sourceType} · {formatAutomationTime(job.updatedAt)}
+                            {job.sourceType} · {formatAutomationTime(job.updatedAt, t)}
                             </p>
                             {job.lastErrorMessage ? (
                               <p className="mt-1 line-clamp-2 text-xs text-destructive">
@@ -2132,14 +2269,14 @@ export function SettingsPage() {
                               getAutomationStatusClassName(job.status)
                             )}
                           >
-                            {formatAutomationJobStatus(job.status)}
+                            {formatAutomationJobStatus(job.status, t)}
                           </Badge>
                         </div>
                       ))
                     ) : (
                       <div className="flex items-center gap-3 px-4 py-6 text-sm text-muted-foreground">
                         <CircleCheckIcon className="size-5 text-emerald-600" />
-                        No background work has been queued yet.
+                        {t("settings.automation.recent.empty")}
                       </div>
                     )}
                   </div>
@@ -2147,8 +2284,10 @@ export function SettingsPage() {
               </div>
             ) : (
               <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-                {getErrorMessage(automationSettingsQuery.error) ||
-                  "Unable to load automation settings."}
+                {getErrorMessage(
+                  automationSettingsQuery.error,
+                  t("settings.errors.loadAutomation")
+                )}
               </div>
             )}
           </SettingsSection>
@@ -2157,23 +2296,27 @@ export function SettingsPage() {
         <TabsContent value="connectors" className="mt-0">
           <SettingsSection
             icon={<BarcodeIcon className="size-4" />}
-            title="Connectors"
-            badgeLabel={barcodeScannerSettings.enabled ? "Scanner enabled" : "Scanner disabled"}
+            title={t("settings.connectors.title")}
+            badgeLabel={
+              barcodeScannerSettings.enabled
+                ? t("settings.badges.scannerEnabled")
+                : t("settings.badges.scannerDisabled")
+            }
           >
             <div className="space-y-5">
               <div className="rounded-2xl border border-border bg-muted/20 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-medium">Barcode scanner</p>
+                      <p className="text-sm font-medium">
+                        {t("settings.connectors.barcode.title")}
+                      </p>
                       <Badge variant="outline" className="bg-background">
-                        Keyboard mode
+                        {t("settings.badges.keyboardMode")}
                       </Badge>
                     </div>
                     <p className="max-w-2xl text-sm text-muted-foreground">
-                      USB and Bluetooth barcode scanners usually work like a keyboard. Connect the
-                      scanner, place the cursor in a barcode field, then scan. GSTFY listens for the
-                      configured suffix key.
+                      {t("settings.connectors.barcode.description")}
                     </p>
                   </div>
                   <Badge
@@ -2181,7 +2324,7 @@ export function SettingsPage() {
                     className="w-fit gap-1.5 bg-background text-[11px]"
                   >
                     <BadgeCheckIcon className="size-3.5" />
-                    Saved on this device
+                    {t("settings.badges.savedOnDevice")}
                   </Badge>
                 </div>
               </div>
@@ -2190,9 +2333,11 @@ export function SettingsPage() {
                 <div className="rounded-2xl border border-border bg-background p-4">
                   <div className="mb-4 flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-medium">Test scanner input</h3>
+                      <h3 className="text-sm font-medium">
+                        {t("settings.connectors.test.title")}
+                      </h3>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Click the input, scan one product barcode, then check the detected result.
+                        {t("settings.connectors.test.description")}
                       </p>
                     </div>
                     <Badge variant="outline" className="bg-muted/40">
@@ -2202,11 +2347,13 @@ export function SettingsPage() {
 
                   <FieldGroup>
                     <Field>
-                      <FieldLabel htmlFor="settings-barcode-test">Scan test</FieldLabel>
+                      <FieldLabel htmlFor="settings-barcode-test">
+                        {t("settings.connectors.test.scanLabel")}
+                      </FieldLabel>
                       <Input
                         id="settings-barcode-test"
                         value={barcodeTestValue}
-                        placeholder="Click here and scan a barcode"
+                        placeholder={t("settings.connectors.test.scanPlaceholder")}
                         className="font-mono"
                         autoComplete="off"
                         onFocus={() => {
@@ -2216,31 +2363,38 @@ export function SettingsPage() {
                         onKeyDown={handleBarcodeTestKeyDown}
                       />
                       <FieldDescription>
-                        If your scanner can be configured, set its suffix to Enter or Tab.
+                        {t("settings.connectors.test.scanHelper")}
                       </FieldDescription>
                     </Field>
                   </FieldGroup>
 
                   <div className="mt-4 grid gap-2 rounded-xl border border-border/70 bg-muted/20 p-3 text-sm">
                     <ConnectorDetail
-                      label="Detected barcode"
-                      value={barcodeTestResult?.value ?? "No scan captured yet"}
+                      label={t("settings.connectors.test.detectedBarcode")}
+                      value={
+                        barcodeTestResult?.value ??
+                        t("settings.connectors.test.noScanCaptured")
+                      }
                       mono={Boolean(barcodeTestResult)}
                     />
                     <ConnectorDetail
-                      label="Detected suffix"
+                      label={t("settings.connectors.test.detectedSuffix")}
                       value={
                         barcodeTestResult ?
-                          getBarcodeSubmitKeyLabel(barcodeTestResult.submitKey)
-                        : "Waiting for Enter or Tab"
+                          translatedBarcodeSubmitKeyOptions.find(
+                            (option) => option.value === barcodeTestResult.submitKey
+                          )?.label ?? t("settings.options.barcodeSubmitKey.enter")
+                        : t("settings.connectors.test.waitingForSuffix")
                       }
                     />
                     <ConnectorDetail
-                      label="Scan speed"
+                      label={t("settings.connectors.test.scanSpeed")}
                       value={
                         barcodeTestResult?.durationMs === null || !barcodeTestResult ?
-                          "Not measured"
-                        : `${barcodeTestResult.durationMs} ms`
+                          t("settings.connectors.test.notMeasured")
+                        : t("settings.connectors.test.durationMs", {
+                            duration: barcodeTestResult.durationMs,
+                          })
                       }
                     />
                   </div>
@@ -2255,23 +2409,26 @@ export function SettingsPage() {
                         barcodeTestStartRef.current = null
                       }}
                     >
-                      Clear test
+                      {t("settings.actions.clearTest")}
                     </Button>
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-border bg-background p-4">
                   <div className="mb-4">
-                    <h3 className="text-sm font-medium">Scanner behavior</h3>
+                    <h3 className="text-sm font-medium">
+                      {t("settings.connectors.behavior.title")}
+                    </h3>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      These preferences are used by this browser/device for product and POS barcode
-                      fields.
+                      {t("settings.connectors.behavior.description")}
                     </p>
                   </div>
 
                   <FieldGroup>
                     <Field>
-                      <FieldLabel htmlFor="settings-barcode-submit-key">Suffix key</FieldLabel>
+                      <FieldLabel htmlFor="settings-barcode-submit-key">
+                        {t("settings.connectors.behavior.suffixKey")}
+                      </FieldLabel>
                       <Select
                         value={barcodeScannerSettings.submitKey}
                         onValueChange={(value) =>
@@ -2283,12 +2440,12 @@ export function SettingsPage() {
                         <SelectTrigger id="settings-barcode-submit-key" className="w-full">
                           <SelectDisplayValue
                             value={barcodeScannerSettings.submitKey}
-                            options={barcodeSubmitKeyOptions}
-                            placeholder="Choose suffix key"
+                            options={translatedBarcodeSubmitKeyOptions}
+                            placeholder={t("settings.placeholders.suffixKey")}
                           />
                         </SelectTrigger>
                         <SelectContent align="start">
-                          {barcodeSubmitKeyOptions.map((option) => (
+                          {translatedBarcodeSubmitKeyOptions.map((option) => (
                             <SelectItem key={option.value} value={option.value}>
                               {option.label}
                             </SelectItem>
@@ -2299,7 +2456,7 @@ export function SettingsPage() {
 
                     <Field>
                       <FieldLabel htmlFor="settings-barcode-min-length">
-                        Minimum barcode length
+                        {t("settings.connectors.behavior.minLength")}
                       </FieldLabel>
                       <Input
                         id="settings-barcode-min-length"
@@ -2316,60 +2473,61 @@ export function SettingsPage() {
                     </Field>
 
                     <Field>
-                      <FieldLabel>Connector status</FieldLabel>
+                      <FieldLabel>{t("settings.connectors.behavior.status")}</FieldLabel>
                       <div className="flex flex-wrap gap-2">
                         <Button
                           type="button"
                           variant={barcodeScannerSettings.enabled ? "default" : "outline"}
                           onClick={() => updateBarcodeScannerSettings({ enabled: true })}
                         >
-                          Enabled
+                          {t("settings.common.enabled")}
                         </Button>
                         <Button
                           type="button"
                           variant={!barcodeScannerSettings.enabled ? "default" : "outline"}
                           onClick={() => updateBarcodeScannerSettings({ enabled: false })}
                         >
-                          Disabled
+                          {t("settings.common.disabled")}
                         </Button>
                       </div>
                     </Field>
 
                     <Field>
-                      <FieldLabel>Auto-search after scan</FieldLabel>
+                      <FieldLabel>
+                        {t("settings.connectors.behavior.autoSearch")}
+                      </FieldLabel>
                       <div className="flex flex-wrap gap-2">
                         <Button
                           type="button"
                           variant={barcodeScannerSettings.autoSearch ? "default" : "outline"}
                           onClick={() => updateBarcodeScannerSettings({ autoSearch: true })}
                         >
-                          Enabled
+                          {t("settings.common.enabled")}
                         </Button>
                         <Button
                           type="button"
                           variant={!barcodeScannerSettings.autoSearch ? "default" : "outline"}
                           onClick={() => updateBarcodeScannerSettings({ autoSearch: false })}
                         >
-                          Disabled
+                          {t("settings.common.disabled")}
                         </Button>
                       </div>
                       <FieldDescription>
-                        When enabled, POS/product fields can search immediately after the scanner
-                        suffix is received.
+                        {t("settings.connectors.behavior.autoSearchHelper")}
                       </FieldDescription>
                     </Field>
                   </FieldGroup>
 
                   <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-xs text-muted-foreground">
-                      Last saved:{" "}
+                      {t("settings.connectors.behavior.lastSaved")}{" "}
                       {barcodeScannerSettings.updatedAt ?
                         formatDateTime(barcodeScannerSettings.updatedAt)
-                      : "Not saved yet"}
+                      : t("settings.common.notSavedYet")}
                     </p>
                     <Button type="button" onClick={saveBarcodeScannerSettings}>
                       <SaveIcon className="size-4" />
-                      Save connector
+                      {t("settings.actions.saveConnector")}
                     </Button>
                   </div>
                 </div>
@@ -2385,11 +2543,15 @@ export function SettingsPage() {
         key={`${logoCrop.target}-${logoCrop.file.name}-${logoCrop.file.lastModified}`}
         open={isLogoCropOpen}
         file={logoCrop.file}
-        title={logoCrop.target === "invoice" ? "Crop invoice logo" : "Crop workspace logo"}
+        title={
+          logoCrop.target === "invoice"
+            ? t("settings.logoCrop.invoiceTitle")
+            : t("settings.logoCrop.workspaceTitle")
+        }
         description={
           logoCrop.target === "invoice" ?
-            "Crop the invoice logo as a wide rectangle so it fits the invoice header cleanly."
-          : "Make the workspace logo square so it fits the sidebar and account switcher cleanly."
+            t("settings.logoCrop.invoiceDescription")
+          : t("settings.logoCrop.workspaceDescription")
         }
         outputWidth={logoCrop.target === "invoice" ? 960 : 512}
         outputHeight={logoCrop.target === "invoice" ? 320 : 512}
@@ -2447,27 +2609,27 @@ function AutomationJobSkeleton() {
   )
 }
 
-function formatAutomationJobType(jobType: string) {
+function formatAutomationJobType(jobType: string, t: TFunction) {
   const labels: Record<string, string> = {
-    "stock.posted-document.sync": "Stock ledger check",
-    "stock.opening-stock.sync": "Opening stock check",
-    "einvoice.generate": "E-invoice generation",
-    "bank-reconciliation.auto-match": "Bank auto-match",
-    "gst-report.refresh": "GST report refresh",
-    "filing-review.prepare": "Filing review",
+    "stock.posted-document.sync": t("settings.automation.jobTypes.stockPostedDocument"),
+    "stock.opening-stock.sync": t("settings.automation.jobTypes.openingStock"),
+    "einvoice.generate": t("settings.automation.jobTypes.eInvoice"),
+    "bank-reconciliation.auto-match": t("settings.automation.jobTypes.bankAutoMatch"),
+    "gst-report.refresh": t("settings.automation.jobTypes.gstReportRefresh"),
+    "filing-review.prepare": t("settings.automation.jobTypes.filingReview"),
   }
 
   return labels[jobType] ?? jobType
 }
 
-function formatAutomationJobStatus(status: string) {
+function formatAutomationJobStatus(status: string, t: TFunction) {
   const labels: Record<string, string> = {
-    queued: "Queued",
-    running: "Running",
-    completed: "Completed",
-    failed: "Failed",
-    retry_scheduled: "Retrying",
-    skipped: "Skipped",
+    queued: t("settings.automation.status.queued"),
+    running: t("settings.automation.status.running"),
+    completed: t("settings.automation.status.completed"),
+    failed: t("settings.automation.status.failed"),
+    retry_scheduled: t("settings.automation.status.retrying"),
+    skipped: t("settings.automation.status.skipped"),
   }
 
   return labels[status] ?? status
@@ -2489,11 +2651,11 @@ function getAutomationStatusClassName(status: string) {
   return "text-muted-foreground"
 }
 
-function formatAutomationTime(value: string) {
+function formatAutomationTime(value: string, t: TFunction) {
   try {
     return format(parseISO(value), "dd MMM yyyy, h:mm a")
   } catch {
-    return "Just now"
+    return t("settings.common.justNow")
   }
 }
 
@@ -2634,6 +2796,8 @@ function ReadOnlyDetail({
   mono?: boolean
   className?: string
 }) {
+  const { t } = useTranslation()
+
   return (
     <div
       className={cn(
@@ -2651,7 +2815,7 @@ function ReadOnlyDetail({
         )}
         title={value}
       >
-        {value || "Not added"}
+        {value || t("settings.common.notAdded")}
       </p>
     </div>
   )
@@ -2684,6 +2848,7 @@ function BusinessLogoPanel({
   uploadedAt: string | null
   uploading: boolean
 }) {
+  const { t } = useTranslation()
   const isWidePreview = previewVariant === "wide"
 
   return (
@@ -2744,7 +2909,11 @@ function BusinessLogoPanel({
         onClick={onPick}
       >
         {uploading ? <Spinner /> : <UploadCloudIcon className="size-3.5" />}
-        {uploading ? "" : logoUrl ? "Change logo" : "Upload logo"}
+        {uploading
+          ? ""
+          : logoUrl
+            ? t("settings.actions.changeLogo")
+            : t("settings.actions.uploadLogo")}
       </Button>
     </section>
   )
@@ -2883,17 +3052,24 @@ function createTenantSlugSuggestion(value: string) {
   return reservedTenantSlugs.has(normalized) ? `${normalized}-business` : normalized
 }
 
-function getTenantSlugValidationError(value: string) {
+function getTenantSlugValidationError(
+  value: string,
+  messages: {
+    min: string
+    max: string
+    invalid: string
+  }
+) {
   if (value.length < 3) {
-    return "Use at least 3 characters."
+    return messages.min
   }
 
   if (value.length > 48) {
-    return "Use 48 characters or fewer."
+    return messages.max
   }
 
   if (!tenantSlugPattern.test(value)) {
-    return "Use letters, numbers, and hyphens only."
+    return messages.invalid
   }
 
   return null
@@ -2903,8 +3079,8 @@ function getTemplateLabel() {
   return getInvoiceTemplateOption().label
 }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Something went wrong. Please try again."
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
 }
 
 function SettingsPageSkeleton() {

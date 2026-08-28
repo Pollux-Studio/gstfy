@@ -11,6 +11,10 @@ const dashboardOverviewQuerySchema = z.object({
   to: isoDateSchema.optional(),
 })
 
+const dashboardLimitQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+})
+
 type MoneyTotalRow = {
   total_amount: string | null
   taxable_value: string | null
@@ -29,6 +33,7 @@ type InventorySummaryRow = {
   sku_count: number
   inventory_value: string | null
   negative_stock_count: number
+  low_stock_count: number
 }
 
 type PartyCountRow = {
@@ -48,6 +53,7 @@ type LowStockRow = {
   quantity_on_hand: string | null
   reorder_level: string | null
   inventory_value: string | null
+  total_count: number
 }
 
 type MonthlyRow = {
@@ -98,10 +104,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       [partyCounts],
       [receivables],
       [payables],
-      lowStockRows,
       monthlyRows,
-      recentSales,
-      recentPurchases,
       [gstReadiness],
     ] = await Promise.all([
       sql<{
@@ -130,10 +133,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       getPartyCounts(businessId),
       getArApOutstanding(businessId, "receivable"),
       getArApOutstanding(businessId, "payable"),
-      getLowStockRows(businessId),
       getMonthlyRows(businessId, period.from, period.to),
-      getRecentSales(businessId),
-      getRecentPurchases(businessId),
       getGstReadiness(businessId),
     ])
 
@@ -180,7 +180,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         inventoryValue: money(toNumber(inventory?.inventory_value)),
         skuCount: inventory?.sku_count ?? 0,
         negativeStockCount: inventory?.negative_stock_count ?? 0,
-        lowStockCount: lowStockRows.length,
+        lowStockCount: inventory?.low_stock_count ?? 0,
         customers: partyCounts?.customers ?? 0,
         suppliers: partyCounts?.suppliers ?? 0,
       },
@@ -191,17 +191,9 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         { label: "Expenses", value: accountingExpenses, fill: "var(--chart-4)" },
         { label: "Returns", value: salesReturnTotal + purchaseReturnTotal, fill: "var(--chart-5)" },
       ].filter((item) => item.value > 0),
-      lowStockItems: lowStockRows.map((row) => ({
-        itemId: row.item_id,
-        name: row.name,
-        sku: row.sku,
-        hsnCode: row.hsn_code ?? "",
-        quantityOnHand: row.quantity_on_hand ?? "0.000",
-        reorderLevel: row.reorder_level ?? "0.000",
-        inventoryValue: money(toNumber(row.inventory_value)),
-      })),
-      recentSales: recentSales.map(toRecentDocument),
-      recentPurchases: recentPurchases.map(toRecentDocument),
+      lowStockItems: [],
+      recentSales: [],
+      recentPurchases: [],
       filingReadiness: {
         runId: gstReadiness?.id ?? null,
         period: gstReadiness?.period ?? null,
@@ -211,6 +203,31 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         blockingExceptions: gstReadiness?.blocking_exceptions ?? 0,
         nextAction: getFilingNextAction(gstReadiness),
       },
+    }
+  })
+
+  app.get("/dashboard/low-stock", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    const query = dashboardLimitQuerySchema.parse(request.query)
+    const rows = await getLowStockRows(access.business.id, query.limit)
+
+    return {
+      totalCount: rows[0]?.total_count ?? 0,
+      items: rows.map(toLowStockItem),
+    }
+  })
+
+  app.get("/dashboard/recent-activity", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    const query = dashboardLimitQuerySchema.parse(request.query)
+    const [sales, purchases] = await Promise.all([
+      getRecentSales(access.business.id, query.limit),
+      getRecentPurchases(access.business.id, query.limit),
+    ])
+
+    return {
+      sales: sales.map(toRecentDocument),
+      purchases: purchases.map(toRecentDocument),
     }
   })
 }
@@ -293,12 +310,32 @@ async function getAccountingSummary(businessId: string, from: string, to: string
 
 async function getInventorySummary(businessId: string) {
   return sql<InventorySummaryRow[]>`
+    with tracked_items as (
+      select
+        item.id,
+        coalesce(sum(balance.quantity_on_hand), 0) as quantity_on_hand,
+        coalesce(sum(balance.inventory_value), 0) as inventory_value,
+        profile.reorder_level
+      from public.items item
+      inner join public.item_inventory_profiles profile
+        on profile.item_id = item.id
+        and profile.business_id = item.business_id
+      left join public.inventory_balances balance
+        on balance.item_id = item.id::text
+        and balance.business_id = item.business_id
+      where item.business_id = ${businessId}
+        and item.status = 'ACTIVE'
+        and profile.track_inventory = true
+      group by item.id, profile.reorder_level
+    )
     select
-      (count(distinct item_id) filter (where quantity_on_hand > 0))::int as sku_count,
+      (count(*) filter (where quantity_on_hand > 0))::int as sku_count,
       coalesce(sum(inventory_value), 0)::text as inventory_value,
-      (count(*) filter (where quantity_on_hand < 0))::int as negative_stock_count
-    from public.inventory_balances
-    where business_id = ${businessId}
+      (count(*) filter (where quantity_on_hand < 0))::int as negative_stock_count,
+      (count(*) filter (
+        where quantity_on_hand <= greatest(reorder_level, 0)
+      ))::int as low_stock_count
+    from tracked_items
   `
 }
 
@@ -342,7 +379,7 @@ async function getArApOutstanding(
   `
 }
 
-async function getLowStockRows(businessId: string) {
+async function getLowStockRows(businessId: string, limit = 10) {
   return sql<LowStockRow[]>`
     select
       item.id::text as item_id,
@@ -351,7 +388,8 @@ async function getLowStockRows(businessId: string) {
       tax.hsn_sac as hsn_code,
       coalesce(sum(balance.quantity_on_hand), 0)::text as quantity_on_hand,
       profile.reorder_level::text,
-      coalesce(sum(balance.inventory_value), 0)::text as inventory_value
+      coalesce(sum(balance.inventory_value), 0)::text as inventory_value,
+      count(*) over()::int as total_count
     from public.items item
     inner join public.item_inventory_profiles profile
       on profile.item_id = item.id
@@ -374,7 +412,7 @@ async function getLowStockRows(businessId: string) {
     group by item.id, item.name, item.sku, tax.hsn_sac, profile.reorder_level
     having coalesce(sum(balance.quantity_on_hand), 0) <= greatest(profile.reorder_level, 0)
     order by coalesce(sum(balance.quantity_on_hand), 0), item.name
-    limit 10
+    limit ${limit}
   `
 }
 
@@ -455,7 +493,7 @@ async function getMonthlyRows(businessId: string, from: string, to: string) {
   `
 }
 
-async function getRecentSales(businessId: string) {
+async function getRecentSales(businessId: string, limit = 8) {
   return sql<RecentDocumentRow[]>`
     select
       id::text,
@@ -470,11 +508,11 @@ async function getRecentSales(businessId: string) {
     where business_id = ${businessId}
       and status in ('draft', 'posted')
     order by created_at desc
-    limit 8
+    limit ${limit}
   `
 }
 
-async function getRecentPurchases(businessId: string) {
+async function getRecentPurchases(businessId: string, limit = 8) {
   return sql<RecentDocumentRow[]>`
     select
       id::text,
@@ -489,7 +527,7 @@ async function getRecentPurchases(businessId: string) {
     where business_id = ${businessId}
       and status in ('draft', 'posted')
     order by created_at desc
-    limit 8
+    limit ${limit}
   `
 }
 
@@ -562,6 +600,18 @@ function toRecentDocument(row: RecentDocumentRow) {
     paid: toNumber(row.paid_amount),
     due: toNumber(row.due_amount),
     status: row.status,
+  }
+}
+
+function toLowStockItem(row: LowStockRow) {
+  return {
+    itemId: row.item_id,
+    name: row.name,
+    sku: row.sku,
+    hsnCode: row.hsn_code ?? "",
+    quantityOnHand: row.quantity_on_hand ?? "0.000",
+    reorderLevel: row.reorder_level ?? "0.000",
+    inventoryValue: money(toNumber(row.inventory_value)),
   }
 }
 

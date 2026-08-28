@@ -20,9 +20,7 @@ import {
   ShoppingCartIcon,
   StoreIcon,
   TruckIcon,
-  Undo2Icon,
   UserPlusIcon,
-  UsersIcon,
   WalletIcon,
 } from "lucide-react"
 
@@ -52,9 +50,12 @@ import {
 } from "@/lib/auth/session"
 import {
   getBusinessDashboard,
+  getDashboardLowStock,
+  getDashboardRecentActivity,
   type BusinessDashboardOverview,
   type DashboardLowStockItem,
   type DashboardRecentDocument,
+  type RevenueStatisticPoint,
 } from "@/lib/dashboard/api"
 import { cn } from "@/lib/utils"
 
@@ -65,7 +66,21 @@ const currencyFormatter = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 2,
 })
 
+const noDecimalCurrencyFormatter = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+})
+
 const compactFormatter = new Intl.NumberFormat("en-IN", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+})
+
+const compactCurrencyFormatter = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
   notation: "compact",
   maximumFractionDigits: 1,
 })
@@ -116,22 +131,11 @@ const OverviewReportsPieChart = dynamic(
     ssr: false,
     loading: () => (
       <div className="flex h-full items-center justify-center">
-        <Skeleton className="size-44 rounded-full" />
+        <Skeleton className="size-28 rounded-full" />
       </div>
     ),
   }
 )
-
-const totalIconMap = {
-  sales: StoreIcon,
-  purchase: ShoppingCartIcon,
-  income: WalletIcon,
-  expenses: BadgeIndianRupeeIcon,
-  customers: UsersIcon,
-  suppliers: TruckIcon,
-  salesReturns: Undo2Icon,
-  purchaseReturns: PackageSearchIcon,
-} as const
 
 const quickActions = [
   {
@@ -171,304 +175,453 @@ export const OverviewDashboard = React.memo(function OverviewDashboard() {
     enabled: accessToken.length > 0 && userId.length > 0,
     staleTime: 1000 * 60 * 2,
   })
+  const lowStockQuery = useQuery({
+    queryKey: ["dashboard", "low-stock", userId],
+    queryFn: () => getDashboardLowStock(accessToken, 10),
+    enabled: accessToken.length > 0 && userId.length > 0,
+    staleTime: 1000 * 60,
+  })
+  const recentActivityQuery = useQuery({
+    queryKey: ["dashboard", "recent-activity", userId],
+    queryFn: () => getDashboardRecentActivity(accessToken, 3),
+    enabled: accessToken.length > 0 && userId.length > 0,
+    staleTime: 1000 * 60,
+  })
 
   if (!storedSession || isLoading || !data) {
     return <OverviewDashboardSkeleton />
   }
 
-  const totals = buildTotals(data)
+  const lowStockItems = lowStockQuery.data?.items ?? []
+  const lowStockTotalCount = Math.max(
+    lowStockQuery.data?.totalCount ?? data.summary.lowStockCount,
+    lowStockItems.length
+  )
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
-      <DashboardCard className="overflow-hidden">
-        <div className="relative overflow-hidden">
-          <div className="pointer-events-none absolute inset-0 bg-linear-to-br from-primary/10 via-primary/5 to-transparent" />
-          <div className="relative flex flex-col gap-5 p-4 sm:p-5 lg:gap-6 lg:p-6">
-            <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-              <div className="max-w-3xl space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline" className="gap-1.5 bg-background/70">
-                    <span className="size-2 rounded-full bg-emerald-500" />
-                    Live workspace
-                  </Badge>
-                  <Badge className="gap-1.5 bg-primary/10 text-primary dark:text-primary-foreground">
-                    <Layers3Icon className="size-3.5" />
-                    {data.period.label}
-                  </Badge>
-                  {data.business.gstin ?
-                    <Badge
-                      variant="outline"
-                      className="font-mono text-[11px] tracking-[0.12em]"
-                    >
-                      {data.business.gstin}
-                    </Badge>
-                  : null}
-                </div>
-                <div className="space-y-2">
-                  <h1 className="text-2xl font-semibold tracking-tight lg:text-3xl">
-                    {data.business.name} dashboard
-                  </h1>
-                  <p className="max-w-2xl text-sm text-muted-foreground lg:text-base">
-                    Sales, purchases, GST payable, receivables, payables, and stock
-                    pressure from your current business data.
-                  </p>
-                </div>
-              </div>
-              <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto xl:grid-cols-2">
-                {quickActions.map((action) => {
-                  const Icon = action.icon
+      <DashboardBentoSection data={data} />
 
-                  return (
-                    <Button
-                      key={action.label}
-                      type="button"
-                      variant="outline"
-                      nativeButton={false}
-                      render={<Link href={action.href} />}
-                      className="h-10 justify-between rounded-xl bg-background/80 px-3"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Icon className="size-4 text-muted-foreground" />
-                        <span>{action.label}</span>
-                      </span>
-                      <ArrowRightIcon className="size-4 text-muted-foreground" />
-                    </Button>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      </DashboardCard>
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {totals.map((item) => {
-          const Icon = totalIconMap[item.id]
-
-          return (
-            <DashboardCard key={item.id}>
-              <div className="space-y-4 p-4 sm:p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 space-y-1">
-                    <p className="text-sm text-muted-foreground">{item.label}</p>
-                    <h2 className="truncate font-mono text-xl font-semibold tracking-tight sm:text-2xl">
-                      {formatValue(item.value, item.kind)}
-                    </h2>
-                  </div>
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <Icon className="size-4" />
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground">{item.note}</p>
-              </div>
-            </DashboardCard>
-          )
-        })}
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.95fr)]">
-        <DashboardCard className="overflow-hidden">
-          <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-base font-semibold">Revenue Statistic</h2>
-                <p className="text-sm text-muted-foreground">
-                  Posted sales, purchases, and accounting income trend.
-                </p>
-              </div>
-              <Badge variant="outline" className="gap-1.5">
-                <ShoppingBagIcon className="size-3.5" />
-                {compactFormatter.format(data.summary.sales)} sales booked
-              </Badge>
-            </div>
-          </div>
-          <div className="h-[340px] min-w-0 px-2 py-4 sm:px-4">
-            <OverviewRevenueChart data={data.trend} />
-          </div>
-        </DashboardCard>
-
-        <DashboardCard className="overflow-hidden">
-          <div className="border-b border-border px-4 py-4 sm:px-5 lg:px-6">
-            <div className="space-y-1">
-              <h2 className="text-base font-semibold">Business Mix</h2>
-              <p className="text-sm text-muted-foreground">
-                Where this period&apos;s business value is coming from.
-              </p>
-            </div>
-          </div>
-          {data.mix.length > 0 ?
-            <div className="grid gap-4 p-4 sm:p-5 lg:p-6">
-              <div className="h-[240px] min-w-0">
-                <OverviewReportsPieChart data={data.mix} />
-              </div>
-              <div className="space-y-3">
-                {data.mix.map((item) => (
-                  <div
-                    key={item.label}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="size-2.5 rounded-full"
-                        style={{ backgroundColor: item.fill }}
-                      />
-                      <span className="text-sm text-muted-foreground">
-                        {item.label}
-                      </span>
-                    </div>
-                    <span className="font-mono text-sm font-semibold">
-                      {formatCurrency(item.value)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          : <DashboardEmpty
-              icon={<ReceiptTextIcon className="size-4" />}
-              title="No posted business yet"
-              description="Create a sale or purchase to see the business mix."
-              actionHref="/pos"
-              actionLabel="Create invoice"
-            />}
-        </DashboardCard>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <LowStockSection
-          items={data.lowStockItems}
-          totalCount={data.summary.lowStockCount}
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <LowStockSection  
+          items={lowStockItems}
+          totalCount={lowStockTotalCount}
+          isLoading={lowStockQuery.isLoading}
         />
 
-        <DashboardCard className="overflow-hidden">
-          <div className="border-b border-border px-4 py-4 sm:px-5">
+        <RecentActivitySection
+          sales={recentActivityQuery.data?.sales ?? []}
+          purchases={recentActivityQuery.data?.purchases ?? []}
+          isLoading={recentActivityQuery.isLoading}
+        />
+      </div>
+    </div>
+  )
+})
+
+function DashboardBentoSection({ data }: { data: BusinessDashboardOverview }) {
+  const primaryMixItems = data.mix.slice(0, 2)
+  const secondaryMixItems = data.mix.slice(2)
+  const revenueTrend = getRevenueTrend(data.trend)
+
+  return (
+    <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6 xl:auto-rows-[104px] xl:grid-flow-row-dense">
+      <BentoTile tone="workspace" className="xl:col-span-2 xl:row-span-2">
+        <div className="flex h-full flex-col justify-between gap-3">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge variant="outline" className="h-5 gap-1 bg-white/70 px-1.5 text-[10px]">
+                <span className="size-1.5 rounded-full bg-emerald-500" />
+                Live
+              </Badge>
+              <Badge className="h-5 gap-1 bg-blue-600 px-1.5 text-[10px] text-white">
+                <Layers3Icon className="size-2.5" />
+                {data.period.label}
+              </Badge>
+              {data.business.gstin ?
+                <Badge
+                  variant="outline"
+                  className="h-5 bg-white/70 px-1.5 font-mono text-[9px] tracking-[0.1em]"
+                >
+                  {data.business.gstin}
+                </Badge>
+              : null}
+            </div>
             <div className="space-y-1">
-              <h2 className="text-base font-semibold">GST Filing Readiness</h2>
-              <p className="text-sm text-muted-foreground">
-                Latest generated GST report and exception status.
+              <h1 className="line-clamp-2 text-lg font-semibold tracking-tight text-slate-950 sm:text-xl">
+                {data.business.name}
+              </h1>
+              <p className="line-clamp-2 max-w-md text-xs leading-4 text-slate-600">
+                One view for money, GST, stock, and latest business movement.
               </p>
             </div>
           </div>
-          <div className="space-y-4 p-4 sm:p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1">
-                <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                  Latest report
-                </p>
-                <p className="text-lg font-semibold">
-                  {data.filingReadiness.period ?? "Not generated"}
-                </p>
-              </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {quickActions.map((action) => {
+              const Icon = action.icon
+
+              return (
+                <Link
+                  key={action.label}
+                  href={action.href}
+                  className="group/action flex h-7 items-center justify-between gap-1.5 rounded-lg border border-white/70 bg-white/70 px-2 text-[11px] font-medium text-slate-800 no-underline backdrop-blur transition-colors hover:bg-white"
+                >
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <Icon className="size-3 shrink-0 text-blue-700" />
+                    <span className="truncate">{action.label}</span>
+                  </span>
+                  <ArrowRightIcon className="size-3 shrink-0 text-slate-400 transition-transform group-hover/action:translate-x-0.5" />
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      </BentoTile>
+
+      <BentoMetricTile
+        href="/sales"
+        icon={StoreIcon}
+        label="Sales"
+        note="Posted bills"
+        tone="sales"
+        value={formatCompactCurrency(data.summary.sales)}
+      />
+      <BentoMetricTile
+        href="/purchases"
+        icon={ShoppingCartIcon}
+        label="Purchases"
+        note="Supplier bills"
+        tone="purchase"
+        value={formatCompactCurrency(data.summary.purchases)}
+      />
+      <BentoMetricTile
+        href="/accounting"
+        icon={WalletIcon}
+        label="Net profit"
+        note="Books derived"
+        tone={data.summary.netProfit >= 0 ? "profit" : "danger"}
+        value={formatCompactCurrency(data.summary.netProfit)}
+      />
+
+      <BentoTile href="/gst" tone="gst" className="xl:row-span-2">
+        <div className="flex h-full flex-col justify-between gap-2.5">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-1.5">
+              <span className="flex size-7 items-center justify-center rounded-lg bg-white/70 text-blue-700">
+                <ReceiptTextIcon className="size-3.5" />
+              </span>
               <FilingStatusBadge
                 status={data.filingReadiness.status}
                 blocking={data.filingReadiness.blockingExceptions}
                 open={data.filingReadiness.openExceptions}
               />
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-xl border border-border bg-muted/20 p-3">
-                <p className="text-xs text-muted-foreground">Open exceptions</p>
-                <p className="mt-1 font-mono text-xl font-semibold">
-                  {data.filingReadiness.openExceptions}
+            <div>
+              <p className="text-xs font-medium text-blue-950/70">GST readiness</p>
+              <p className="mt-0.5 truncate text-base font-semibold text-blue-950">
+                {data.filingReadiness.period ?? "Not generated"}
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-1.5 text-xs">
+            <div className="flex items-center justify-between rounded-lg bg-white/65 px-2 py-1.5 text-blue-950">
+              <span>Exceptions</span>
+              <span className="font-mono font-semibold">
+                {data.filingReadiness.openExceptions}
+              </span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg bg-white/65 px-2 py-1.5 text-blue-950">
+              <span>Payable</span>
+              <span className="font-mono font-semibold">
+                {formatCompactCurrency(data.summary.estimatedTaxPayable)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </BentoTile>
+
+      <BentoMetricTile
+        href="/receivables"
+        icon={BadgeIndianRupeeIcon}
+        label="Receivable"
+        note="To collect"
+        tone="receivable"
+        value={formatCompactCurrency(data.summary.receivables)}
+      />
+      <BentoMetricTile
+        href="/payables"
+        icon={TruckIcon}
+        label="Payable"
+        note="To vendors"
+        tone="payable"
+        value={formatCompactCurrency(data.summary.payables)}
+      />
+      <BentoMetricTile
+        href="/inventory"
+        icon={PackageSearchIcon}
+        label="Stock value"
+        note={`${formatCompactNumber(data.summary.skuCount)} SKUs`}
+        tone="stock"
+        value={formatCompactCurrency(data.summary.inventoryValue)}
+      />
+
+      <BentoTile tone="chart" className="p-0 xl:col-span-4 xl:row-span-3">
+        <div className="flex h-full min-h-[336px] flex-col">
+          <div className="border-b border-border/70 px-4 py-3 sm:px-5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold">Revenue trend</h2>
+                <p className="truncate text-xs text-muted-foreground">
+                  Sales, purchases, and income by month.
                 </p>
               </div>
-              <div className="rounded-xl border border-border bg-muted/20 p-3">
-                <p className="text-xs text-muted-foreground">Tax payable</p>
-                <p className="mt-1 font-mono text-xl font-semibold">
-                  {formatCurrency(data.summary.estimatedTaxPayable)}
-                </p>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <Badge
+                  variant="outline"
+                  className="h-7 gap-1.5 bg-background/70 text-xs"
+                >
+                  <ShoppingBagIcon className="size-3.5" />
+                  {formatCompactCurrency(data.summary.sales)}
+                </Badge>
+                <RevenueTrendBadge trend={revenueTrend} />
               </div>
             </div>
-            <p className="rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm text-muted-foreground">
-              {data.filingReadiness.nextAction}
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              nativeButton={false}
-              render={<Link href="/gst" />}
-              className="w-full"
-            >
-              Open GST workspace
-              <ArrowRightIcon className="size-4" />
-            </Button>
           </div>
-        </DashboardCard>
-      </div>
+          <div className="min-h-0 flex-1 px-2 py-3 sm:px-4">
+            <OverviewRevenueChart data={data.trend} />
+          </div>
+        </div>
+      </BentoTile>
 
-      <RecentActivitySection
-        sales={data.recentSales}
-        purchases={data.recentPurchases}
-      />
-    </div>
+      <BentoTile tone="mix" className="xl:col-span-2 xl:row-span-3">
+        <div className="flex h-full min-h-[336px] flex-col gap-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-950">Business mix</h2>
+              <p className="text-xs text-slate-600">Value split for this period.</p>
+            </div>
+            <span className="flex size-7 items-center justify-center rounded-lg bg-white/70 text-sky-700">
+              <ArrowDownUpIcon className="size-3.5" />
+            </span>
+          </div>
+          {data.mix.length > 0 ?
+            <>
+              <div className="grid grid-cols-[minmax(150px,1fr)_minmax(0,1fr)] items-center gap-2">
+                <OverviewReportsPieChart
+                  data={data.mix}
+                  className="justify-self-center"
+                  innerRadius={38}
+                  minHeight={150}
+                  minWidth={150}
+                  outerRadius={62}
+                />
+                <div className="grid gap-1.5">
+                  {primaryMixItems.map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-lg border border-white/70 bg-white/65 px-2 py-1.5 text-[11px] text-slate-700 backdrop-blur"
+                    >
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span
+                          className="size-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: item.fill }}
+                        />
+                        <span className="truncate">{item.label}</span>
+                      </div>
+                      <p className="mt-0.5 font-mono text-xs font-semibold text-slate-950">
+                        {formatCompactCurrency(item.value)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {secondaryMixItems.length > 0 ?
+                <div className="grid grid-cols-2 gap-1.5">
+                  {secondaryMixItems.map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-lg border border-white/70 bg-white/65 px-2 py-1.5 text-[11px] text-slate-700 backdrop-blur"
+                    >
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span
+                          className="size-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: item.fill }}
+                        />
+                        <span className="truncate">{item.label}</span>
+                      </div>
+                      <p className="mt-0.5 font-mono text-xs font-semibold text-slate-950">
+                        {formatCompactCurrency(item.value)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              : null}
+              <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-white/70 bg-white/55 px-2 py-1.5 text-[11px] text-slate-600">
+                  <span className="truncate">Customers</span>
+                  <span className="shrink-0 font-mono text-xs font-semibold text-slate-950">
+                    {formatCompactNumber(data.summary.customers)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-white/70 bg-white/55 px-2 py-1.5 text-[11px] text-slate-600">
+                  <span className="truncate">Suppliers</span>
+                  <span className="shrink-0 font-mono text-xs font-semibold text-slate-950">
+                    {formatCompactNumber(data.summary.suppliers)}
+                  </span>
+                </div>
+              </div>
+            </>
+          : <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-sky-200 bg-white/55 p-4 text-center">
+              <ReceiptTextIcon className="size-7 text-sky-700" />
+              <p className="mt-2 text-sm font-medium text-slate-950">
+                No posted business yet
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-600">
+                Create a sale or purchase to see the split.
+              </p>
+            </div>}
+        </div>
+      </BentoTile>
+    </section>
   )
-})
+}
 
-function buildTotals(data: BusinessDashboardOverview) {
-  return [
-    {
-      id: "sales" as const,
-      label: "Total Sales",
-      value: data.summary.sales,
-      kind: "currency" as const,
-      note: "Posted sales in this period",
-    },
-    {
-      id: "purchase" as const,
-      label: "Total Purchase",
-      value: data.summary.purchases,
-      kind: "currency" as const,
-      note: "Posted supplier bills in this period",
-    },
-    {
-      id: "income" as const,
-      label: "Net Profit",
-      value: data.summary.netProfit,
-      kind: "currency" as const,
-      note: "Based on posted accounting entries",
-    },
-    {
-      id: "expenses" as const,
-      label: "GST Payable",
-      value: data.summary.estimatedTaxPayable,
-      kind: "currency" as const,
-      note: "Output GST minus available input GST",
-    },
-    {
-      id: "customers" as const,
-      label: "Customers",
-      value: data.summary.customers,
-      kind: "count" as const,
-      note: "Active customer party profiles",
-    },
-    {
-      id: "suppliers" as const,
-      label: "Suppliers",
-      value: data.summary.suppliers,
-      kind: "count" as const,
-      note: "Active supplier party profiles",
-    },
-    {
-      id: "salesReturns" as const,
-      label: "Sales Returns",
-      value: data.summary.salesReturns,
-      kind: "currency" as const,
-      note: "Posted sales returns and credits",
-    },
-    {
-      id: "purchaseReturns" as const,
-      label: "Purchase Returns",
-      value: data.summary.purchaseReturns,
-      kind: "currency" as const,
-      note: "Posted purchase returns and debits",
-    },
-  ]
+function BentoMetricTile({
+  href,
+  icon: Icon,
+  label,
+  note,
+  tone,
+  value,
+}: {
+  href: string
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  note: string
+  tone: BentoTone
+  value: string
+}) {
+  return (
+    <BentoTile href={href} tone={tone}>
+      <div className="flex h-full flex-col justify-between gap-2 pb-1">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-xs font-medium text-slate-700">{label}</p>
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-white/70 text-slate-800">
+            <Icon className="size-3.5" />
+          </span>
+        </div>
+        <div className="min-w-0">
+          <p className="truncate font-mono text-lg font-semibold leading-tight tracking-tight text-slate-950">
+            {value}
+          </p>
+          <p className="mt-1 truncate text-xs leading-4 text-slate-600">{note}</p>
+        </div>
+      </div>
+    </BentoTile>
+  )
+}
+
+type RevenueTrend = {
+  direction: "up" | "down" | "flat"
+  percent: number
+}
+
+function RevenueTrendBadge({ trend }: { trend: RevenueTrend | null }) {
+  const direction = trend?.direction ?? "flat"
+  const Icon =
+    direction === "up" ? ArrowUpIcon
+    : direction === "down" ? ArrowDownIcon
+    : ArrowDownUpIcon
+
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "h-7 gap-1 bg-background/70 px-2 text-[11px]",
+        direction === "up" &&
+          "border-emerald-200 bg-emerald-50 text-emerald-700",
+        direction === "down" && "border-red-200 bg-red-50 text-red-700"
+      )}
+    >
+      <Icon className="size-3" />
+      {trend ? `${formatTrendPercentage(trend.percent)} ${direction}` : "No trend"}
+    </Badge>
+  )
+}
+
+type BentoTone =
+  | "workspace"
+  | "sales"
+  | "purchase"
+  | "profit"
+  | "danger"
+  | "gst"
+  | "receivable"
+  | "payable"
+  | "stock"
+  | "chart"
+  | "mix"
+
+const bentoToneClassNames = {
+  workspace:
+    "border-blue-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(37,99,235,0.22),transparent_44%),linear-gradient(135deg,rgba(239,246,255,0.98),rgba(255,255,255,0.96))]",
+  sales:
+    "border-emerald-200/70 bg-[radial-gradient(circle_at_100%_0%,rgba(16,185,129,0.22),transparent_44%),linear-gradient(135deg,rgba(236,253,245,0.98),rgba(255,255,255,0.96))]",
+  purchase:
+    "border-amber-200/70 bg-[radial-gradient(circle_at_100%_0%,rgba(245,158,11,0.22),transparent_44%),linear-gradient(135deg,rgba(255,251,235,0.98),rgba(255,255,255,0.96))]",
+  profit:
+    "border-teal-200/70 bg-[radial-gradient(circle_at_100%_0%,rgba(20,184,166,0.2),transparent_42%),linear-gradient(135deg,rgba(240,253,250,0.98),rgba(255,255,255,0.96))]",
+  danger:
+    "border-red-200/70 bg-[radial-gradient(circle_at_100%_0%,rgba(239,68,68,0.18),transparent_42%),linear-gradient(135deg,rgba(254,242,242,0.98),rgba(255,255,255,0.96))]",
+  gst:
+    "border-blue-200/70 bg-[radial-gradient(circle_at_100%_0%,rgba(59,130,246,0.2),transparent_42%),linear-gradient(135deg,rgba(239,246,255,0.98),rgba(255,255,255,0.96))]",
+  receivable:
+    "border-cyan-200/70 bg-[radial-gradient(circle_at_100%_0%,rgba(6,182,212,0.2),transparent_42%),linear-gradient(135deg,rgba(236,254,255,0.98),rgba(255,255,255,0.96))]",
+  payable:
+    "border-orange-200/70 bg-[radial-gradient(circle_at_100%_0%,rgba(249,115,22,0.2),transparent_42%),linear-gradient(135deg,rgba(255,247,237,0.98),rgba(255,255,255,0.96))]",
+  stock:
+    "border-indigo-200/70 bg-[radial-gradient(circle_at_100%_0%,rgba(99,102,241,0.2),transparent_42%),linear-gradient(135deg,rgba(238,242,255,0.98),rgba(255,255,255,0.96))]",
+  chart:
+    "border-border bg-card",
+  mix:
+    "border-sky-200/70 bg-[radial-gradient(circle_at_0%_0%,rgba(14,165,233,0.18),transparent_44%),linear-gradient(135deg,rgba(240,249,255,0.98),rgba(255,255,255,0.96))]",
+} as const satisfies Record<BentoTone, string>
+
+function BentoTile({
+  children,
+  className,
+  href,
+  tone,
+}: {
+  children: React.ReactNode
+  className?: string
+  href?: string
+  tone: BentoTone
+}) {
+  const tileClassName = cn(
+    "relative block min-h-[104px] overflow-hidden rounded-2xl border p-3 text-card-foreground no-underline",
+    bentoToneClassNames[tone],
+    className
+  )
+
+  if (href) {
+    return (
+      <Link href={href} className={tileClassName}>
+        {children}
+      </Link>
+    )
+  }
+
+  return <section className={tileClassName}>{children}</section>
 }
 
 function LowStockSection({
   items,
+  isLoading,
   totalCount,
 }: {
   items: DashboardLowStockItem[]
+  isLoading: boolean
   totalCount: number
 }) {
   const [activeTab, setActiveTab] = React.useState<"all" | "reorder" | "negative">(
@@ -510,17 +663,17 @@ function LowStockSection({
       onValueChange={(value) => setActiveTab(value as typeof activeTab)}
       className="min-w-0"
     >
-      <DashboardCard className="overflow-hidden">
-        <div className="border-b border-border px-4 py-3 sm:px-5 lg:px-6">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="min-w-0 space-y-1">
-              <h2 className="text-base font-semibold">{activeCopy.title}</h2>
-              <p className="max-w-2xl text-sm text-muted-foreground">
+      <DashboardCard className="h-full overflow-hidden">
+        <div className="border-b border-border px-3 py-2.5 sm:px-4">
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0 space-y-0.5">
+              <h2 className="text-sm font-semibold">{activeCopy.title}</h2>
+              <p className="line-clamp-1 max-w-xl text-xs text-muted-foreground">
                 {activeCopy.description}
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-4 xl:justify-end">
-              <TabsList className="h-auto flex-wrap justify-start gap-4 rounded-none border-0 bg-transparent p-0 xl:justify-end">
+            <div className="flex flex-wrap items-center gap-3 xl:justify-end">
+              <TabsList className="h-auto flex-wrap justify-start gap-3 rounded-none border-0 bg-transparent p-0 xl:justify-end">
                 <TabsTrigger value="all" className={dashboardTabTriggerClass}>
                   All
                 </TabsTrigger>
@@ -531,21 +684,29 @@ function LowStockSection({
                   Negative
                 </TabsTrigger>
               </TabsList>
-              <Badge className="gap-1.5 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                <FileWarningIcon className="size-3.5" />
+              <Badge className="h-6 gap-1 bg-amber-500/10 px-2 text-[11px] text-amber-700 dark:text-amber-300">
+                <FileWarningIcon className="size-3" />
                 {totalCount} items
               </Badge>
             </div>
           </div>
         </div>
         <TabsContent value="all" className="m-0">
-          <LowStockTable items={items} emptyKind="all" />
+          <LowStockTable items={items} emptyKind="all" isLoading={isLoading} />
         </TabsContent>
         <TabsContent value="reorder" className="m-0">
-          <LowStockTable items={reorderItems} emptyKind="reorder" />
+          <LowStockTable
+            items={reorderItems}
+            emptyKind="reorder"
+            isLoading={isLoading}
+          />
         </TabsContent>
         <TabsContent value="negative" className="m-0">
-          <LowStockTable items={negativeItems} emptyKind="negative" />
+          <LowStockTable
+            items={negativeItems}
+            emptyKind="negative"
+            isLoading={isLoading}
+          />
         </TabsContent>
       </DashboardCard>
     </Tabs>
@@ -555,9 +716,11 @@ function LowStockSection({
 function LowStockTable({
   items,
   emptyKind,
+  isLoading,
 }: {
   items: DashboardLowStockItem[]
   emptyKind: "all" | "reorder" | "negative"
+  isLoading: boolean
 }) {
   const [sortKey, setSortKey] = React.useState<LowStockSortKey>("quantity")
   const [sortDirection, setSortDirection] = React.useState<SortDirection>("asc")
@@ -574,6 +737,10 @@ function LowStockTable({
 
     setSortKey(nextKey)
     setSortDirection(nextKey === "quantity" ? "asc" : "desc")
+  }
+
+  if (isLoading) {
+    return <DashboardTableSkeleton columns={5} rows={3} />
   }
 
   if (sortedItems.length === 0) {
@@ -607,7 +774,7 @@ function LowStockTable({
 
   return (
     <>
-      <div className="app-scrollbar max-h-[332px] overflow-auto">
+      <div className="app-scrollbar max-h-[158px] overflow-auto">
         <Table className={dashboardTableClass}>
           <colgroup>
             <col className="w-[15%]" />
@@ -691,14 +858,16 @@ function LowStockTable({
                   {formatQuantity(item.reorderLevel)}
                 </TableCell>
                 <TableCell className="text-right font-mono">
-                  {formatCurrency(item.inventoryValue)}
+                  <span className="block truncate">
+                    {formatNoDecimalCurrency(item.inventoryValue)}
+                  </span>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
-      <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground sm:px-5 lg:px-6">
+      <div className="border-t border-border px-4 py-2 text-center text-xs text-muted-foreground sm:px-5 lg:px-6">
         Showing {sortedItems.length} of {items.length} stock alerts
       </div>
     </>
@@ -706,9 +875,11 @@ function LowStockTable({
 }
 
 function RecentActivitySection({
+  isLoading,
   sales,
   purchases,
 }: {
+  isLoading: boolean
   sales: DashboardRecentDocument[]
   purchases: DashboardRecentDocument[]
 }) {
@@ -731,16 +902,16 @@ function RecentActivitySection({
       onValueChange={(value) => setActiveTab(value as typeof activeTab)}
       className="min-w-0"
     >
-      <DashboardCard className="overflow-hidden">
-        <div className="border-b border-border px-4 py-3 sm:px-5 lg:px-6">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="min-w-0 space-y-1">
-              <h2 className="text-base font-semibold">{activeCopy.title}</h2>
-              <p className="max-w-2xl text-sm text-muted-foreground">
+      <DashboardCard className="h-full overflow-hidden">
+        <div className="border-b border-border px-3 py-2.5 sm:px-4">
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0 space-y-0.5">
+              <h2 className="text-sm font-semibold">{activeCopy.title}</h2>
+              <p className="line-clamp-1 max-w-xl text-xs text-muted-foreground">
                 {activeCopy.description}
               </p>
             </div>
-            <TabsList className="h-auto flex-wrap justify-start gap-4 rounded-none border-0 bg-transparent p-0 xl:justify-end">
+            <TabsList className="h-auto flex-wrap justify-start gap-3 rounded-none border-0 bg-transparent p-0 xl:justify-end">
               <TabsTrigger value="sales" className={dashboardTabTriggerClass}>
                 Sales
               </TabsTrigger>
@@ -751,10 +922,14 @@ function RecentActivitySection({
           </div>
         </div>
         <TabsContent value="sales" className="m-0">
-          <RecentLedgerTable rows={sales} emptyKind="sales" />
+          <RecentLedgerTable rows={sales} emptyKind="sales" isLoading={isLoading} />
         </TabsContent>
         <TabsContent value="purchases" className="m-0">
-          <RecentLedgerTable rows={purchases} emptyKind="purchases" />
+          <RecentLedgerTable
+            rows={purchases}
+            emptyKind="purchases"
+            isLoading={isLoading}
+          />
         </TabsContent>
       </DashboardCard>
     </Tabs>
@@ -764,9 +939,11 @@ function RecentActivitySection({
 function RecentLedgerTable({
   rows,
   emptyKind,
+  isLoading,
 }: {
   rows: DashboardRecentDocument[]
   emptyKind: "sales" | "purchases"
+  isLoading: boolean
 }) {
   const [sortKey, setSortKey] = React.useState<RecentDocumentSortKey>("date")
   const [sortDirection, setSortDirection] = React.useState<SortDirection>("desc")
@@ -785,6 +962,10 @@ function RecentLedgerTable({
     setSortDirection(nextKey === "date" ? "desc" : "asc")
   }
 
+  if (isLoading) {
+    return <DashboardTableSkeleton columns={7} rows={3} />
+  }
+
   if (sortedRows.length === 0) {
     return (
       <DashboardEmpty
@@ -799,7 +980,7 @@ function RecentLedgerTable({
 
   return (
     <>
-      <div className="app-scrollbar max-h-[332px] overflow-auto">
+      <div className="app-scrollbar max-h-[168px] overflow-auto">
         <Table className={dashboardTableClass}>
           <colgroup>
             <col className="w-[13%]" />
@@ -879,16 +1060,22 @@ function RecentLedgerTable({
                 <TableCell className="text-muted-foreground">
                   {formatDate(row.date)}
                 </TableCell>
-                <TableCell className="font-medium">{row.documentNumber}</TableCell>
+                <TableCell className="font-medium">
+                  <span className="block truncate">{row.documentNumber}</span>
+                </TableCell>
                 <TableCell className="truncate">{row.party}</TableCell>
                 <TableCell>
                   <RecentStatusBadge status={row.status} />
                 </TableCell>
                 <TableCell className="text-right font-mono font-semibold">
-                  {formatCurrency(row.total)}
+                  <span className="block truncate">
+                    {formatNoDecimalCurrency(row.total)}
+                  </span>
                 </TableCell>
                 <TableCell className="text-right font-mono text-emerald-700 dark:text-emerald-300">
-                  {formatCurrency(row.paid)}
+                  <span className="block truncate">
+                    {formatNoDecimalCurrency(row.paid)}
+                  </span>
                 </TableCell>
                 <TableCell
                   className={cn(
@@ -896,7 +1083,9 @@ function RecentLedgerTable({
                     row.due > 0 && "font-semibold text-amber-700 dark:text-amber-300"
                   )}
                 >
-                  {formatCurrency(row.due)}
+                  <span className="block truncate">
+                    {formatNoDecimalCurrency(row.due)}
+                  </span>
                 </TableCell>
               </TableRow>
             ))}
@@ -1023,6 +1212,41 @@ function DashboardCard({
   )
 }
 
+function DashboardTableSkeleton({
+  columns,
+  rows,
+}: {
+  columns: number
+  rows: number
+}) {
+  return (
+    <div className="app-scrollbar max-h-[168px] overflow-hidden">
+      <Table className={dashboardTableClass}>
+        <TableHeader className="sticky top-0 z-10 bg-card shadow-[0_1px_0_0_var(--border)]">
+          <TableRow className="hover:bg-transparent">
+            {Array.from({ length: columns }).map((_, index) => (
+              <TableHead key={index}>
+                <Skeleton className="h-3 w-14" />
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {Array.from({ length: rows }).map((_, rowIndex) => (
+            <TableRow key={rowIndex}>
+              {Array.from({ length: columns }).map((_, columnIndex) => (
+                <TableCell key={columnIndex}>
+                  <Skeleton className="h-4 w-full" />
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
 function DashboardEmpty({
   icon,
   title,
@@ -1037,17 +1261,20 @@ function DashboardEmpty({
   actionLabel?: string
 }) {
   return (
-    <Empty className="min-h-60 border-0">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">{icon}</EmptyMedia>
-        <EmptyTitle>{title}</EmptyTitle>
-        <EmptyDescription>{description}</EmptyDescription>
+    <Empty className="mx-auto min-h-[150px] max-w-xs gap-2 border-0 px-3 py-3">
+      <EmptyHeader className="gap-1.5">
+        <EmptyMedia variant="icon" className="mb-0 size-7">
+          {icon}
+        </EmptyMedia>
+        <EmptyTitle className="text-xs">{title}</EmptyTitle>
+        <EmptyDescription className="text-xs/5">{description}</EmptyDescription>
       </EmptyHeader>
       {actionHref && actionLabel ?
-        <EmptyContent>
+        <EmptyContent className="gap-1.5">
           <Button
             type="button"
             size="sm"
+            className="h-7 px-2 text-xs"
             nativeButton={false}
             render={<Link href={actionHref} />}
           >
@@ -1157,8 +1384,49 @@ function formatCurrency(value: number) {
   return currencyFormatter.format(value)
 }
 
-function formatValue(value: number, kind: "currency" | "count") {
-  return kind === "currency" ? formatCurrency(value) : value.toLocaleString("en-IN")
+function formatNoDecimalCurrency(value: number) {
+  return noDecimalCurrencyFormatter.format(value)
+}
+
+function formatCompactCurrency(value: number) {
+  return compactCurrencyFormatter.format(value)
+}
+
+function formatCompactNumber(value: number) {
+  return compactFormatter.format(value)
+}
+
+function getRevenueTrend(data: RevenueStatisticPoint[]): RevenueTrend | null {
+  if (data.length < 2) {
+    return null
+  }
+
+  const current = data[data.length - 1]?.sales ?? 0
+  const previous = data[data.length - 2]?.sales ?? 0
+
+  if (previous === 0 && current === 0) {
+    return { direction: "flat", percent: 0 }
+  }
+
+  if (previous === 0) {
+    return { direction: "up", percent: 100 }
+  }
+
+  const change = ((current - previous) / Math.abs(previous)) * 100
+
+  return {
+    direction:
+      change > 0.05 ? "up"
+      : change < -0.05 ? "down"
+      : "flat",
+    percent: Math.abs(change),
+  }
+}
+
+function formatTrendPercentage(value: number) {
+  const fractionDigits = value >= 10 || value === 0 ? 0 : 1
+
+  return `${value.toFixed(fractionDigits)}%`
 }
 
 function formatDate(value: string) {

@@ -332,5 +332,434 @@
         "generic": "Unable to update the password right now. Please try again."
       }
     }
+  },
+  "settings": {
+    "title": "Settings",
+    "common": {
+      "notSet": "Not set",
+      "notAdded": "Not added",
+      "notSavedYet": "Not saved yet",
+      "datePlaceholder": "DD MMM YYYY",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "yes": "Yes",
+      "no": "No",
+      "saving": "Saving",
+      "justNow": "Just now"
+    },
+    "tabs": {
+      "business": {
+        "label": "Business"
+      },
+      "invoice": {
+        "label": "Invoice"
+      },
+      "gst": {
+        "label": "GST Rate"
+      },
+      "printer": {
+        "label": "Printer"
+      },
+      "inventory": {
+        "label": "Inventory"
+      },
+      "automation": {
+        "label": "Automation"
+      },
+      "connectors": {
+        "label": "Connectors"
+      }
+    },
+    "badges": {
+      "businessAdmin": "Business admin",
+      "viewOnly": "View only",
+      "connected": "Connected",
+      "required": "Required",
+      "selected": "Selected",
+      "fifoConfigured": "FIFO configured",
+      "weightedAverage": "Weighted average",
+      "autoSaved": "Auto-saved",
+      "smartActionsOn": "Smart actions on",
+      "manualControls": "Manual controls",
+      "autoRun": "Auto-run",
+      "scannerEnabled": "Scanner enabled",
+      "scannerDisabled": "Scanner disabled",
+      "keyboardMode": "Keyboard mode",
+      "savedOnDevice": "Saved on this device"
+    },
+    "actions": {
+      "generate": "Generate",
+      "saveUrl": "Save URL",
+      "verifyAndSave": "Verify and save",
+      "cancel": "Cancel",
+      "saveBusinessDetails": "Save business details",
+      "editBusinessDetails": "Edit business details",
+      "saveInvoiceSettings": "Save invoice settings",
+      "saveGstPresets": "Save GST presets",
+      "savePrinterSettings": "Save printer settings",
+      "clearTest": "Clear test",
+      "saveConnector": "Save connector",
+      "changeLogo": "Change logo",
+      "uploadLogo": "Upload logo"
+    },
+    "toast": {
+      "businessUpdated": "Business details updated.",
+      "workspaceLogoUpdated": "Workspace logo updated.",
+      "invoiceLogoUpdated": "Invoice logo updated.",
+      "workspaceUrlUpdated": "Workspace URL updated.",
+      "caReferralLinked": "CA referral verified and linked.",
+      "invoiceUpdated": "Invoice settings updated.",
+      "gstUpdated": "GST presets updated.",
+      "printerUpdated": "Printer settings updated.",
+      "inventoryUpdated": "Inventory policy updated.",
+      "automationUpdated": "Automation settings updated.",
+      "barcodeConnectorSaved": "Barcode scanner connector saved."
+    },
+    "errors": {
+      "unavailableTitle": "Settings unavailable",
+      "loadSettings": "Unable to load the workspace settings right now.",
+      "loadAutomation": "Unable to load automation settings.",
+      "generic": "Something went wrong. Please try again.",
+      "scanMinLength": "Scan at least {{count}} characters.",
+      "logoType": "Upload a JPG, PNG, or WebP logo.",
+      "logoSourceSize": "Logo source image must be 10 MB or smaller.",
+      "logoCroppedSize": "Cropped logo must be 2 MB or smaller.",
+      "tenantSlugMin": "Use at least 3 characters.",
+      "tenantSlugMax": "Use 48 characters or fewer.",
+      "tenantSlugInvalid": "Use letters, numbers, and hyphens only."
+    },
+    "business": {
+      "title": "Business details",
+      "description": "Registration identity stays locked. Contact details and the principal place of business can be updated here.",
+      "fields": {
+        "legalBusinessName": "Legal business name",
+        "tradeName": "Trade name",
+        "state": "State / UT",
+        "gstin": "GSTIN",
+        "pan": "PAN",
+        "constitution": "Constitution",
+        "taxpayerType": "Taxpayer type",
+        "effectiveRegistrationDate": "Effective registration date",
+        "businessEmail": "Business email",
+        "businessMobile": "Business mobile",
+        "primaryContactName": "Primary contact name",
+        "primaryContactMobile": "Primary contact mobile",
+        "primaryContactEmail": "Primary contact email",
+        "principalAddressLine1": "Principal address line 1",
+        "principalAddressLine2": "Principal address line 2",
+        "locality": "Locality / area",
+        "district": "District",
+        "pincode": "Pincode",
+        "possessionType": "Nature of possession"
+      },
+      "workspaceLogo": {
+        "title": "Workspace logo",
+        "badge": "Sidebar",
+        "emptyDescription": "Shown in the sidebar and workspace switcher. It will be cropped square before saving.",
+        "imageAlt": "Workspace logo"
+      },
+      "workspaceUrl": {
+        "title": "Workspace URL",
+        "locked": "Workspace URL is locked after creation.",
+        "generateHelper": "Generate a URL for this legacy workspace."
+      },
+      "editableDetails": {
+        "title": "Editable details",
+        "helper": "Click edit to update contacts and address."
+      },
+      "caReferral": {
+        "title": "CA referral",
+        "defaultCaName": "your CA",
+        "description": "Enter the referral code shared by your CA. Once verified, it becomes locked for this business.",
+        "connectedDescription": "This workspace is connected to {{practiceName}} for client filing access.",
+        "referralCode": "Referral code",
+        "verifiedOn": "Verified on {{date}}. This code cannot be changed.",
+        "verifyHelper": "We verify the code before saving the CA relationship."
+      }
+    },
+    "invoice": {
+      "title": "Invoice settings",
+      "description": "Set the default invoice style and numbering prefix used when new sales invoices are created.",
+      "logo": {
+        "title": "Invoice logo",
+        "badge": "Invoice PDF",
+        "emptyDescription": "Shown on sales and purchase invoice PDFs. It will keep a wide logo shape.",
+        "imageAlt": "Invoice logo"
+      },
+      "template": {
+        "label": "Invoice template",
+        "description": "{{templateDescription}} The same layout is used for sales invoices and purchase invoice exports.",
+        "helper": "All document samples use the same GST invoice structure, so GSTFY keeps one standard invoice template."
+      },
+      "fields": {
+        "invoicePrefix": "Invoice number prefix",
+        "invoicePrefixHelper": "Prefix is limited to uppercase letters, numbers, and hyphens.",
+        "watermark": "Invoice watermark text",
+        "watermarkHelper": "Printed as a light background watermark. Leave blank to hide it."
+      },
+      "preview": {
+        "title": "Preview",
+        "template": "{{template}} template"
+      }
+    },
+    "gst": {
+      "title": "GST rate slabs",
+      "description": "Control which GST slabs appear while creating invoices. Product-level tax can still differ by HSN.",
+      "enabledSlabs": {
+        "label": "Enabled invoice slabs",
+        "helper": "Enable only the slabs your team should see as invoice choices."
+      },
+      "cess": {
+        "label": "Compensation cess categories",
+        "description": "Does {{businessName}} sell any products that may attract GST compensation cess? Enable only the categories you need in the product master.",
+        "helper": "These are system-created product-selectable cess rules. Exact cess rates must be reviewed before live billing because compensation cess depends on notified goods and can change."
+      }
+    },
+    "printer": {
+      "title": "Printer settings",
+      "description": "These preferences shape browser-based invoice printing and PDF print layouts. GSTFY does not bind to a physical printer device from the web app.",
+      "fields": {
+        "paperSize": "Paper size",
+        "orientation": "Orientation",
+        "autoPrintDialog": "Open browser print dialog automatically",
+        "compactLayout": "Compact print layout",
+        "compactLayoutHelper": "Compact layout reduces spacing for tighter printouts on smaller formats."
+      }
+    },
+    "inventory": {
+      "title": "Inventory policy",
+      "description": "Control how stock postings behave across product stock, POS, sales, purchases, transfers, and adjustments.",
+      "fields": {
+        "negativeStockPolicy": "Negative stock policy",
+        "valuationMethod": "Valuation method"
+      },
+      "postingBehavior": {
+        "title": "Posting behavior",
+        "description": "Inventory screens now focus on operational work. Policy changes live here so stock controls are configured once for the whole business."
+      }
+    },
+    "automation": {
+      "title": "Automation",
+      "description": "Let GSTFY handle low-risk background work after the dealer posts a bill, imports a statement, or creates an eligible GST document.",
+      "recent": {
+        "title": "Recent automation",
+        "description": "Queued background actions for stock checks, e-invoice, and bank matching.",
+        "empty": "No background work has been queued yet."
+      },
+      "jobTypes": {
+        "stockPostedDocument": "Stock ledger check",
+        "openingStock": "Opening stock check",
+        "eInvoice": "E-invoice generation",
+        "bankAutoMatch": "Bank auto-match",
+        "gstReportRefresh": "GST report refresh",
+        "filingReview": "Filing review"
+      },
+      "status": {
+        "queued": "Queued",
+        "running": "Running",
+        "completed": "Completed",
+        "failed": "Failed",
+        "retrying": "Retrying",
+        "skipped": "Skipped"
+      }
+    },
+    "connectors": {
+      "title": "Connectors",
+      "barcode": {
+        "title": "Barcode scanner",
+        "description": "USB and Bluetooth barcode scanners usually work like a keyboard. Connect the scanner, place the cursor in a barcode field, then scan. GSTFY listens for the configured suffix key."
+      },
+      "test": {
+        "title": "Test scanner input",
+        "description": "Click the input, scan one product barcode, then check the detected result.",
+        "scanLabel": "Scan test",
+        "scanPlaceholder": "Click here and scan a barcode",
+        "scanHelper": "If your scanner can be configured, set its suffix to Enter or Tab.",
+        "detectedBarcode": "Detected barcode",
+        "noScanCaptured": "No scan captured yet",
+        "detectedSuffix": "Detected suffix",
+        "waitingForSuffix": "Waiting for Enter or Tab",
+        "scanSpeed": "Scan speed",
+        "notMeasured": "Not measured",
+        "durationMs": "{{duration}} ms"
+      },
+      "behavior": {
+        "title": "Scanner behavior",
+        "description": "These preferences are used by this browser/device for product and POS barcode fields.",
+        "suffixKey": "Suffix key",
+        "minLength": "Minimum barcode length",
+        "status": "Connector status",
+        "autoSearch": "Auto-search after scan",
+        "autoSearchHelper": "When enabled, POS/product fields can search immediately after the scanner suffix is received.",
+        "lastSaved": "Last saved:"
+      }
+    },
+    "logoCrop": {
+      "invoiceTitle": "Crop invoice logo",
+      "workspaceTitle": "Crop workspace logo",
+      "invoiceDescription": "Crop the invoice logo as a wide rectangle so it fits the invoice header cleanly.",
+      "workspaceDescription": "Make the workspace logo square so it fits the sidebar and account switcher cleanly."
+    },
+    "placeholders": {
+      "possessionType": "Choose possession type",
+      "paperSize": "Choose paper size",
+      "orientation": "Choose orientation",
+      "negativeStockPolicy": "Choose negative stock policy",
+      "valuationMethod": "Choose valuation method",
+      "suffixKey": "Choose suffix key"
+    },
+    "options": {
+      "possession": {
+        "own": "Own",
+        "rented": "Rented",
+        "leased": "Leased",
+        "consent": "Consent",
+        "shared": "Shared",
+        "other": "Other"
+      },
+      "paperSize": {
+        "A4": "A4",
+        "A5": "A5",
+        "THERMAL_80MM": "Thermal 80mm"
+      },
+      "printOrientation": {
+        "portrait": "Portrait",
+        "landscape": "Landscape"
+      },
+      "negativeStockPolicy": {
+        "BLOCK": {
+          "label": "Block transactions",
+          "description": "Prevent sales, transfers, and adjustments that would make stock negative."
+        },
+        "WARN": {
+          "label": "Warn and allow",
+          "description": "Show a warning but allow the transaction for controlled exceptions."
+        },
+        "ALLOW": {
+          "label": "Allow silently",
+          "description": "Permit negative stock without interruption. Use only for loose stock control."
+        }
+      },
+      "valuationMethod": {
+        "WEIGHTED_AVERAGE": {
+          "label": "Weighted average",
+          "description": "Recalculate average cost as stock is purchased or adjusted."
+        },
+        "FIFO": {
+          "label": "FIFO foundation",
+          "description": "Keep FIFO configured for future batch-layer valuation workflows."
+        }
+      },
+      "automation": {
+        "autoStockAccountingEnabled": {
+          "label": "Stock posting",
+          "description": "After purchase, sales, POS, and opening stock entries, GSTFY checks that inventory ledgers are synced.",
+          "enabled": "Automatic",
+          "disabled": "Manual review"
+        },
+        "autoEInvoiceEnabled": {
+          "label": "E-invoice generation",
+          "description": "Eligible B2B documents can be queued for IRN generation without asking the dealer to repeat work.",
+          "enabled": "Queue eligible bills",
+          "disabled": "Manual only"
+        },
+        "bankAutoMatchHighConfidenceEnabled": {
+          "label": "Bank auto-match",
+          "description": "Imported statement lines and posted bank/UPI/card entries are matched when amount, date, and reference are confident.",
+          "enabled": "Auto-match",
+          "disabled": "Manual matching"
+        },
+        "notifyAutomationFailures": {
+          "label": "Failure alerts",
+          "description": "Show automation failures so the owner can fix missing data before GST filing or reconciliation.",
+          "enabled": "Notify",
+          "disabled": "Silent"
+        }
+      },
+      "barcodeSubmitKey": {
+        "enter": "Enter",
+        "tab": "Tab",
+        "none": "No suffix"
+      }
+    }
+  },
+  "feedback": {
+    "stepCounter": "Step {{current}} of {{total}}",
+    "hero": {
+      "title": "Tell us what to fix next",
+      "subtitle": "Your feedback becomes fixes.",
+      "description": "Tell us what slowed down billing, GST filing, inventory, or payments. We use repeated feedback to decide the next product fix.",
+      "compactDescription": "Pick the area, rate the effort, and write the exact fix needed.",
+      "meta": "2 min survey · dealer-first fixes · no support ticket"
+    },
+    "steps": {
+      "category": {
+        "title": "What should we fix?",
+        "description": "Choose the area that needs attention first."
+      },
+      "feeling": {
+        "title": "How did it feel?",
+        "description": "Tell us the overall experience in one tap."
+      },
+      "effort": {
+        "title": "How much effort did it take?",
+        "description": "This helps us find the workflows that need simplification."
+      },
+      "feedback": {
+        "title": "What should change?",
+        "description": "Write the exact issue or improvement. Keep it practical."
+      }
+    },
+    "categories": {
+      "ease_of_use": "Ease of use",
+      "billing_pos": "Billing or POS",
+      "gst_filing": "GST filing",
+      "inventory": "Inventory",
+      "payments": "Payments",
+      "performance": "Speed",
+      "bug": "Bug",
+      "feature_request": "Feature",
+      "other": "Other"
+    },
+    "ratings": {
+      "1": "Poor",
+      "2": "Hard",
+      "3": "Okay",
+      "4": "Good",
+      "5": "Great"
+    },
+    "efforts": {
+      "1": "Too hard",
+      "2": "Slow",
+      "3": "Manageable",
+      "4": "Easy",
+      "5": "Very easy"
+    },
+    "form": {
+      "feedbackLabel": "Feedback",
+      "placeholder": "Tell us the screen and what felt wrong.",
+      "contactConsent": "Contact me if needed"
+    },
+    "actions": {
+      "startSurvey": "Start survey",
+      "cancel": "Cancel",
+      "back": "Back",
+      "next": "Next",
+      "send": "Send"
+    },
+    "toast": {
+      "sentTitle": "Feedback sent.",
+      "sentDescription": "We received your survey response."
+    },
+    "submitted": {
+      "title": "Your feedback is submitted",
+      "sentOn": "Sent on {{date}}",
+      "cooldown": "We lock repeat feedback for 7 days so repeated signals stay clean. You can send the next feedback after {{date}}.",
+      "fallbackDate": "the cooldown ends"
+    },
+    "errors": {
+      "signInAgain": "Sign in again to send feedback.",
+      "generic": "Unable to send feedback right now."
+    }
   }
 }

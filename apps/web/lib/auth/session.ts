@@ -10,34 +10,33 @@ const AUTH_REFRESH_BEFORE_EXPIRY_SECONDS = 60
 const AUTH_REFRESH_TIMEOUT_MS = 10_000
 
 export type AuthAccountType = "business" | "ca"
+export type StoredAuthTenant = Pick<AuthTenant, "id" | "slug"> &
+  Partial<Pick<AuthTenant, "legalName" | "tradeName" | "url">>
 
 export type StoredAuthSession = {
   isAuthenticated: true
   accountType: AuthAccountType
   user: AuthUser
   session: AuthSession
-  tenant?: AuthTenant | null
+  tenant?: StoredAuthTenant | null
 }
 
 type StoredAuthSessionInput = {
   user: AuthUser
   session: AuthSession
   accountType?: AuthAccountType
-  tenant?: AuthTenant | null
+  tenant?: StoredAuthTenant | null
 }
 
 type RefreshSessionResponse = {
   user: {
     id: string
-    email: string | null
-    phoneE164: string | null
-    profileImageSeed: string | null
-    profileImageStyle: string | null
     mustChangePassword?: boolean
   }
+  accountType?: AuthAccountType
   accessToken: string
   accessTokenExpiresIn: number
-  tenant?: AuthTenant | null
+  tenant?: Pick<AuthTenant, "id" | "slug"> | null
 }
 
 let activeRefreshPromise: Promise<StoredAuthSession | null> | null = null
@@ -70,7 +69,7 @@ export function getStoredAuthSession(): StoredAuthSession | null {
 
     const nextSession: StoredAuthSession = {
       isAuthenticated: true,
-      accountType: getSafeAccountType(parsedValue.accountType),
+      accountType: getSafeAccountType(parsedValue.accountType) ?? "business",
       user: {
         ...parsedValue.user,
         mustChangePassword: Boolean(parsedValue.user.mustChangePassword),
@@ -213,23 +212,33 @@ async function refreshAuthSession() {
     }
 
     const payload = (await response.json()) as RefreshSessionResponse
-    const accountType = currentSession?.accountType ?? inferAccountTypeFromLocation()
+    const payloadAccountType = getSafeAccountType(payload.accountType)
+    const accountType =
+      currentSession?.accountType ??
+      payloadAccountType ??
+      getStoredAccountTypeCookie() ??
+      inferAccountTypeFromLocation()
+    const currentUser = currentSession?.user
     const nextSession: StoredAuthSessionInput = {
       accountType,
       user: {
         id: payload.user.id,
-        email: payload.user.email,
-        phone: payload.user.phoneE164,
-        profileImageSeed: payload.user.profileImageSeed,
-        profileImageStyle:
-          payload.user.profileImageStyle === "glyphs" ? "glyphs" : undefined,
+        email: currentUser?.email ?? null,
+        phone: currentUser?.phone ?? null,
+        profileImageSeed: currentUser?.profileImageSeed ?? null,
+        profileImageStyle: currentUser?.profileImageStyle,
         mustChangePassword: Boolean(payload.user.mustChangePassword),
       },
       session: {
         accessToken: payload.accessToken,
         expiresAt: Math.floor(Date.now() / 1000) + payload.accessTokenExpiresIn,
       },
-      tenant: payload.tenant ?? currentSession?.tenant ?? null,
+      tenant: payload.tenant ?
+        {
+          id: payload.tenant.id,
+          slug: payload.tenant.slug,
+        }
+      : null,
     }
 
     setStoredAuthSession(nextSession)
@@ -276,6 +285,8 @@ function inferAccountTypeFromLocation(): AuthAccountType {
     hostname.startsWith("ca.") ||
     pathname === "/ca" ||
     pathname.startsWith("/ca/") ||
+    pathname === "/auth/ca" ||
+    pathname.startsWith("/auth/ca/") ||
     pathname.startsWith("/dashboard/clients") ||
     pathname.startsWith("/dashboard/referral-codes")
   )
@@ -283,8 +294,31 @@ function inferAccountTypeFromLocation(): AuthAccountType {
     : "business"
 }
 
-function getSafeAccountType(value: unknown): AuthAccountType {
-  return value === "ca" ? "ca" : "business"
+function getSafeAccountType(value: unknown): AuthAccountType | null {
+  return value === "ca" || value === "business" ? value : null
+}
+
+function getStoredAccountTypeCookie(): AuthAccountType | null {
+  if (typeof document === "undefined") {
+    return null
+  }
+
+  const accountTypeCookie = document.cookie
+    .split(";")
+    .map((cookie) => cookie.trim())
+    .find((cookie) => cookie.startsWith(`${AUTH_ACCOUNT_TYPE_COOKIE_NAME}=`))
+
+  if (!accountTypeCookie) {
+    return null
+  }
+
+  try {
+    return getSafeAccountType(
+      decodeURIComponent(accountTypeCookie.split("=").slice(1).join("="))
+    )
+  } catch {
+    return null
+  }
 }
 
 function setAuthCookie(accountType: AuthAccountType) {

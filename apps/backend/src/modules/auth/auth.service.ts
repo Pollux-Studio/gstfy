@@ -56,11 +56,24 @@ type RequestContext = {
 
 type AuthSessionPayload = {
   user: PublicUser
+  accountType: AuthAccountType
   accessToken: string
   accessTokenExpiresIn: number
   refreshToken: string
   redirectTo: string
   tenant: PublicTenant | null
+}
+
+type AuthAccountType = "business" | "ca"
+
+type PublicRefreshUser = {
+  id: string
+  mustChangePassword: boolean
+}
+
+type PublicRefreshTenant = {
+  id: string
+  slug: string
 }
 
 type PublicUser = {
@@ -116,13 +129,10 @@ export class AuthService {
 
     return {
       account: {
-        id: user.id,
-        displayName: business.tradeName || user.fullName || user.email || user.phoneE164,
+        displayName: business.tradeName || business.legalName || "Workspace",
         gstin: business.gstin,
-        tenantSlug: business.tenantSlug,
+        logoUrl: business.logoUrl ?? null,
         tenantUrl: this.getBusinessUrl(business),
-        email: user.email,
-        phone: user.phoneE164,
       },
     }
   }
@@ -853,14 +863,16 @@ export class AuthService {
       throw new HttpError(401, "Session expired.")
     }
 
-    const accessToken = await this.createAccessToken(user)
     const business = await this.findPrimaryBusiness(user.id)
+    const caPractice = business ? null : await this.findPrimaryCaPractice(user.id)
+    const accessToken = await this.createAccessToken(user)
 
     return {
-      user: toPublicUser(user),
+      user: toPublicRefreshUser(user),
+      accountType: caPractice ? "ca" : "business",
       accessToken,
       accessTokenExpiresIn: this.env.JWT_ACCESS_TTL_SECONDS,
-      tenant: business ? this.toPublicTenant(business) : null,
+      tenant: business ? toPublicRefreshTenant(business) : null,
     }
   }
 
@@ -1041,6 +1053,7 @@ export class AuthService {
 
     return {
       user: toPublicUser(input.user),
+      accountType: input.business ? "business" : "ca",
       accessToken: await this.createAccessToken(input.user),
       accessTokenExpiresIn: this.env.JWT_ACCESS_TTL_SECONDS,
       refreshToken,
@@ -1050,9 +1063,7 @@ export class AuthService {
   }
 
   private createAccessToken(user: UserRecord) {
-    return new SignJWT({
-      email: user.email,
-    })
+    return new SignJWT({})
       .setProtectedHeader({ alg: "HS256" })
       .setSubject(user.id)
       .setIssuedAt()
@@ -1119,20 +1130,15 @@ export class AuthService {
   private findPrimaryBusinessAccount(userId: string, tenantSlug?: string | null) {
     return db
       .select({
-        id: businesses.id,
         tenantSlug: businesses.tenantSlug,
         legalName: businesses.legalName,
         tradeName: businesses.tradeName,
-        pan: businesses.pan,
-        constitution: businesses.constitution,
-        status: businesses.status,
-        createdBy: businesses.createdBy,
-        createdAt: businesses.createdAt,
-        updatedAt: businesses.updatedAt,
         gstin: gstRegistrations.gstin,
+        logoUrl: businessProfiles.logoPublicUrl,
       })
       .from(businessMembers)
       .innerJoin(businesses, eq(businesses.id, businessMembers.businessId))
+      .leftJoin(businessProfiles, eq(businessProfiles.businessId, businesses.id))
       .leftJoin(gstRegistrations, eq(gstRegistrations.businessId, businesses.id))
       .where(
         and(
@@ -1294,6 +1300,22 @@ function toPublicUser(user: UserRecord): PublicUser {
     mustChangePassword: user.mustChangePassword,
     emailVerified: Boolean(user.emailVerifiedAt),
     phoneVerified: Boolean(user.phoneVerifiedAt),
+  }
+}
+
+function toPublicRefreshUser(user: UserRecord): PublicRefreshUser {
+  return {
+    id: user.id,
+    mustChangePassword: user.mustChangePassword,
+  }
+}
+
+function toPublicRefreshTenant(
+  business: Pick<BusinessRecord, "id" | "tenantSlug">
+): PublicRefreshTenant {
+  return {
+    id: business.id,
+    slug: business.tenantSlug,
   }
 }
 

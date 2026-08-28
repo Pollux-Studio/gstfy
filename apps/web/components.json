@@ -27,6 +27,9 @@
     "@ogimagecn": "https://www.ogimagecn.com/r/{name}.json",
     "@emailcn": "https://emailcn.run/r/{name}.json",
     "@mapcn": "https://mapcn.dev/r/{name}.json",
-    "@spell": "https://spell.sh/r/{name}.json"
+    "@spell": "https://spell.sh/r/{name}.json",
+    "@skiper-ui": "https://skiper-ui.com/registry/{name}.json",
+    "@iconiq": "https://iconiqui.com/r/{name}.json",
+    "@reui": "https://reui.io/r/{style}/{name}.json"
   }
 }

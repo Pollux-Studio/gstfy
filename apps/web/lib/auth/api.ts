@@ -29,13 +29,10 @@ export type AuthTenant = {
 
 export type LookupIdentifierResponse = {
   account: {
-    id: string
     displayName: string
     gstin: string | null
-    tenantSlug?: string | null
+    logoUrl?: string | null
     tenantUrl?: string | null
-    email: string | null
-    phone: string | null
   }
 }
 

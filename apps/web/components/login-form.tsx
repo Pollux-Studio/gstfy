@@ -34,7 +34,7 @@ import {
 } from "@/lib/auth/api"
 import { clearStoredAuthSession, setStoredAuthSession } from "@/lib/auth/session"
 import { appendPathToUrl, getAuthSubdomainUrl } from "@/lib/auth/workspace-url"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
   Field,
@@ -48,7 +48,6 @@ import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
-  InputGroupInput,
 } from "@/components/ui/input-group"
 import { IndianPhoneInput } from "@/components/ui/indian-phone-input"
 import {
@@ -57,6 +56,7 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp"
 import { Spinner } from "@/components/ui/spinner"
+import { SmoothInputGroupInput } from "@/components/ui/skiper-ui/skiper106"
 import { cn } from "@/lib/utils"
 
 type IdentifierValues = { identifier: string }
@@ -681,7 +681,7 @@ export function LoginForm({
                   <InputGroupAddon>
                     <LockKeyholeIcon className="size-4" />
                   </InputGroupAddon>
-                  <InputGroupInput
+                  <SmoothInputGroupInput
                     id="password"
                     type={showPassword ? "text" : "password"}
                     placeholder={t("auth.login.passwordPlaceholder")}
@@ -844,10 +844,15 @@ function AccountSummary({
 }: {
   account: Account | null
 }) {
+  const logoUrl = account?.logoUrl?.trim()
+
   return (
     <div className="rounded-xl border border-border bg-muted/40 p-3.5">
       <div className="flex items-center gap-3">
         <Avatar size="lg" className="ring-1 ring-border">
+          {logoUrl ? (
+            <AvatarImage src={logoUrl} alt={`${account?.displayName ?? "Workspace"} logo`} />
+          ) : null}
           <AvatarFallback>{getAccountInitials(account?.displayName)}</AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1 space-y-1.5">

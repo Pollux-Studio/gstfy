@@ -4,6 +4,7 @@ import * as React from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "motion/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import {
   ArrowRightIcon,
   CheckCircle2Icon,
@@ -17,7 +18,7 @@ import LightRays from "@/components/light-rays";
 import { GradientWaveText } from "@/components/gradient-wave-text";
 import { Signature } from "@/components/signature";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { SmoothTextarea } from "@/components/ui/skiper-ui/skiper106";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { getCurrentUser } from "@/lib/auth/api";
@@ -43,97 +44,77 @@ type SurveyStepId = "category" | "feeling" | "effort" | "feedback";
 
 const surveySteps: Array<{
   id: SurveyStepId;
-  title: string;
-  description: string;
 }> = [
   {
     id: "category",
-    title: "What should we fix?",
-    description: "Choose the area that needs attention first.",
   },
   {
     id: "feeling",
-    title: "How did it feel?",
-    description: "Tell us the overall experience in one tap.",
   },
   {
     id: "effort",
-    title: "How much effort did it take?",
-    description: "This helps us find the workflows that need simplification.",
   },
   {
     id: "feedback",
-    title: "What should change?",
-    description: "Write the exact issue or improvement. Keep it practical.",
   },
 ];
 
 const categoryOptions: Array<{
   value: FeedbackCategory;
-  label: string;
   emoji: string;
 }> = [
   {
     value: "ease_of_use",
-    label: "Ease of use",
     emoji: "✨",
   },
   {
     value: "billing_pos",
-    label: "Billing or POS",
     emoji: "🧾",
   },
   {
     value: "gst_filing",
-    label: "GST filing",
     emoji: "✅",
   },
   {
     value: "inventory",
-    label: "Inventory",
     emoji: "📦",
   },
   {
     value: "payments",
-    label: "Payments",
     emoji: "💸",
   },
   {
     value: "performance",
-    label: "Speed",
     emoji: "⚡",
   },
   {
     value: "bug",
-    label: "Bug",
     emoji: "🐞",
   },
   {
     value: "feature_request",
-    label: "Feature",
     emoji: "💡",
   },
   {
     value: "other",
-    label: "Other",
     emoji: "📝",
   },
 ];
 
 const ratingOptions = [
-  { value: 1, label: "Poor", emoji: "😣" },
-  { value: 2, label: "Hard", emoji: "😕" },
-  { value: 3, label: "Okay", emoji: "🙂" },
-  { value: 4, label: "Good", emoji: "😄" },
-  { value: 5, label: "Great", emoji: "🤩" },
+  { value: 1, emoji: "😣" },
+  { value: 2, emoji: "😕" },
+  { value: 3, emoji: "🙂" },
+  { value: 4, emoji: "😄" },
+  { value: 5, emoji: "🤩" },
 ];
 
 const effortOptions = [
-  { value: 1, label: "Too hard", emoji: "🧱" },
-  { value: 2, label: "Slow", emoji: "🐌" },
-  { value: 3, label: "Manageable", emoji: "👌" },
-  { value: 4, label: "Easy", emoji: "🚀" },
-  { value: 5, label: "Very easy", emoji: "⚡" },
+  { value: 1, emoji: "🧱" },
+  { value: 2, emoji: "🐌" },
+  { value: 3, emoji: "👌" },
+  { value: 4, emoji: "🚀" },
+  { value: 5, emoji: "⚡" },
 ];
 
 const initialFormState: FeedbackFormState = {
@@ -156,6 +137,7 @@ const confettiPieces = [
 ];
 
 export function FeedbackPage() {
+  const { t } = useTranslation();
   const [form, setForm] = React.useState<FeedbackFormState>(initialFormState);
   const [showConfetti, setShowConfetti] = React.useState(false);
   const [surveyStarted, setSurveyStarted] = React.useState(false);
@@ -220,7 +202,7 @@ export function FeedbackPage() {
       const session = getStoredAuthSession();
 
       if (!session) {
-        throw new Error("Sign in again to send feedback.");
+        throw new Error(t("feedback.errors.signInAgain"));
       }
 
       return submitFeedback(
@@ -253,13 +235,13 @@ export function FeedbackPage() {
       setShowConfetti(true);
       setSurveyStarted(false);
       setSurveyStepIndex(0);
-      toast.success("Feedback sent.", {
-        description: "We received your survey response.",
+      toast.success(t("feedback.toast.sentTitle"), {
+        description: t("feedback.toast.sentDescription"),
       });
       window.setTimeout(() => setShowConfetti(false), 1200);
     },
     onError: (error) => {
-      toast.error(getErrorMessage(error));
+      toast.error(getErrorMessage(error, t("feedback.errors.generic")));
     },
   });
   const startSurvey = () => {
@@ -358,14 +340,17 @@ export function FeedbackPage() {
             <section className="w-full">
               <header className="mx-auto flex max-w-3xl flex-col items-center text-center">
                 <p className="text-xs font-medium text-blue-700 dark:text-blue-200">
-                  Step {surveyStepIndex + 1} of {surveySteps.length}
+                  {t("feedback.stepCounter", {
+                    current: surveyStepIndex + 1,
+                    total: surveySteps.length,
+                  })}
                 </p>
                 <StepProgress activeIndex={surveyStepIndex} />
                 <h2 className="mt-2 text-3xl font-semibold tracking-tight text-blue-950 dark:text-blue-50 sm:text-4xl">
-                  {currentStep.title}
+                  {t(`feedback.steps.${currentStep.id}.title`)}
                 </h2>
                 <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-                  {currentStep.description}
+                  {t(`feedback.steps.${currentStep.id}.description`)}
                 </p>
                 <div className="mt-4">
                   <WorkspaceLogoMark
@@ -393,7 +378,9 @@ export function FeedbackPage() {
                   disabled={mutation.isPending}
                   onClick={goBack}
                 >
-                  {surveyStepIndex === 0 ? "Cancel" : "Back"}
+                  {surveyStepIndex === 0
+                    ? t("feedback.actions.cancel")
+                    : t("feedback.actions.back")}
                 </Button>
                 <Button
                   type="submit"
@@ -405,10 +392,10 @@ export function FeedbackPage() {
                   ) : isLastStep ? (
                     <>
                       <SendIcon className="size-4" />
-                      Send
+                      {t("feedback.actions.send")}
                     </>
                   ) : (
-                    "Next"
+                    t("feedback.actions.next")
                   )}
                 </Button>
               </footer>
@@ -431,6 +418,8 @@ function FeedbackHeroPanel({
   compact?: boolean;
   onStart?: () => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <motion.div
       className={cn(
@@ -458,10 +447,10 @@ function FeedbackHeroPanel({
             compact ? "text-2xl sm:text-3xl" : "sm:text-4xl",
           )}
         >
-          Tell us what to fix next
+          {t("feedback.hero.title")}
         </GradientWaveText>
         <p className="text-sm font-medium leading-5 text-blue-900/75 dark:text-blue-100/85">
-          Your feedback becomes fixes.
+          {t("feedback.hero.subtitle")}
         </p>
       </div>
       <p
@@ -471,20 +460,20 @@ function FeedbackHeroPanel({
         )}
       >
         {compact
-          ? "Pick the area, rate the effort, and write the exact fix needed."
-          : "Tell us what slowed down billing, GST filing, inventory, or payments. We use repeated feedback to decide the next product fix."}
+          ? t("feedback.hero.compactDescription")
+          : t("feedback.hero.description")}
       </p>
       {!compact ? (
         <>
           <p className="mt-3.5 text-xs font-medium text-blue-700 dark:text-blue-200">
-            2 min survey · dealer-first fixes · no support ticket
+            {t("feedback.hero.meta")}
           </p>
           <Button
             type="button"
             className="mt-3 h-9 bg-blue-600 px-5 text-white hover:bg-blue-700"
             onClick={onStart}
           >
-            Start survey
+            {t("feedback.actions.startSurvey")}
             <ArrowRightIcon className="size-4" />
           </Button>
         </>
@@ -500,6 +489,8 @@ function FeedbackSubmittedPanel({
   submittedAt: string;
   nextAllowedAt: string | null;
 }) {
+  const { t } = useTranslation();
+
   return (
     <motion.div
       className="flex max-w-2xl flex-col items-center p-0 text-center"
@@ -518,14 +509,23 @@ function FeedbackSubmittedPanel({
         customColors={["#1d4ed8", "#38bdf8", "#2563eb", "#0f172a"]}
         className="mt-4 h-auto min-h-0 text-3xl font-semibold leading-tight tracking-tight [--gradient-wave-base:rgb(15,23,42)] dark:[--gradient-wave-base:rgb(255,255,255)] sm:text-4xl"
       >
-        Your feedback is submitted
+        {t("feedback.submitted.title")}
       </GradientWaveText>
       <p className="mt-2 text-sm font-medium text-blue-900/75 dark:text-blue-100/85">
-        Sent on {formatFeedbackDate(submittedAt)}
+        {t("feedback.submitted.sentOn", {
+          date: formatFeedbackDate(
+            submittedAt,
+            t("feedback.submitted.fallbackDate"),
+          ),
+        })}
       </p>
       <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-        We lock repeat feedback for 7 days so repeated signals stay clean. You
-        can send the next feedback after {formatFeedbackDate(nextAllowedAt)}.
+        {t("feedback.submitted.cooldown", {
+          date: formatFeedbackDate(
+            nextAllowedAt,
+            t("feedback.submitted.fallbackDate"),
+          ),
+        })}
       </p>
       <div className="mt-5 flex items-center justify-center overflow-visible py-2">
         <Signature
@@ -569,6 +569,8 @@ function SurveyStepContent({
   messageLength: number;
   setForm: React.Dispatch<React.SetStateAction<FeedbackFormState>>;
 }) {
+  const { t } = useTranslation();
+
   return (
     <motion.div
       className="mx-auto mt-6 flex min-h-[12rem] w-full max-w-4xl flex-wrap content-center items-center justify-center gap-x-3 gap-y-3 pt-2 text-center"
@@ -584,7 +586,7 @@ function SurveyStepContent({
               key={option.value}
               active={form.category === option.value}
               emoji={option.emoji}
-              label={option.label}
+              label={t(`feedback.categories.${option.value}`)}
               index={index}
               onClick={() =>
                 setForm((current) => ({
@@ -601,7 +603,10 @@ function SurveyStepContent({
         <ScoreSelector
           groupId="experience"
           value={form.rating}
-          options={ratingOptions}
+          options={ratingOptions.map((option) => ({
+            ...option,
+            label: t(`feedback.ratings.${option.value}`),
+          }))}
           onChange={(rating) => setForm((current) => ({ ...current, rating }))}
         />
       ) : null}
@@ -610,7 +615,10 @@ function SurveyStepContent({
         <ScoreSelector
           groupId="effort"
           value={form.effortScore}
-          options={effortOptions}
+          options={effortOptions.map((option) => ({
+            ...option,
+            label: t(`feedback.efforts.${option.value}`),
+          }))}
           onChange={(effortScore) =>
             setForm((current) => ({ ...current, effortScore }))
           }
@@ -621,7 +629,7 @@ function SurveyStepContent({
         <div className="mx-auto w-full max-w-3xl space-y-3">
           <label className="block space-y-1.5">
             <span className="flex items-center justify-between gap-3 text-xs font-medium">
-              <span>Feedback</span>
+              <span>{t("feedback.form.feedbackLabel")}</span>
               <span
                 className={cn(
                   "text-xs font-normal tabular-nums",
@@ -633,11 +641,11 @@ function SurveyStepContent({
                 {messageLength}/2000
               </span>
             </span>
-            <Textarea
+            <SmoothTextarea
               value={form.message}
               maxLength={2000}
               rows={5}
-              placeholder="Tell us the screen and what felt wrong."
+              placeholder={t("feedback.form.placeholder")}
               className="min-h-32 resize-none rounded-2xl border-blue-100 bg-white/64 text-sm backdrop-blur dark:border-blue-900/60 dark:bg-slate-950/52"
               onChange={(event) =>
                 setForm((current) => ({
@@ -671,7 +679,7 @@ function SurveyStepContent({
                 <CheckCircle2Icon className="size-3.5" />
               ) : null}
             </span>
-            Contact me if needed
+            {t("feedback.form.contactConsent")}
           </button>
         </div>
       ) : null}
@@ -1423,15 +1431,15 @@ function getCurrentPageUrl() {
   return `${window.location.pathname}${window.location.search}`;
 }
 
-function formatFeedbackDate(value: string | null) {
+function formatFeedbackDate(value: string | null, fallback: string) {
   if (!value) {
-    return "the cooldown ends";
+    return fallback;
   }
 
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return "the cooldown ends";
+    return fallback;
   }
 
   return new Intl.DateTimeFormat("en-IN", {
@@ -1441,10 +1449,10 @@ function formatFeedbackDate(value: string | null) {
   }).format(date);
 }
 
-function getErrorMessage(error: unknown) {
+function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) {
     return error.message;
   }
 
-  return "Unable to send feedback right now.";
+  return fallback;
 }

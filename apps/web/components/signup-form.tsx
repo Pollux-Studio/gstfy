@@ -17,7 +17,7 @@ import {
   KeyRoundIcon,
   LockKeyholeIcon,
 } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { z } from "zod"
 
@@ -45,12 +45,10 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
-  InputGroupInput,
   InputGroupText,
 } from "@/components/ui/input-group"
 import { IndianPhoneInput } from "@/components/ui/indian-phone-input"
@@ -61,6 +59,10 @@ import {
   SelectTrigger,
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
+import {
+  SmoothInput as Input,
+  SmoothInputGroupInput,
+} from "@/components/ui/skiper-ui/skiper106"
 import { cn } from "@/lib/utils"
 
 type RegisterStep = "company" | "registration" | "account"
@@ -193,7 +195,11 @@ export function SignupForm({
     () => createWorkspaceSlugPreview(company.tradeName || company.legalName),
     [company.legalName, company.tradeName]
   )
-  const [workspaceUrlPreview, setWorkspaceUrlPreview] = useState("")
+  const workspaceUrlPreview = useSyncExternalStore(
+    subscribeToLocationSnapshot,
+    () => getWorkspaceUrlPreview(workspaceSlugPreview),
+    () => ""
+  )
 
   const [companyErrors, setCompanyErrors] = useState<FieldErrors<keyof CompanyFormValues>>(
     {}
@@ -220,10 +226,6 @@ export function SignupForm({
   const verifyCaReferralMutation = useMutation({
     mutationFn: verifyCaReferral,
   })
-
-  useEffect(() => {
-    setWorkspaceUrlPreview(getWorkspaceUrlPreview(workspaceSlugPreview))
-  }, [workspaceSlugPreview])
 
   useEffect(() => {
     const referralCode = normalizeCaReferralCodeInput(account.caReferralCode)
@@ -1556,7 +1558,7 @@ export function SignupForm({
                             <span>+91</span>
                           </InputGroupText>
                         </InputGroupAddon>
-                        <InputGroupInput
+                        <SmoothInputGroupInput
                           id="register-identifier"
                           type="text"
                           value={account.identifier}
@@ -1591,7 +1593,7 @@ export function SignupForm({
                           <InputGroupAddon>
                             <KeyRoundIcon className="size-4" />
                           </InputGroupAddon>
-                          <InputGroupInput
+                          <SmoothInputGroupInput
                             id="register-ca-referral-code"
                             type="text"
                             value={account.caReferralCode}
@@ -1653,7 +1655,7 @@ export function SignupForm({
                         <InputGroupAddon>
                           <LockKeyholeIcon className="size-4" />
                         </InputGroupAddon>
-                        <InputGroupInput
+                        <SmoothInputGroupInput
                           id="register-password"
                           type={showPassword ? "text" : "password"}
                           placeholder={t("auth.register.steps.account.passwordPlaceholder")}
@@ -1689,7 +1691,7 @@ export function SignupForm({
                         <InputGroupAddon>
                           <LockKeyholeIcon className="size-4" />
                         </InputGroupAddon>
-                        <InputGroupInput
+                        <SmoothInputGroupInput
                           id="register-confirm-password"
                           type={showConfirmPassword ? "text" : "password"}
                           placeholder={t(
@@ -1765,7 +1767,7 @@ export function SignupForm({
                             <span>+91</span>
                           </InputGroupText>
                         </InputGroupAddon>
-                        <InputGroupInput
+                        <SmoothInputGroupInput
                           id="register-phone-otp"
                           type="text"
                           value={otpToken}
@@ -2182,6 +2184,10 @@ function normalizePhoneInput(value: string) {
 
 function normalizeCaReferralCodeInput(value: string) {
   return value.trim().toUpperCase().slice(0, 40)
+}
+
+function subscribeToLocationSnapshot() {
+  return () => {}
 }
 
 function buildUniqueTestIdentity(existingPan?: string) {

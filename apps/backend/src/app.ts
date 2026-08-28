@@ -32,6 +32,7 @@ import { registerProductsRoutes } from "./modules/products/products.routes.js"
 import { registerPurchasesRoutes } from "./modules/purchases/purchases.routes.js"
 import { registerSalesRoutes } from "./modules/sales/sales.routes.js"
 import { registerSettingsRoutes } from "./modules/settings/settings.routes.js"
+import { registerSupportRoutes } from "./modules/support/support.routes.js"
 import { registerTaxRoutes } from "./modules/tax/tax.routes.js"
 import { registerUsersRoutes } from "./modules/users/users.routes.js"
 import { registerErrorHandler } from "./utils/error-handler.js"
@@ -268,6 +269,7 @@ async function registerBackendRoutes(app: Parameters<typeof registerAuthRoutes>[
   await registerOpsRoutes(app)
   await registerAutomationRoutes(app)
   await registerFeedbackRoutes(app)
+  await registerSupportRoutes(app)
   await registerCaRoutes(app)
   await registerAccountRoutes(app)
   await registerSettingsRoutes(app)

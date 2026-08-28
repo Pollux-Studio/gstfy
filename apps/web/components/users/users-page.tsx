@@ -10,12 +10,10 @@ import {
   ArrowDownIcon,
   ArrowUpDownIcon,
   ArrowUpIcon,
-  BadgeCheckIcon,
   Building2Icon,
   CheckIcon,
   ChevronDownIcon,
   Clock3Icon,
-  KeyRoundIcon,
   LoaderCircleIcon,
   MinusIcon,
   MoreHorizontalIcon,
@@ -35,6 +33,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toast"
+import { VerifiedBadge } from "@/components/ui/verified-badge"
 import {
   Dialog,
   DialogContent,
@@ -950,7 +949,12 @@ export function UsersPage() {
                   </Button>
                 ) : null}
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <KeyRoundIcon className="size-3.5" />
+                  <VerifiedBadge
+                    aria-label="Owner protected"
+                    size={15}
+                    tone="brand"
+                    variant="static"
+                  />
                   Owner access stays locked for safety.
                 </div>
               </div>
@@ -1295,7 +1299,12 @@ export function UsersPage() {
                               <p className="truncate font-medium">{user.name}</p>
                               {user.isSystemManaged ? (
                                 <Badge variant="outline" className="hidden shrink-0 gap-1 sm:inline-flex">
-                                  <BadgeCheckIcon className="size-3.5" />
+                                  <VerifiedBadge
+                                    decorative
+                                    size={14}
+                                    tone="brand"
+                                    variant="static"
+                                  />
                                   Owner
                                 </Badge>
                               ) : null}

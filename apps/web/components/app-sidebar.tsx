@@ -265,7 +265,11 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton render={<a href="#" />}>
+            <SidebarMenuButton
+              render={<Link href="/support" />}
+              data-active={pathname === "/support"}
+              tooltip="Support"
+            >
               <LifeBuoyIcon />
               <span>Support</span>
             </SidebarMenuButton>
@@ -292,15 +296,24 @@ function buildSidebarUser(
   const primaryMembership = currentUser?.memberships[0] ?? null
   const avatarSeed =
     authUser?.profileImageSeed ?? currentUser?.profile?.profile_image_seed ?? null
+  const identifier =
+    currentUser?.profile?.email ??
+    currentUser?.auth.email ??
+    authUser?.email ??
+    currentUser?.profile?.phone_e164 ??
+    currentUser?.auth.phone ??
+    authUser?.phone ??
+    "No identifier"
   const name =
     currentUser?.profile?.display_name ??
     primaryMembership?.business_name ??
-    getUserDisplayName(authUser?.email, authUser?.phone)
+    getUserDisplayName(identifier, null)
 
   return {
     name,
-    email: authUser?.email ?? authUser?.phone ?? "No identifier",
+    email: identifier,
     avatar: getProfileAvatarUrl(avatarSeed),
+    isOwner: primaryMembership?.role === "owner",
   }
 }
 

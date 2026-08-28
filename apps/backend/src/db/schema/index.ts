@@ -3524,6 +3524,41 @@ export const userFeedback = pgTable(
   })
 )
 
+export const supportTickets = pgTable(
+  "support_tickets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: uuid("business_id").references(() => businesses.id, {
+      onDelete: "set null",
+    }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    accountType: text("account_type").notNull(),
+    subject: text("subject").notNull(),
+    message: text("message").notNull(),
+    contactMethod: text("contact_method").notNull().default("none"),
+    contactValue: text("contact_value"),
+    workspaceName: text("workspace_name"),
+    tenantUrl: text("tenant_url"),
+    pageUrl: text("page_url"),
+    status: text("status").notNull().default("open"),
+    priority: text("priority").notNull().default("normal"),
+    source: text("source").notNull().default("workspace_support"),
+    metadata: jsonb("metadata").notNull().default({}),
+    ...timestamps,
+  },
+  (table) => ({
+    businessIndex: index("support_tickets_business_id_idx").on(
+      table.businessId,
+      table.createdAt
+    ),
+    userIndex: index("support_tickets_user_id_idx").on(table.userId, table.createdAt),
+    statusIndex: index("support_tickets_status_idx").on(
+      table.status,
+      table.createdAt
+    ),
+  })
+)
+
 export const accountingPeriods = pgTable(
   "accounting_periods",
   {
@@ -4781,6 +4816,7 @@ export type AutomationJobRecord = typeof automationJobs.$inferSelect
 export type AutomationJobEventRecord = typeof automationJobEvents.$inferSelect
 export type AuditLogRecord = typeof auditLogs.$inferSelect
 export type UserFeedbackRecord = typeof userFeedback.$inferSelect
+export type SupportTicketRecord = typeof supportTickets.$inferSelect
 export type PartyRecord = typeof parties.$inferSelect
 export type PartyGstRegistrationRecord = typeof partyGstRegistrations.$inferSelect
 export type PartyAddressRecord = typeof partyAddresses.$inferSelect

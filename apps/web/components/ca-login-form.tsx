@@ -11,7 +11,7 @@ import {
   LockKeyholeIcon,
   MailIcon,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState, useSyncExternalStore } from "react"
 import { useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
 
@@ -30,9 +30,9 @@ import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
-  InputGroupInput,
 } from "@/components/ui/input-group"
 import { Spinner } from "@/components/ui/spinner"
+import { SmoothInputGroupInput } from "@/components/ui/skiper-ui/skiper106"
 import { cn } from "@/lib/utils"
 
 type CaLoginValues = {
@@ -50,7 +50,11 @@ export function CaLoginForm({
   const registered = searchParams.get("registered") === "1"
   const [showPassword, setShowPassword] = useState(false)
   const [authError, setAuthError] = useState("")
-  const [caRegisterHref, setCaRegisterHref] = useState("/auth/ca/register")
+  const caRegisterHref = useSyncExternalStore(
+    subscribeToLocationSnapshot,
+    getCaRegisterHrefSnapshot,
+    getCaRegisterHrefServerSnapshot
+  )
 
   const schema = useMemo(
     () =>
@@ -84,10 +88,6 @@ export function CaLoginForm({
   const loginMutation = useMutation({
     mutationFn: caLogin,
   })
-
-  useEffect(() => {
-    setCaRegisterHref(getAuthSubdomainUrl("/auth/ca/register"))
-  }, [])
 
   async function handleSubmit(values: CaLoginValues) {
     setAuthError("")
@@ -140,7 +140,7 @@ export function CaLoginForm({
               <InputGroupAddon>
                 <MailIcon className="size-4" />
               </InputGroupAddon>
-              <InputGroupInput
+              <SmoothInputGroupInput
                 id="ca-email"
                 type="email"
                 autoComplete="email"
@@ -174,7 +174,7 @@ export function CaLoginForm({
               <InputGroupAddon>
                 <LockKeyholeIcon className="size-4" />
               </InputGroupAddon>
-              <InputGroupInput
+              <SmoothInputGroupInput
                 id="ca-password"
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
@@ -264,6 +264,18 @@ function sanitizeNextPath(value: string | null) {
   }
 
   return value
+}
+
+function subscribeToLocationSnapshot() {
+  return () => {}
+}
+
+function getCaRegisterHrefSnapshot() {
+  return getAuthSubdomainUrl("/auth/ca/register")
+}
+
+function getCaRegisterHrefServerSnapshot() {
+  return "/auth/ca/register"
 }
 
 function navigateAfterCaAuth(redirectTo: string, router: ReturnType<typeof useRouter>) {
