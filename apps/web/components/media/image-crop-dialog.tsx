@@ -214,7 +214,7 @@ export function ImageCropDialog({
                       backgroundSize: `${cropBounds.displayWidth}px ${cropBounds.displayHeight}px`,
                     }}
                   />
-                : <div className="grid size-full place-items-center text-muted-foreground">
+                  : <div className="grid size-full place-items-center text-muted-foreground">
                     <ImageIcon className="size-7" />
                   </div>
               )}

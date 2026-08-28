@@ -2,9 +2,10 @@
 
 import Image from "next/image"
 import { memo, useMemo, useState } from "react"
-import { BellIcon, SearchIcon } from "lucide-react"
+import { SearchIcon } from "lucide-react"
 
 import { DashboardCommandMenu } from "@/components/dashboard/dashboard-command-menu"
+// import { ServiceStatusCenter } from "@/components/dashboard/service-status-center"
 import { LocaleSwitcher } from "@/components/locale-switcher"
 import { ThemeToggle } from "@/components/theme-toggle"
 import type { CurrentUserResponse } from "@/lib/auth/api"
@@ -97,13 +98,14 @@ export const DashboardTopbar = memo(function DashboardTopbar({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* <ServiceStatusCenter /> */}
           {stateMeta?.emblemSrc ? (
             <Tooltip>
               <TooltipTrigger
                 render={
                   <button
                     type="button"
-                    className="flex size-8 items-center justify-center rounded-lg border border-border bg-background/80"
+                    className="flex size-7 items-center justify-center rounded-[min(var(--radius-md),12px)] border border-border bg-background/80"
                   />
                 }
               >
@@ -112,7 +114,7 @@ export const DashboardTopbar = memo(function DashboardTopbar({
                   alt={stateMeta.name}
                   width={20}
                   height={20}
-                  className="size-5 rounded-sm object-contain"
+                  className="size-4 rounded-sm object-contain"
                 />
               </TooltipTrigger>
               <TooltipContent side="bottom" align="end">
@@ -125,25 +127,6 @@ export const DashboardTopbar = memo(function DashboardTopbar({
               </TooltipContent>
             </Tooltip>
           ) : null}
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="relative size-8"
-                  aria-label="Notifications"
-                />
-              }
-            >
-              <BellIcon className="size-4" />
-              <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="end">
-              Notifications
-            </TooltipContent>
-          </Tooltip>
           <ThemeToggle />
           <div className="hidden md:block">
             <LocaleSwitcher />

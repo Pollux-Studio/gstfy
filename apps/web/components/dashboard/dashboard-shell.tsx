@@ -171,7 +171,7 @@ export function DashboardShell({
     const fallbackPath =
       canAccessBusinessPath("/dashboard", currentUserForSession, storedSession?.tenant?.id) ?
         "/dashboard"
-      : "/account"
+        : "/account"
 
     router.replace(fallbackPath)
   }, [

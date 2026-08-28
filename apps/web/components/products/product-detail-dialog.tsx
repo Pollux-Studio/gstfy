@@ -107,7 +107,7 @@ export function ProductDetailDialog({
         </DialogHeader>
         {loading || !product ?
           <ProductDetailLoading />
-        : <ProductDetailView product={product} warehouses={warehouses} />}
+          : <ProductDetailView product={product} warehouses={warehouses} />}
       </DialogContent>
     </Dialog>
   )
@@ -136,7 +136,7 @@ function ProductDetailView({
   const defaultWarehouse =
     inventory?.defaultWarehouseId ?
       warehouses.find((warehouse) => warehouse.id === inventory.defaultWarehouseId)
-    : null
+      : null
   const taxPreview = getStoredProductPricePreview(
     price?.price ?? "0",
     taxProfile?.gstRate ?? "0",
@@ -146,7 +146,7 @@ function ProductDetailView({
   const taxProfileColumns =
     hasCessRule ?
       ["HSN/SAC", "Taxability", "GST", "Cess rule", "Effective from", "Effective to", "Status"]
-    : ["HSN/SAC", "Taxability", "GST", "Effective from", "Effective to", "Status"]
+      : ["HSN/SAC", "Taxability", "GST", "Effective from", "Effective to", "Status"]
   const taxProfileRows =
     taxProfile ?
       [
@@ -160,7 +160,7 @@ function ProductDetailView({
             taxProfile.effectiveTo ?? "-",
             <StatusBadge key="status" status={taxProfile.status} />,
           ]
-        : [
+          : [
             taxProfile.hsnSac ?? "-",
             taxabilityLabels[taxProfile.taxability],
             formatPercent(taxProfile.gstRate),
@@ -169,7 +169,7 @@ function ProductDetailView({
             <StatusBadge key="status" status={taxProfile.status} />,
           ],
       ]
-    : []
+      : []
   const detailTabs = [
     { value: "tax-profile", label: "Tax profile", icon: ReceiptTextIcon },
     { value: "price-profile", label: "Price profile", icon: TagsIcon },
@@ -261,7 +261,7 @@ function ProductDetailView({
                   formatDateRange(price.effectiveFrom, price.effectiveTo),
                   <StatusBadge key="status" status={price.status} />,
                 ]]
-              : []
+                : []
             }
           />
           <ProductTaxPreviewPanel taxPreview={taxPreview} taxMode={price?.taxMode ?? "EXCLUSIVE"} />
@@ -281,7 +281,7 @@ function ProductDetailView({
                   formatCompactDecimal(unit.conversionFactor, 6),
                   unit.gstUqc ?? "-",
                 ]]
-              : []
+                : []
             }
           />
         </ProductDetailTabContent>
@@ -300,7 +300,7 @@ function ProductDetailView({
                   inventory?.defaultWarehouseId ?? "-",
                   inventory?.trackInventory ? "Tracked" : "Not tracked",
                 ]]
-              : []
+                : []
             }
           />
         </ProductDetailTabContent>
@@ -321,7 +321,7 @@ function ProductDetailView({
                   inventory.batchTracking ? "Yes" : "No",
                   inventory.serialTracking ? "Yes" : "No",
                 ]]
-              : []
+                : []
             }
           />
         </ProductDetailTabContent>
@@ -601,9 +601,9 @@ function StatusBadge({ status }: { status: ProductStatus }) {
       variant="outline"
       className={cn(
         status === "ACTIVE" &&
-          "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
         status === "ARCHIVED" &&
-          "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+        "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
       )}
     >
       {statusLabels[status]}
@@ -648,7 +648,7 @@ function getStoredProductPricePreview(
   const taxableValue =
     taxMode === "INCLUSIVE" && parsedGstRate > 0 ?
       parsedPrice / (1 + parsedGstRate / 100)
-    : parsedPrice
+      : parsedPrice
   const igst =
     taxMode === "INCLUSIVE" ? parsedPrice - taxableValue : taxableValue * (parsedGstRate / 100)
   const finalRate = taxMode === "INCLUSIVE" ? parsedPrice : taxableValue + igst

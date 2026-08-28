@@ -549,7 +549,7 @@ const DividerMenuFooter_FooterWith2ColumnMenuAndDividerSection = ({
                                               key={label}
                                               style={
                                                 index <
-                                                DividerMenuFooter_socials.length -
+                                                  DividerMenuFooter_socials.length -
                                                   1
                                                   ? { paddingRight: "24px" }
                                                   : undefined
@@ -2067,11 +2067,11 @@ export interface NavigationFooterProps {
   divider?: boolean;
   oversizedLogo?: boolean;
   variant?:
-    | Parameters<typeof __DividerMenuFooter>[0]["variant"]
-    | Parameters<typeof __TwoColumnFooter>[0]["variant"]
-    | Parameters<typeof __ThreeColumnFooter>[0]["variant"]
-    | Parameters<typeof __FullMenuFooter>[0]["variant"]
-    | Parameters<typeof __TextMenuFooter>[0]["variant"];
+  | Parameters<typeof __DividerMenuFooter>[0]["variant"]
+  | Parameters<typeof __TwoColumnFooter>[0]["variant"]
+  | Parameters<typeof __ThreeColumnFooter>[0]["variant"]
+  | Parameters<typeof __FullMenuFooter>[0]["variant"]
+  | Parameters<typeof __TextMenuFooter>[0]["variant"];
 }
 
 const footerBrandValues = (brand: FooterBrand | undefined) => {

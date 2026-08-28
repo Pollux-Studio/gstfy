@@ -304,8 +304,8 @@ const getBrandIconAsset = (path: string) => {
 
   return match
     ? getIcons8Asset(match[1], {
-        style: "color",
-      })
+      style: "color",
+    })
     : undefined;
 };
 

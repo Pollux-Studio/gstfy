@@ -1,6 +1,6 @@
 "use client"
 
-import { Pie, PieChart, Cell, ResponsiveContainer, Tooltip } from "recharts"
+import { Pie, PieChart, Cell, Tooltip } from "recharts"
 
 import type { OverallReportSlice } from "@/lib/dashboard/api"
 import { cn } from "@/lib/utils"
@@ -39,46 +39,45 @@ export function OverviewReportsPieChart({
       )}
       style={{ minHeight, minWidth }}
     >
-      <ResponsiveContainer
-        width="100%"
-        height="100%"
-        minWidth={minWidth}
-        minHeight={minHeight}
+      <PieChart
+        accessibilityLayer={false}
+        className="h-full w-full"
+        responsive
+        style={{ width: "100%", height: "100%", minHeight, minWidth }}
+        throttleDelay={80}
       >
-        <PieChart accessibilityLayer={false}>
-          <Tooltip
-            cursor={false}
-            contentStyle={{
-              borderRadius: 10,
-              border: "1px solid hsl(var(--border))",
-              background: "var(--card)",
-              color: "var(--card-foreground)",
-              fontSize: 11,
-              lineHeight: "14px",
-              padding: "6px 8px",
-            }}
-            itemStyle={{ fontSize: 11, padding: 0 }}
-            labelStyle={{ display: "none" }}
-            separator=" "
-            formatter={(value) =>
-              typeof value === "number" ? formatCurrency(value) : String(value ?? "")
-            }
-          />
-          <Pie
-            data={data}
-            dataKey="value"
-            nameKey="label"
-            innerRadius={innerRadius}
-            outerRadius={outerRadius}
-            paddingAngle={3}
-            strokeWidth={0}
-          >
-            {data.map((entry) => (
-              <Cell key={entry.label} fill={entry.fill} />
-            ))}
-          </Pie>
-        </PieChart>
-      </ResponsiveContainer>
+        <Tooltip
+          cursor={false}
+          contentStyle={{
+            borderRadius: 10,
+            border: "1px solid hsl(var(--border))",
+            background: "var(--card)",
+            color: "var(--card-foreground)",
+            fontSize: 11,
+            lineHeight: "14px",
+            padding: "6px 8px",
+          }}
+          itemStyle={{ fontSize: 11, padding: 0 }}
+          labelStyle={{ display: "none" }}
+          separator=" "
+          formatter={(value) =>
+            typeof value === "number" ? formatCurrency(value) : String(value ?? "")
+          }
+        />
+        <Pie
+          data={data}
+          dataKey="value"
+          nameKey="label"
+          innerRadius={innerRadius}
+          outerRadius={outerRadius}
+          paddingAngle={3}
+          strokeWidth={0}
+        >
+          {data.map((entry) => (
+            <Cell key={entry.label} fill={entry.fill} />
+          ))}
+        </Pie>
+      </PieChart>
     </div>
   )
 }

@@ -80,7 +80,7 @@ export function CaClientsPage() {
     getNextPageParam: (lastPage) =>
       lastPage.clientsPagination.hasMore ?
         lastPage.clientsPagination.page + 1
-      : undefined,
+        : undefined,
     enabled: accessToken.length > 0 && userId.length > 0,
     staleTime: 1000 * 60 * 3,
   })
@@ -96,10 +96,10 @@ export function CaClientsPage() {
           clientName: formState.clientName.trim(),
           ...(formState.clientEmail.trim() ?
             { clientEmail: formState.clientEmail.trim() }
-          : {}),
+            : {}),
           ...(formState.clientGstin.trim() ?
             { clientGstin: formState.clientGstin.trim().toUpperCase() }
-          : {}),
+            : {}),
         },
         accessToken
       ),
@@ -263,7 +263,7 @@ export function CaClientsPage() {
             <Button type="submit" disabled={createMutation.isPending}>
               {createMutation.isPending ?
                 <Spinner />
-              : <UserPlusIcon className="size-4" />}
+                : <UserPlusIcon className="size-4" />}
               Create invite
             </Button>
           </FieldGroup>
@@ -370,12 +370,12 @@ export function CaClientsPage() {
                               Open
                               <ExternalLinkIcon className="size-3.5" />
                             </Button>
-                          : (
-                            <Button type="button" variant="outline" size="sm" disabled>
-                              Open
-                              <ExternalLinkIcon className="size-3.5" />
-                            </Button>
-                          )}
+                            : (
+                              <Button type="button" variant="outline" size="sm" disabled>
+                                Open
+                                <ExternalLinkIcon className="size-3.5" />
+                              </Button>
+                            )}
                           <Button
                             type="button"
                             variant="ghost"
@@ -389,16 +389,16 @@ export function CaClientsPage() {
                       </TableCell>
                     </TableRow>
                   ))
-                : (
-                  <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="h-24 text-center text-muted-foreground"
-                    >
-                      No accepted clients yet.
-                    </TableCell>
-                  </TableRow>
-                )}
+                  : (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="h-24 text-center text-muted-foreground"
+                      >
+                        No accepted clients yet.
+                      </TableCell>
+                    </TableRow>
+                  )}
               </TableBody>
             </Table>
           </div>

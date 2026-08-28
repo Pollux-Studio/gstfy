@@ -52,6 +52,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import {
   Select,
   SelectContent,
   SelectDisplayValue,
@@ -170,35 +178,35 @@ const itemTypeFilterOptions: ReadonlyArray<{
   value: FilterState["itemType"];
   label: string;
 }> = [
-  { value: "all", label: "All types" },
-  ...itemTypes.map((itemType) => ({
-    value: itemType,
-    label: itemTypeLabels[itemType],
-  })),
-];
+    { value: "all", label: "All types" },
+    ...itemTypes.map((itemType) => ({
+      value: itemType,
+      label: itemTypeLabels[itemType],
+    })),
+  ];
 const statusFilterOptions: ReadonlyArray<{
   value: FilterState["status"];
   label: string;
 }> = [
-  { value: "all", label: "All statuses" },
-  ...statuses.map((status) => ({
-    value: status,
-    label: statusLabels[status],
-  })),
-];
+    { value: "all", label: "All statuses" },
+    ...statuses.map((status) => ({
+      value: status,
+      label: statusLabels[status],
+    })),
+  ];
 const productTableColumns: ReadonlyArray<{
   key: ProductColumnKey;
   label: string;
   widthClass: string;
 }> = [
-  { key: "product", label: "Product", widthClass: "w-[27%]" },
-  { key: "hsn", label: "HSN", widthClass: "w-[13%]" },
-  { key: "gst", label: "GST", widthClass: "w-[9%]" },
-  { key: "unit", label: "Unit", widthClass: "w-[9%]" },
-  { key: "price", label: "Final price", widthClass: "w-[13%]" },
-  { key: "inventory", label: "Inventory", widthClass: "w-[14%]" },
-  { key: "status", label: "Status", widthClass: "w-[8%]" },
-];
+    { key: "product", label: "Product", widthClass: "w-[27%]" },
+    { key: "hsn", label: "HSN", widthClass: "w-[13%]" },
+    { key: "gst", label: "GST", widthClass: "w-[9%]" },
+    { key: "unit", label: "Unit", widthClass: "w-[9%]" },
+    { key: "price", label: "Final price", widthClass: "w-[13%]" },
+    { key: "inventory", label: "Inventory", widthClass: "w-[14%]" },
+    { key: "status", label: "Status", widthClass: "w-[8%]" },
+  ];
 const tablePageSize = 15;
 
 const emptyForm: ProductFormState = {
@@ -1261,21 +1269,27 @@ export function ProductsPage() {
                     colSpan={productTableColumnCount}
                     className="py-12 text-center"
                   >
-                    <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
-                      <PackageIcon className="size-8 text-muted-foreground" />
-                      <p className="font-medium">No products found</p>
-                      <p className="text-sm text-muted-foreground">
-                        Add products with GST and price defaults before creating
-                        sales or purchase documents.
-                      </p>
-                      <Button
-                        onClick={openCreateSheet}
-                        size="sm"
-                        className="mt-2"
-                      >
-                        Add first product
-                      </Button>
-                    </div>
+                    <Empty className="mx-auto max-w-sm border-0 px-3 py-3">
+                      <EmptyHeader className="gap-1.5">
+                        <EmptyMedia variant="icon" className="mb-0 h-12 w-11">
+                          <PackageIcon className="size-4" />
+                        </EmptyMedia>
+                        <EmptyTitle>No products found</EmptyTitle>
+                        <EmptyDescription>
+                          Add products with GST and price defaults before creating
+                          sales or purchase documents.
+                        </EmptyDescription>
+                      </EmptyHeader>
+                      <EmptyContent>
+                        <Button
+                          onClick={openCreateSheet}
+                          size="sm"
+                          className="mt-2"
+                        >
+                          Add first product
+                        </Button>
+                      </EmptyContent>
+                    </Empty>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -1328,8 +1342,8 @@ export function ProductsPage() {
                             <p className="truncate text-xs text-muted-foreground">
                               {product.activeTaxProfile
                                 ? taxabilityLabels[
-                                    product.activeTaxProfile.taxability
-                                  ]
+                                product.activeTaxProfile.taxability
+                                ]
                                 : "Tax profile missing"}
                             </p>
                           </div>
@@ -1366,7 +1380,7 @@ export function ProductsPage() {
                             className={cn(
                               "gap-1.5",
                               product.inventoryProfile?.trackInventory &&
-                                "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+                              "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
                             )}
                           >
                             <BoxesIcon className="size-3.5" />
@@ -1718,9 +1732,9 @@ function StatusBadge({ status }: { status: ProductStatus }) {
       variant="outline"
       className={cn(
         status === "ACTIVE" &&
-          "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
         status === "ARCHIVED" &&
-          "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
+        "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
       )}
     >
       {statusLabels[status]}
@@ -1797,7 +1811,7 @@ function SelectionCheckbox({
       className={cn(
         "flex size-4 items-center justify-center rounded-sm border border-input bg-background text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40",
         (checked || indeterminate) &&
-          "border-primary bg-primary text-primary-foreground",
+        "border-primary bg-primary text-primary-foreground",
       )}
     >
       {checked ? (
@@ -1828,7 +1842,7 @@ function ProductTopMetric({
           className={cn(
             "flex size-6 items-center justify-center rounded-md border border-border text-muted-foreground",
             tone === "success" &&
-              "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+            "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
           )}
         >
           {icon}
@@ -2020,13 +2034,13 @@ function buildCreatePayload(form: ProductFormState): CreateProductPayload {
     },
     barcodes: form.barcode.trim()
       ? [
-          {
-            barcode: form.barcode.trim(),
-            barcodeType: defaultBarcodeType,
-            isPrimary: true,
-            status: "ACTIVE",
-          },
-        ]
+        {
+          barcode: form.barcode.trim(),
+          barcodeType: defaultBarcodeType,
+          isPrimary: true,
+          status: "ACTIVE",
+        },
+      ]
       : [],
   };
 }
@@ -2065,33 +2079,33 @@ async function saveProductEdit(
 
   response = product?.activeTaxProfile
     ? await updateProductTaxProfile(
-        productId,
-        product.activeTaxProfile.id,
-        taxProfilePayload,
-        accessToken,
-      )
+      productId,
+      product.activeTaxProfile.id,
+      taxProfilePayload,
+      accessToken,
+    )
     : await createProductTaxProfile(productId, taxProfilePayload, accessToken);
 
   response = product?.unitProfile
     ? await updateProductUnitProfile(
-        productId,
-        product.unitProfile.id,
-        unitProfilePayload,
-        accessToken,
-      )
+      productId,
+      product.unitProfile.id,
+      unitProfilePayload,
+      accessToken,
+    )
     : await createProductUnitProfile(
-        productId,
-        unitProfilePayload,
-        accessToken,
-      );
+      productId,
+      unitProfilePayload,
+      accessToken,
+    );
 
   response = product?.activePrice
     ? await updateProductPriceProfile(
-        productId,
-        product.activePrice.id,
-        pricePayload,
-        accessToken,
-      )
+      productId,
+      product.activePrice.id,
+      pricePayload,
+      accessToken,
+    )
     : await createProductPriceProfile(productId, pricePayload, accessToken);
 
   response = await updateProductInventoryProfile(
@@ -2103,11 +2117,11 @@ async function saveProductEdit(
   if (barcodePayload) {
     response = product?.primaryBarcode
       ? await updateProductBarcode(
-          productId,
-          product.primaryBarcode.id,
-          barcodePayload,
-          accessToken,
-        )
+        productId,
+        product.primaryBarcode.id,
+        barcodePayload,
+        accessToken,
+      )
       : await createProductBarcode(productId, barcodePayload, accessToken);
   } else if (product?.primaryBarcode) {
     response = await deleteProductBarcode(

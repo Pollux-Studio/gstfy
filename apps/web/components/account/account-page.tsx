@@ -376,7 +376,7 @@ export function AccountPage() {
               >
                 {avatarMutation.isPending ?
                   <Spinner />
-                : <RefreshCwIcon className="size-4" />}
+                  : <RefreshCwIcon className="size-4" />}
                 {profileImageActionLabel}
               </Button>
             </div>
@@ -415,7 +415,7 @@ export function AccountPage() {
                       value={
                         data.user.phoneE164.startsWith("+91") ?
                           data.user.phoneE164.slice(3)
-                        : data.user.phoneE164
+                          : data.user.phoneE164
                       }
                       disabled
                     />
@@ -711,7 +711,7 @@ export function AccountPage() {
                         className={
                           session.revokedAt ?
                             "shrink-0 border-border bg-background text-muted-foreground"
-                          : "shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                            : "shrink-0 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
                         }
                       >
                         {index === 0 ? "Latest" : session.revokedAt ? "Logged out" : "Active"}
@@ -812,17 +812,17 @@ function getSessionDeviceLabel(userAgent?: string | null) {
 
   const browser =
     userAgent.includes("Edg/") ? "Edge"
-    : userAgent.includes("Chrome/") ? "Chrome"
-    : userAgent.includes("Firefox/") ? "Firefox"
-    : userAgent.includes("Safari/") ? "Safari"
-    : "Browser"
+      : userAgent.includes("Chrome/") ? "Chrome"
+        : userAgent.includes("Firefox/") ? "Firefox"
+          : userAgent.includes("Safari/") ? "Safari"
+            : "Browser"
   const platform =
     /Android/i.test(userAgent) ? "Android"
-    : /iPhone|iPad/i.test(userAgent) ? "iOS"
-    : /Macintosh|Mac OS/i.test(userAgent) ? "macOS"
-    : /Windows/i.test(userAgent) ? "Windows"
-    : /Linux/i.test(userAgent) ? "Linux"
-    : "Device"
+      : /iPhone|iPad/i.test(userAgent) ? "iOS"
+        : /Macintosh|Mac OS/i.test(userAgent) ? "macOS"
+          : /Windows/i.test(userAgent) ? "Windows"
+            : /Linux/i.test(userAgent) ? "Linux"
+              : "Device"
 
   return `${browser} on ${platform}`
 }

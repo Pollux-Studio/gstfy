@@ -154,27 +154,27 @@ const productFormTabs: Array<{
   label: string;
   description: string;
 }> = [
-  {
-    value: "basics",
-    label: "Basics",
-    description: "Name, type, category and product identity.",
-  },
-  {
-    value: "tax",
-    label: "Tax & unit",
-    description: "HSN/SAC, GST rate, UQC and effective dates.",
-  },
-  {
-    value: "pricing",
-    label: "Pricing",
-    description: "Base price, margin, barcode and final selling price.",
-  },
-  {
-    value: "inventory",
-    label: "Inventory",
-    description: "Warehouse, reorder points and stock tracking.",
-  },
-];
+    {
+      value: "basics",
+      label: "Basics",
+      description: "Name, type, category and product identity.",
+    },
+    {
+      value: "tax",
+      label: "Tax & unit",
+      description: "HSN/SAC, GST rate, UQC and effective dates.",
+    },
+    {
+      value: "pricing",
+      label: "Pricing",
+      description: "Base price, margin, barcode and final selling price.",
+    },
+    {
+      value: "inventory",
+      label: "Inventory",
+      description: "Warehouse, reorder points and stock tracking.",
+    },
+  ];
 
 export function ProductUpsertDialog({
   accessToken,
@@ -877,11 +877,10 @@ export function ProductUpsertDialog({
                                 { value: "none", label: "Choose warehouse" },
                                 ...activeWarehouseOptions.map((warehouse) => ({
                                   value: warehouse.id,
-                                  label: `${warehouse.name} (${warehouse.warehouseCode ?? "-"})${
-                                    warehouse.warehouseCode === "MAIN"
+                                  label: `${warehouse.name} (${warehouse.warehouseCode ?? "-"})${warehouse.warehouseCode === "MAIN"
                                       ? " · Default"
                                       : ""
-                                  }`,
+                                    }`,
                                 })),
                               ]}
                               placeholder="Default warehouse"
@@ -1142,8 +1141,8 @@ function HsnSearchField({
   );
   const visibleSelectedLabel =
     selectedCode &&
-    (selectedDisplay === selectedCode ||
-      selectedDisplay.startsWith(`${selectedCode} ·`))
+      (selectedDisplay === selectedCode ||
+        selectedDisplay.startsWith(`${selectedCode} ·`))
       ? selectedDisplay
       : selectedLabel;
 

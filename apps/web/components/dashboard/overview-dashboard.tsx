@@ -203,7 +203,7 @@ export const OverviewDashboard = React.memo(function OverviewDashboard() {
       <DashboardBentoSection data={data} />
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-        <LowStockSection  
+        <LowStockSection
           items={lowStockItems}
           totalCount={lowStockTotalCount}
           isLoading={lowStockQuery.isLoading}
@@ -245,7 +245,7 @@ function DashboardBentoSection({ data }: { data: BusinessDashboardOverview }) {
                 >
                   {data.business.gstin}
                 </Badge>
-              : null}
+                : null}
             </div>
             <div className="space-y-1">
               <h1 className="line-clamp-2 text-lg font-semibold tracking-tight text-slate-950 sm:text-xl">
@@ -455,7 +455,7 @@ function DashboardBentoSection({ data }: { data: BusinessDashboardOverview }) {
                     </div>
                   ))}
                 </div>
-              : null}
+                : null}
               <div className="grid grid-cols-2 gap-1.5 pt-0.5">
                 <div className="flex items-center justify-between gap-2 rounded-lg border border-white/70 bg-white/55 px-2 py-1.5 text-[11px] text-slate-600">
                   <span className="truncate">Customers</span>
@@ -471,7 +471,7 @@ function DashboardBentoSection({ data }: { data: BusinessDashboardOverview }) {
                 </div>
               </div>
             </>
-          : <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-sky-200 bg-white/55 p-4 text-center">
+            : <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-sky-200 bg-white/55 p-4 text-center">
               <ReceiptTextIcon className="size-7 text-sky-700" />
               <p className="mt-2 text-sm font-medium text-slate-950">
                 No posted business yet
@@ -530,8 +530,8 @@ function RevenueTrendBadge({ trend }: { trend: RevenueTrend | null }) {
   const direction = trend?.direction ?? "flat"
   const Icon =
     direction === "up" ? ArrowUpIcon
-    : direction === "down" ? ArrowDownIcon
-    : ArrowDownUpIcon
+      : direction === "down" ? ArrowDownIcon
+        : ArrowDownUpIcon
 
   return (
     <Badge
@@ -539,7 +539,7 @@ function RevenueTrendBadge({ trend }: { trend: RevenueTrend | null }) {
       className={cn(
         "h-7 gap-1 bg-background/70 px-2 text-[11px]",
         direction === "up" &&
-          "border-emerald-200 bg-emerald-50 text-emerald-700",
+        "border-emerald-200 bg-emerald-50 text-emerald-700",
         direction === "down" && "border-red-200 bg-red-50 text-red-700"
       )}
     >
@@ -646,15 +646,15 @@ function LowStockSection({
         title: "Negative stock",
         description: "Items where outward movement has gone below available stock.",
       }
-    : activeTab === "reorder" ?
-      {
-        title: "Below reorder",
-        description: "Products that need purchase or stock transfer attention.",
-      }
-    : {
-        title: "Low stock",
-        description: "Products below reorder level across warehouses.",
-      }
+      : activeTab === "reorder" ?
+        {
+          title: "Below reorder",
+          description: "Products that need purchase or stock transfer attention.",
+        }
+        : {
+          title: "Low stock",
+          description: "Products below reorder level across warehouses.",
+        }
 
   return (
     <Tabs
@@ -750,20 +750,21 @@ function LowStockTable({
           title: "No negative stock",
           description: "Stock is not below zero for the loaded dashboard items.",
         }
-      : emptyKind === "reorder" ?
-        {
-          title: "No reorder pressure",
-          description: "Items are currently above their reorder threshold.",
-        }
-      : {
-          title: "No low-stock pressure",
-          description:
-            "Tracked products are above reorder level or stock tracking is not enabled yet.",
-        }
+        : emptyKind === "reorder" ?
+          {
+            title: "No reorder pressure",
+            description: "Items are currently above their reorder threshold.",
+          }
+          : {
+            title: "No low-stock pressure",
+            description:
+              "Tracked products are above reorder level or stock tracking is not enabled yet.",
+          }
 
     return (
       <DashboardEmpty
-        icon={<PackageSearchIcon className="size-4" />}
+        icon={<PackageSearchIcon className="size-3" />}
+        compactIcon={emptyKind === "negative"}
         title={copy.title}
         description={copy.description}
         actionHref="/inventory"
@@ -849,7 +850,7 @@ function LowStockTable({
                     "text-right font-mono font-semibold",
                     numericValue(item.quantityOnHand) < 0 ?
                       "text-red-600 dark:text-red-400"
-                    : "text-amber-700 dark:text-amber-300"
+                      : "text-amber-700 dark:text-amber-300"
                   )}
                 >
                   {formatQuantity(item.quantityOnHand)}
@@ -890,7 +891,7 @@ function RecentActivitySection({
         title: "Recent purchases",
         description: "Latest supplier bills posted in this workspace.",
       }
-    : {
+      : {
         title: "Recent sales",
         description: "Latest customer bills posted from POS and sales flows.",
       }
@@ -1140,11 +1141,11 @@ function RecentStatusBadge({ status }: { status: string }) {
   const className =
     normalized === "posted" || normalized === "paid" || normalized === "closed" ?
       "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-    : normalized === "draft" || normalized === "partial" ?
-      "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
-    : normalized === "cancelled" || normalized === "reversed" || normalized === "void" ?
-      "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
-    : "bg-background"
+      : normalized === "draft" || normalized === "partial" ?
+        "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+        : normalized === "cancelled" || normalized === "reversed" || normalized === "void" ?
+          "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+          : "bg-background"
 
   return (
     <Badge variant="outline" className={cn("max-w-full truncate capitalize", className)}>
@@ -1249,12 +1250,14 @@ function DashboardTableSkeleton({
 
 function DashboardEmpty({
   icon,
+  compactIcon,
   title,
   description,
   actionHref,
   actionLabel,
 }: {
   icon: React.ReactNode
+  compactIcon?: boolean
   title: string
   description: string
   actionHref?: string
@@ -1263,7 +1266,10 @@ function DashboardEmpty({
   return (
     <Empty className="mx-auto min-h-[150px] max-w-xs gap-2 border-0 px-3 py-3">
       <EmptyHeader className="gap-1.5">
-        <EmptyMedia variant="icon" className="mb-0 size-7">
+        <EmptyMedia
+          variant="icon"
+          className={compactIcon ? "mb-0 h-8 w-7" : "mb-0 h-10 w-9"}
+        >
           {icon}
         </EmptyMedia>
         <EmptyTitle className="text-xs">{title}</EmptyTitle>
@@ -1282,7 +1288,7 @@ function DashboardEmpty({
             <ArrowRightIcon className="size-3.5" />
           </Button>
         </EmptyContent>
-      : null}
+        : null}
     </Empty>
   )
 }
@@ -1323,12 +1329,12 @@ function sortLowStockItems(
 
     const firstValue =
       sortKey === "quantity" ? numericValue(first.quantityOnHand)
-      : sortKey === "reorder" ? numericValue(first.reorderLevel)
-      : first.inventoryValue
+        : sortKey === "reorder" ? numericValue(first.reorderLevel)
+          : first.inventoryValue
     const secondValue =
       sortKey === "quantity" ? numericValue(second.quantityOnHand)
-      : sortKey === "reorder" ? numericValue(second.reorderLevel)
-      : second.inventoryValue
+        : sortKey === "reorder" ? numericValue(second.reorderLevel)
+          : second.inventoryValue
 
     return (firstValue - secondValue) * direction
   })
@@ -1360,12 +1366,12 @@ function sortRecentDocuments(
 
     const firstValue =
       sortKey === "total" ? first.total
-      : sortKey === "paid" ? first.paid
-      : first.due
+        : sortKey === "paid" ? first.paid
+          : first.due
     const secondValue =
       sortKey === "total" ? second.total
-      : sortKey === "paid" ? second.paid
-      : second.due
+        : sortKey === "paid" ? second.paid
+          : second.due
 
     return (firstValue - secondValue) * direction
   })
@@ -1417,8 +1423,8 @@ function getRevenueTrend(data: RevenueStatisticPoint[]): RevenueTrend | null {
   return {
     direction:
       change > 0.05 ? "up"
-      : change < -0.05 ? "down"
-      : "flat",
+        : change < -0.05 ? "down"
+          : "flat",
     percent: Math.abs(change),
   }
 }

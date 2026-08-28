@@ -566,7 +566,7 @@ function AdjustmentCreateDialog({
     queryFn: () =>
       config.sourceDocumentKind === "sales" ?
         getSalesInvoiceReturnable(accessToken, sourceDocumentId)
-      : getPurchaseBillReturnable(accessToken, sourceDocumentId),
+        : getPurchaseBillReturnable(accessToken, sourceDocumentId),
     enabled: sourceDocumentId.length > 0 && accessToken.length > 0,
   })
   const createMutation = useMutation({
@@ -588,15 +588,15 @@ function AdjustmentCreateDialog({
           ...(config.valueInput === "quantity" ? { quantity: value } : { taxableValue: value }),
           inventoryEffect:
             config.mode === "sales-return" ? "STOCK_IN" as const
-            : config.mode === "purchase-return" ? "STOCK_OUT" as const
-            : "NONE" as const,
+              : config.mode === "purchase-return" ? "STOCK_OUT" as const
+                : "NONE" as const,
         }))
 
       if (lines.length === 0) {
         throw new Error(
           config.valueInput === "quantity" ?
             "Enter return quantity for at least one line."
-          : "Enter adjustment value for at least one line."
+            : "Enter adjustment value for at least one line."
         )
       }
 
@@ -661,7 +661,7 @@ function AdjustmentCreateDialog({
                       "w-full rounded-lg border p-3 text-left text-sm transition-colors " +
                       (sourceDocumentId === source.id ?
                         "border-blue-500 bg-blue-500/5"
-                      : "hover:bg-muted/50")
+                        : "hover:bg-muted/50")
                     }
                     onClick={() => selectSourceDocument(source.id)}
                   >
@@ -837,8 +837,8 @@ function AmountCell({ value }: { value: string }) {
 function StatusBadge({ status }: { status: AdjustmentStatus }) {
   const className =
     status === "posted" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-    : status === "reversed" ? "bg-red-500/10 text-red-700 dark:text-red-300"
-    : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+      : status === "reversed" ? "bg-red-500/10 text-red-700 dark:text-red-300"
+        : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
 
   return (
     <Badge variant="outline" className={className}>

@@ -421,7 +421,7 @@ export function EInvoicePage() {
                           <EyeIcon className="size-4" />
                         </Button>
                         {record.submissionStatus === "ELIGIBLE" ||
-                        record.submissionStatus === "VALIDATION_FAILED" ? (
+                          record.submissionStatus === "VALIDATION_FAILED" ? (
                           <Button
                             type="button"
                             variant="ghost"
@@ -461,7 +461,7 @@ export function EInvoicePage() {
                           </Button>
                         ) : null}
                         {record.submissionStatus === "FAILED" ||
-                        record.submissionStatus === "CANCELLATION_FAILED" ? (
+                          record.submissionStatus === "CANCELLATION_FAILED" ? (
                           <Button
                             type="button"
                             variant="ghost"

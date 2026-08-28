@@ -136,17 +136,17 @@ const normalBalanceOptions: ReadonlyArray<{
   value: NormalBalance
   label: string
 }> = [
-  { value: "DEBIT", label: "Debit" },
-  { value: "CREDIT", label: "Credit" },
-]
+    { value: "DEBIT", label: "Debit" },
+    { value: "CREDIT", label: "Credit" },
+  ]
 
 const postingAllowedOptions: ReadonlyArray<{
   value: AccountFormState["allowPosting"]
   label: string
 }> = [
-  { value: "yes", label: "Posting account" },
-  { value: "no", label: "Grouping account only" },
-]
+    { value: "yes", label: "Posting account" },
+    { value: "no", label: "Grouping account only" },
+  ]
 
 type AccountStatusFilter = LedgerAccountStatus | "all"
 type AccountTypeFilter = LedgerAccountType | "all"
@@ -157,32 +157,32 @@ const statusFilterOptions: ReadonlyArray<{
   value: AccountStatusFilter
   label: string
 }> = [
-  { value: "all", label: "All statuses" },
-  { value: "active", label: "Active" },
-  { value: "inactive", label: "Inactive" },
-]
+    { value: "all", label: "All statuses" },
+    { value: "active", label: "Active" },
+    { value: "inactive", label: "Inactive" },
+  ]
 
 const typeFilterOptions: ReadonlyArray<{
   value: AccountTypeFilter
   label: string
 }> = [
-  { value: "all", label: "All types" },
-  { value: "ASSET", label: "Assets" },
-  { value: "LIABILITY", label: "Liabilities" },
-  { value: "EQUITY", label: "Equity" },
-  { value: "INCOME", label: "Income" },
-  { value: "EXPENSE", label: "Expenses" },
-]
+    { value: "all", label: "All types" },
+    { value: "ASSET", label: "Assets" },
+    { value: "LIABILITY", label: "Liabilities" },
+    { value: "EQUITY", label: "Equity" },
+    { value: "INCOME", label: "Income" },
+    { value: "EXPENSE", label: "Expenses" },
+  ]
 
 const trialBalanceSideOptions: ReadonlyArray<{
   value: TrialBalanceSideFilter
   label: string
 }> = [
-  { value: "all", label: "All balances" },
-  { value: "debit", label: "Debit balances" },
-  { value: "credit", label: "Credit balances" },
-  { value: "zero", label: "Zero balances" },
-]
+    { value: "all", label: "All balances" },
+    { value: "debit", label: "Debit balances" },
+    { value: "credit", label: "Credit balances" },
+    { value: "zero", label: "Zero balances" },
+  ]
 
 const accountGroups = [
   "CURRENT_ASSETS",
@@ -574,7 +574,7 @@ export function AccountingPage() {
     () =>
       formatAmount(
         toNumber(balanceSheetQuery.data?.totals.liabilities) +
-          toNumber(balanceSheetQuery.data?.totals.equity)
+        toNumber(balanceSheetQuery.data?.totals.equity)
       ),
     [balanceSheetQuery.data?.totals.equity, balanceSheetQuery.data?.totals.liabilities]
   )
@@ -1213,7 +1213,7 @@ export function AccountingPage() {
                                 "normalBalance",
                                 accountType === "ASSET" || accountType === "EXPENSE" ?
                                   "DEBIT"
-                                : "CREDIT"
+                                  : "CREDIT"
                               )
                             }}
                           >
@@ -1373,7 +1373,7 @@ export function AccountingPage() {
                           className={cn(
                             "font-mono font-semibold",
                             form.normalBalance === "DEBIT" &&
-                              "text-emerald-700 dark:text-emerald-300",
+                            "text-emerald-700 dark:text-emerald-300",
                             form.normalBalance === "CREDIT" && "text-destructive"
                           )}
                         >
@@ -1586,7 +1586,7 @@ function AccountTable({
                     className={cn(
                       "max-w-full truncate px-1 py-0 text-[10px]",
                       account.status === "active" &&
-                        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
                     )}
                   >
                     {humanize(account.status)}
@@ -1654,8 +1654,8 @@ function SortableAccountsTableHead({
   const isActive = sortBy === sortKey
   const SortIcon =
     !isActive ? ArrowUpDownIcon
-    : sortDir === "asc" ? ArrowUpIcon
-    : ArrowDownIcon
+      : sortDir === "asc" ? ArrowUpIcon
+        : ArrowDownIcon
 
   return (
     <TableHead className={compactStickyTableHeadClass}>
@@ -1698,7 +1698,7 @@ function AccountingTopMetric({
           className={cn(
             "flex size-6 items-center justify-center rounded-md border border-border text-muted-foreground",
             tone === "success" &&
-              "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+            "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
           )}
         >
           {icon}

@@ -229,7 +229,7 @@ function ReportsHeader({
                   className={cn(
                     "h-7 rounded-full px-3 text-xs",
                     datePreset === option.value &&
-                      "bg-blue-600 text-white hover:bg-blue-700"
+                    "bg-blue-600 text-white hover:bg-blue-700"
                   )}
                   onClick={() => onPresetChange(option.value)}
                 >
@@ -334,7 +334,7 @@ function CashMovementChartCard({
             "w-fit gap-1.5",
             net >= 0 ?
               "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-            : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+              : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
           )}
         >
           <span className="size-1.5 rounded-full bg-current" />
@@ -418,7 +418,7 @@ function AgingComparisonChartCard({
   const chartDescription =
     granularity === "day" ?
       "Daily customer dues and supplier dues for this selected range."
-    : "Monthly customer dues and supplier dues for this selected range."
+      : "Monthly customer dues and supplier dues for this selected range."
 
   async function handleExport(type: "receivable" | "payable") {
     try {
@@ -584,7 +584,7 @@ function CashFlowCard({
                       "gap-1.5",
                       row.direction === "receipt" ?
                         "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-                      : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+                        : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
                     )}
                   >
                     <span className="size-1.5 rounded-full bg-current" />
@@ -598,7 +598,7 @@ function CashFlowCard({
                     "text-right font-mono",
                     row.direction === "receipt" ?
                       "text-emerald-700 dark:text-emerald-300"
-                    : "text-red-700 dark:text-red-300"
+                      : "text-red-700 dark:text-red-300"
                   )}
                 >
                   {formatCurrency(row.amount)}
@@ -636,7 +636,7 @@ function ReportSummaryRow({
             "rounded-full border bg-background p-1.5",
             tone === "positive" ?
               "text-emerald-700 dark:text-emerald-300"
-            : "text-red-700 dark:text-red-300"
+              : "text-red-700 dark:text-red-300"
           )}
         >
           {icon}
@@ -651,7 +651,7 @@ function ReportSummaryRow({
             "shrink-0 font-mono text-sm font-semibold",
             tone === "positive" ?
               "text-emerald-700 dark:text-emerald-300"
-            : "text-red-700 dark:text-red-300"
+              : "text-red-700 dark:text-red-300"
           )}
         >
           {value}

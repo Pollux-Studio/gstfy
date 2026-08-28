@@ -101,17 +101,17 @@ const partyWorkspaceTabs: Array<{
   label: string
   icon: React.ComponentType<{ className?: string }>
 }> = [
-  { value: "overview", label: "Overview", icon: ClipboardListIcon },
-  { value: "gst", label: "GST", icon: ReceiptTextIcon },
-  { value: "addresses", label: "Addresses", icon: MapPinIcon },
-  { value: "contacts", label: "Contacts", icon: ContactRoundIcon },
-  { value: "bank", label: "Bank", icon: BanknoteIcon },
-  { value: "commercial", label: "Commercial", icon: BriefcaseBusinessIcon },
-  { value: "ledger", label: "Ledger", icon: BookOpenTextIcon },
-  { value: "documents", label: "Documents", icon: FileTextIcon },
-  { value: "audit", label: "Audit", icon: HistoryIcon },
-  { value: "more", label: "More", icon: FileTextIcon },
-]
+    { value: "overview", label: "Overview", icon: ClipboardListIcon },
+    { value: "gst", label: "GST", icon: ReceiptTextIcon },
+    { value: "addresses", label: "Addresses", icon: MapPinIcon },
+    { value: "contacts", label: "Contacts", icon: ContactRoundIcon },
+    { value: "bank", label: "Bank", icon: BanknoteIcon },
+    { value: "commercial", label: "Commercial", icon: BriefcaseBusinessIcon },
+    { value: "ledger", label: "Ledger", icon: BookOpenTextIcon },
+    { value: "documents", label: "Documents", icon: FileTextIcon },
+    { value: "audit", label: "Audit", icon: HistoryIcon },
+    { value: "more", label: "More", icon: FileTextIcon },
+  ]
 
 type PartyDocumentFormState = {
   documentType: PartyDocument["documentType"]
@@ -188,9 +188,9 @@ export function PartyDetailDialog({
       }),
     enabled: Boolean(
       open &&
-        party?.id &&
-        accessToken &&
-        (activeTab === "ledger" || activeTab === "overview")
+      party?.id &&
+      accessToken &&
+      (activeTab === "ledger" || activeTab === "overview")
     ),
     staleTime: 1000 * 60,
   })
@@ -659,7 +659,7 @@ function PartyOverviewTab({
               description={
                 primaryGst ?
                   `${primaryGst.state || `State ${primaryGst.stateCode}`} · ${capitalizeText(primaryGst.registrationType)}`
-                : "New B2C/POS transactions can still use this party without GST."
+                  : "New B2C/POS transactions can still use this party without GST."
               }
               icon={<ReceiptTextIcon className="size-3.5" />}
               meta={[primaryGst?.status ? capitalizeText(primaryGst.status) : null]}
@@ -682,7 +682,7 @@ function PartyOverviewTab({
                   [primaryContact.mobile, primaryContact.phone, primaryContact.email]
                     .filter(Boolean)
                     .join(" · ") || "No phone/email"
-                : "No active contact is saved."
+                  : "No active contact is saved."
               }
               icon={<ContactRoundIcon className="size-3.5" />}
               meta={[primaryContact?.designation, capitalizeText(primaryContact?.contactRole)]}
@@ -699,7 +699,7 @@ function PartyOverviewTab({
                   ]
                     .filter(Boolean)
                     .join(" · ") || "Masked bank account"
-                : "Party bank account is optional and distinct from your business bank."
+                  : "Party bank account is optional and distinct from your business bank."
               }
               icon={<BanknoteIcon className="size-3.5" />}
               meta={[capitalizeText(primaryBankAccount?.accountType), primaryBankAccount?.branch]}
@@ -1694,8 +1694,8 @@ function GstRegistrationInlineForm({
             </SelectContent>
           </Select>
           {selectedAddress?.stateCode &&
-          form.stateCode &&
-          selectedAddress.stateCode !== form.stateCode ? (
+            form.stateCode &&
+            selectedAddress.stateCode !== form.stateCode ? (
             <p className="text-xs text-destructive">
               Address state code {selectedAddress.stateCode} does not match GSTIN
               state code {form.stateCode}.

@@ -1,6 +1,7 @@
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
+import { IconStack } from "@/components/reui/icon-stack"
 
 function Empty({ className, ...props }: React.ComponentProps<"div">) {
   return (
@@ -43,15 +44,31 @@ const emptyMediaVariants = cva(
 function EmptyMedia({
   className,
   variant = "default",
+  children,
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof emptyMediaVariants>) {
+  if (variant === "icon") {
+    return (
+      <IconStack
+        data-slot="empty-icon"
+        data-variant={variant}
+        className={cn("mb-2 h-16 w-14", className)}
+        {...props}
+      >
+        {children}
+      </IconStack>
+    )
+  }
+
   return (
     <div
       data-slot="empty-icon"
       data-variant={variant}
       className={cn(emptyMediaVariants({ variant, className }))}
       {...props}
-    />
+    >
+      {children}
+    </div>
   )
 }
 

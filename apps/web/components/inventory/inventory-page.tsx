@@ -253,7 +253,7 @@ export function InventoryPage() {
         itemType: "GOODS",
         status: "ACTIVE",
         limit: 100,
-    }),
+      }),
     enabled: accessToken.length > 0,
   })
   const warehouses = React.useMemo(
@@ -290,7 +290,7 @@ export function InventoryPage() {
     queryFn: () =>
       getItemLedger(activeItemId, accessToken, {
         warehouse: activeWarehouseId || undefined,
-    }),
+      }),
     enabled: accessToken.length > 0 && activeItemId.length > 0,
   })
   const transfersQuery = useInfiniteQuery({
@@ -729,7 +729,7 @@ function InventoryMetric({
       </div>
       {loading ?
         <Skeleton className="mt-2 h-5 w-20" />
-      : <p className={cn("mt-1 truncate text-sm font-semibold", toneTextClass(tone))}>
+        : <p className={cn("mt-1 truncate text-sm font-semibold", toneTextClass(tone))}>
           {value}
         </p>}
     </div>
@@ -828,75 +828,75 @@ function StockTable({
         </TableHeader>
       </Table>
       <div className="app-scrollbar max-h-[28rem] overflow-y-auto overflow-x-hidden">
-      <Table className={inventoryTableClass}>
-        <TableBody>
-          {isLoading ?
-            Array.from({ length: 5 }).map((_, index) => (
-              <TableRow key={index}>
-                <TableCell colSpan={5}>
-                  <Skeleton className="h-9 w-full" />
-                </TableCell>
-              </TableRow>
-            ))
-          : rows.length === 0 ?
-            <TableRow>
-              <TableCell colSpan={5} className="h-64 py-8">
-                <Empty className="mx-auto min-h-52 max-w-sm border-0 p-6">
-                  <EmptyHeader>
-                    <EmptyMedia variant="icon">
-                      <BoxesIcon className="size-4" />
-                    </EmptyMedia>
-                    <EmptyTitle>No stock in this warehouse</EmptyTitle>
-                    <EmptyDescription>
-                      Set starting stock, add purchases, or move stock to build item balances.
-                    </EmptyDescription>
-                  </EmptyHeader>
-                </Empty>
-              </TableCell>
-            </TableRow>
-          : sortedRows.map((row) => (
-              <TableRow key={`${row.itemId}-${row.sku}`}>
-                <TableCell className="min-w-0 w-[42%]">
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <p className="truncate font-medium">{row.itemName}</p>
-                    </div>
-                    <p className="truncate font-mono text-[10px] tracking-[0.14em] text-muted-foreground">
-                      {row.sku}
-                    </p>
-                  </div>
-                </TableCell>
-                <TableCell
-                  className={cn("w-[16%] text-right font-mono", toneTextClass(valueTone(row.quantityOnHand)))}
-                >
-                  {row.quantityOnHand}
-                </TableCell>
-                <TableCell
-                  className={cn("w-[17%] text-right font-mono", toneTextClass(valueTone(row.averageCost)))}
-                >
-                  {formatCurrency(row.averageCost)}
-                </TableCell>
-                <TableCell
-                  className={cn("w-[17%] text-right font-mono", toneTextClass(valueTone(row.inventoryValue)))}
-                >
-                  {formatCurrency(row.inventoryValue)}
-                </TableCell>
-                <TableCell className="w-[8%] pr-3 text-right">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="size-7 p-0"
-                    aria-label={`View ledger for ${row.itemName}`}
-                    onClick={() => onSelectLedger(row.itemId)}
-                  >
-                    <EyeIcon className="size-4" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))
-          }
-        </TableBody>
-      </Table>
+        <Table className={inventoryTableClass}>
+          <TableBody>
+            {isLoading ?
+              Array.from({ length: 5 }).map((_, index) => (
+                <TableRow key={index}>
+                  <TableCell colSpan={5}>
+                    <Skeleton className="h-9 w-full" />
+                  </TableCell>
+                </TableRow>
+              ))
+              : rows.length === 0 ?
+                <TableRow>
+                  <TableCell colSpan={5} className="h-64 py-8">
+                    <Empty className="mx-auto min-h-52 max-w-sm border-0 p-6">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <BoxesIcon className="size-4" />
+                        </EmptyMedia>
+                        <EmptyTitle>No stock in this warehouse</EmptyTitle>
+                        <EmptyDescription>
+                          Set starting stock, add purchases, or move stock to build item balances.
+                        </EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  </TableCell>
+                </TableRow>
+                : sortedRows.map((row) => (
+                  <TableRow key={`${row.itemId}-${row.sku}`}>
+                    <TableCell className="min-w-0 w-[42%]">
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <p className="truncate font-medium">{row.itemName}</p>
+                        </div>
+                        <p className="truncate font-mono text-[10px] tracking-[0.14em] text-muted-foreground">
+                          {row.sku}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell
+                      className={cn("w-[16%] text-right font-mono", toneTextClass(valueTone(row.quantityOnHand)))}
+                    >
+                      {row.quantityOnHand}
+                    </TableCell>
+                    <TableCell
+                      className={cn("w-[17%] text-right font-mono", toneTextClass(valueTone(row.averageCost)))}
+                    >
+                      {formatCurrency(row.averageCost)}
+                    </TableCell>
+                    <TableCell
+                      className={cn("w-[17%] text-right font-mono", toneTextClass(valueTone(row.inventoryValue)))}
+                    >
+                      {formatCurrency(row.inventoryValue)}
+                    </TableCell>
+                    <TableCell className="w-[8%] pr-3 text-right">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="size-7 p-0"
+                        aria-label={`View ledger for ${row.itemName}`}
+                        onClick={() => onSelectLedger(row.itemId)}
+                      >
+                        <EyeIcon className="size-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+            }
+          </TableBody>
+        </Table>
       </div>
       {!isLoading && rows.length > 0 ? (
         <div className="flex items-center justify-center border-t px-4 py-3 text-xs text-muted-foreground">
@@ -1572,12 +1572,12 @@ function LedgerPanel({
 
       const firstValue =
         sortKey === "quantityIn" ? first.quantityIn
-        : sortKey === "quantityOut" ? first.quantityOut
-        : first.inventoryValue
+          : sortKey === "quantityOut" ? first.quantityOut
+            : first.inventoryValue
       const secondValue =
         sortKey === "quantityIn" ? second.quantityIn
-        : sortKey === "quantityOut" ? second.quantityOut
-        : second.inventoryValue
+          : sortKey === "quantityOut" ? second.quantityOut
+            : second.inventoryValue
 
       return (toNumber(firstValue) - toNumber(secondValue)) * direction
     })
@@ -1649,86 +1649,86 @@ function LedgerPanel({
         </Button>
       </div>
       <Table className={inventoryTableClass}>
-          <TableHeader className={inventoryStaticTableHeaderClass}>
-            <TableRow>
-              <SortableLedgerHead
-                label="Date"
-                sortKey="date"
-                activeSortKey={sortKey}
-                sortDirection={sortDirection}
-                className="w-[16%]"
-                onSort={toggleSort}
-              />
-              <SortableLedgerHead
-                label="Movement"
-                sortKey="movement"
-                activeSortKey={sortKey}
-                sortDirection={sortDirection}
-                className="w-[38%]"
-                onSort={toggleSort}
-              />
-              <SortableLedgerHead
-                label="In"
-                sortKey="quantityIn"
-                activeSortKey={sortKey}
-                sortDirection={sortDirection}
-                className="w-[14%] text-right"
-                align="right"
-                onSort={toggleSort}
-              />
-              <SortableLedgerHead
-                label="Out"
-                sortKey="quantityOut"
-                activeSortKey={sortKey}
-                sortDirection={sortDirection}
-                className="w-[14%] text-right"
-                align="right"
-                onSort={toggleSort}
-              />
-              <SortableLedgerHead
-                label="Value"
-                sortKey="value"
-                activeSortKey={sortKey}
-                sortDirection={sortDirection}
-                className="w-[18%] pr-3 text-right"
-                align="right"
-                onSort={toggleSort}
-              />
-            </TableRow>
-          </TableHeader>
+        <TableHeader className={inventoryStaticTableHeaderClass}>
+          <TableRow>
+            <SortableLedgerHead
+              label="Date"
+              sortKey="date"
+              activeSortKey={sortKey}
+              sortDirection={sortDirection}
+              className="w-[16%]"
+              onSort={toggleSort}
+            />
+            <SortableLedgerHead
+              label="Movement"
+              sortKey="movement"
+              activeSortKey={sortKey}
+              sortDirection={sortDirection}
+              className="w-[38%]"
+              onSort={toggleSort}
+            />
+            <SortableLedgerHead
+              label="In"
+              sortKey="quantityIn"
+              activeSortKey={sortKey}
+              sortDirection={sortDirection}
+              className="w-[14%] text-right"
+              align="right"
+              onSort={toggleSort}
+            />
+            <SortableLedgerHead
+              label="Out"
+              sortKey="quantityOut"
+              activeSortKey={sortKey}
+              sortDirection={sortDirection}
+              className="w-[14%] text-right"
+              align="right"
+              onSort={toggleSort}
+            />
+            <SortableLedgerHead
+              label="Value"
+              sortKey="value"
+              activeSortKey={sortKey}
+              sortDirection={sortDirection}
+              className="w-[18%] pr-3 text-right"
+              align="right"
+              onSort={toggleSort}
+            />
+          </TableRow>
+        </TableHeader>
       </Table>
       <div className="app-scrollbar max-h-[28rem] overflow-y-auto overflow-x-hidden">
         <Table className={inventoryTableClass}>
           <TableBody>
             {isLoading ?
               <TableRow><TableCell colSpan={5}><Skeleton className="h-10 w-full" /></TableCell></TableRow>
-            : transactions.length === 0 ?
-              <TableRow><TableCell colSpan={5} className="h-64 py-8"><EmptyState icon={<ClipboardListIcon className="size-5" />} title="No movements" description="Set starting stock, add purchases, sales, transfers, or corrections to build this product ledger." /></TableCell></TableRow>
-            : sortedTransactions.map((transaction) => (
-                <TableRow key={transaction.id}>
-                  <TableCell className="w-[16%]">{formatDate(transaction.transactionDate)}</TableCell>
-                  <TableCell className="min-w-0 w-[38%]">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">
-                        {movementLabel(transaction.movementType)}
-                      </p>
-                      <p className="truncate text-[11px] text-muted-foreground">
-                        {transaction.sourceType}
-                      </p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="w-[14%] text-right font-mono text-emerald-700 dark:text-emerald-300">{transaction.quantityIn}</TableCell>
-                  <TableCell className="w-[14%] text-right font-mono text-red-700 dark:text-red-300">{transaction.quantityOut}</TableCell>
-                  <TableCell
-                    className={cn(
-                      "w-[18%] pr-3 text-right font-mono",
-                      movementValueClass(transaction.quantityIn, transaction.quantityOut, transaction.inventoryValue)
-                    )}
-                  >
-                    {formatCurrency(transaction.inventoryValue)}
-                  </TableCell>
-                </TableRow>
-              ))}
+              : transactions.length === 0 ?
+                <TableRow><TableCell colSpan={5} className="h-64 py-8"><EmptyState icon={<ClipboardListIcon className="size-5" />} title="No movements" description="Set starting stock, add purchases, sales, transfers, or corrections to build this product ledger." /></TableCell></TableRow>
+                : sortedTransactions.map((transaction) => (
+                  <TableRow key={transaction.id}>
+                    <TableCell className="w-[16%]">{formatDate(transaction.transactionDate)}</TableCell>
+                    <TableCell className="min-w-0 w-[38%]">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">
+                          {movementLabel(transaction.movementType)}
+                        </p>
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {transaction.sourceType}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="w-[14%] text-right font-mono text-emerald-700 dark:text-emerald-300">{transaction.quantityIn}</TableCell>
+                    <TableCell className="w-[14%] text-right font-mono text-red-700 dark:text-red-300">{transaction.quantityOut}</TableCell>
+                    <TableCell
+                      className={cn(
+                        "w-[18%] pr-3 text-right font-mono",
+                        movementValueClass(transaction.quantityIn, transaction.quantityOut, transaction.inventoryValue)
+                      )}
+                    >
+                      {formatCurrency(transaction.inventoryValue)}
+                    </TableCell>
+                  </TableRow>
+                ))}
           </TableBody>
         </Table>
       </div>
@@ -1801,56 +1801,56 @@ function TransfersPanel({
         </Button>
       </div>
       <Table className={inventoryTableClass}>
-          <TableHeader className={inventoryStaticTableHeaderClass}>
-            <TableRow>
-              <TableHead className={cn(inventoryStaticTableHeadClass, "w-[22%]")}>Transfer</TableHead>
-              <TableHead className={cn(inventoryStaticTableHeadClass, "w-[38%]")}>Route</TableHead>
-              <TableHead className={cn(inventoryStaticTableHeadClass, "w-[12%]")}>Lines</TableHead>
-              <TableHead className={cn(inventoryStaticTableHeadClass, "w-[14%]")}>Status</TableHead>
-              <TableHead className={cn(inventoryStaticTableHeadClass, "w-[14%] pr-3 text-right")}>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
+        <TableHeader className={inventoryStaticTableHeaderClass}>
+          <TableRow>
+            <TableHead className={cn(inventoryStaticTableHeadClass, "w-[22%]")}>Transfer</TableHead>
+            <TableHead className={cn(inventoryStaticTableHeadClass, "w-[38%]")}>Route</TableHead>
+            <TableHead className={cn(inventoryStaticTableHeadClass, "w-[12%]")}>Lines</TableHead>
+            <TableHead className={cn(inventoryStaticTableHeadClass, "w-[14%]")}>Status</TableHead>
+            <TableHead className={cn(inventoryStaticTableHeadClass, "w-[14%] pr-3 text-right")}>Actions</TableHead>
+          </TableRow>
+        </TableHeader>
       </Table>
       <div className="app-scrollbar max-h-[28rem] overflow-y-auto overflow-x-hidden" onScroll={handleScroll}>
         <Table className={inventoryTableClass}>
           <TableBody>
             {isLoading ?
               <TableRow><TableCell colSpan={5}><Skeleton className="h-10 w-full" /></TableCell></TableRow>
-            : transfers.length === 0 ?
-              <TableRow><TableCell colSpan={5} className="h-64 py-8"><EmptyState icon={<ArrowRightLeftIcon className="size-5" />} title="No transfers" description="Create a transfer when stock needs to move from one warehouse to another." /></TableCell></TableRow>
-            : transfers.map((transfer) => (
-                <TableRow key={transfer.id}>
-                  <TableCell className="w-[22%]">
-                    <div>
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <p className="truncate font-medium">{transfer.referenceNumber ?? transfer.id.slice(0, 8)}</p>
+              : transfers.length === 0 ?
+                <TableRow><TableCell colSpan={5} className="h-64 py-8"><EmptyState icon={<ArrowRightLeftIcon className="size-5" />} title="No transfers" description="Create a transfer when stock needs to move from one warehouse to another." /></TableCell></TableRow>
+                : transfers.map((transfer) => (
+                  <TableRow key={transfer.id}>
+                    <TableCell className="w-[22%]">
+                      <div>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <p className="truncate font-medium">{transfer.referenceNumber ?? transfer.id.slice(0, 8)}</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{formatDate(transfer.transferDate)}</p>
                       </div>
-                      <p className="text-xs text-muted-foreground">{formatDate(transfer.transferDate)}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="w-[38%] truncate">{warehouseName(transfer.sourceWarehouseId)} to {warehouseName(transfer.destinationWarehouseId)}</TableCell>
-                  <TableCell
-                    className={cn(
-                      "w-[12%] font-mono",
-                      toneTextClass(transfer.lines.length > 0 ? "positive" : "muted")
-                    )}
-                  >
-                    {transfer.lines.length}
-                  </TableCell>
-                  <TableCell className="w-[14%]"><TransferStatusBadge status={transfer.status} /></TableCell>
-                  <TableCell className="w-[14%] space-x-1 pr-3 text-right">
-                    {transfer.status === "DRAFT" ? (
-                      <>
-                        <Button size="sm" disabled={isActionPending} onClick={() => onAction(transfer.id, "dispatch")}>Dispatch</Button>
-                        <Button size="sm" variant="ghost" disabled={isActionPending} onClick={() => onAction(transfer.id, "cancel")}>Cancel</Button>
-                      </>
-                    ) : null}
-                    {transfer.status === "DISPATCHED" || transfer.status === "IN_TRANSIT" ? (
-                      <Button size="sm" disabled={isActionPending} onClick={() => onAction(transfer.id, "receive")}>Receive</Button>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell className="w-[38%] truncate">{warehouseName(transfer.sourceWarehouseId)} to {warehouseName(transfer.destinationWarehouseId)}</TableCell>
+                    <TableCell
+                      className={cn(
+                        "w-[12%] font-mono",
+                        toneTextClass(transfer.lines.length > 0 ? "positive" : "muted")
+                      )}
+                    >
+                      {transfer.lines.length}
+                    </TableCell>
+                    <TableCell className="w-[14%]"><TransferStatusBadge status={transfer.status} /></TableCell>
+                    <TableCell className="w-[14%] space-x-1 pr-3 text-right">
+                      {transfer.status === "DRAFT" ? (
+                        <>
+                          <Button size="sm" disabled={isActionPending} onClick={() => onAction(transfer.id, "dispatch")}>Dispatch</Button>
+                          <Button size="sm" variant="ghost" disabled={isActionPending} onClick={() => onAction(transfer.id, "cancel")}>Cancel</Button>
+                        </>
+                      ) : null}
+                      {transfer.status === "DISPATCHED" || transfer.status === "IN_TRANSIT" ? (
+                        <Button size="sm" disabled={isActionPending} onClick={() => onAction(transfer.id, "receive")}>Receive</Button>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                ))}
           </TableBody>
         </Table>
       </div>
@@ -1974,11 +1974,11 @@ function TransferStatusBadge({ status }: { status: string }) {
       variant="outline"
       className={cn(
         status === "RECEIVED" &&
-          "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+        "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
         status === "CANCELLED" &&
-          "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300",
+        "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300",
         status === "DISPATCHED" &&
-          "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300"
+        "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300"
       )}
     >
       {status.toLowerCase().replace(/_/g, " ")}

@@ -1,11 +1,9 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   AlertTriangleIcon,
-  ArrowLeftIcon,
   BadgeCheckIcon,
   ClipboardCheckIcon,
   DownloadIcon,
@@ -16,6 +14,7 @@ import {
   LandmarkIcon,
   ListChecksIcon,
   LockIcon,
+  MoreHorizontalIcon,
   RefreshCcwIcon,
   RotateCcwIcon,
   SearchIcon,
@@ -25,7 +24,7 @@ import {
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -34,6 +33,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Empty,
   EmptyContent,
@@ -106,8 +112,6 @@ import {
   downloadCsvExport,
   exportGstReconciliation,
   exportItc,
-  importExternalGstRecords,
-  listExternalGstImports,
   listGstExceptions,
   listGstReconciliation,
   listItc,
@@ -116,7 +120,6 @@ import {
   resolveGstException,
   reverseItc,
   unmatchGstRecord,
-  type ExternalGstImportPayload,
   type ItcStatus,
   type ReconciliationRow,
   type ReconciliationStatus,
@@ -124,7 +127,7 @@ import {
 import { getGstRegistrations } from "@/lib/organization/api"
 import { cn } from "@/lib/utils"
 
-type GstTab = "reconciliation" | "itc" | "filing" | "gstr1" | "gstr3b" | "filing-history" | "exceptions" | "imports"
+type GstTab = "reconciliation" | "itc" | "filing" | "gstr1" | "gstr3b" | "filing-history" | "exceptions"
 type ActionState =
   | { type: "eligible"; row: ReconciliationRow }
   | { type: "defer"; row: ReconciliationRow }
@@ -178,7 +181,6 @@ export function GstWorkspacePage() {
   const [matchStatus, setMatchStatus] = React.useState<ReconciliationStatus | "all">("all")
   const [itcStatus, setItcStatus] = React.useState<ItcStatus | "all">("all")
   const [gstRegistrationId, setGstRegistrationId] = React.useState("")
-  const [importOpen, setImportOpen] = React.useState(false)
   const [actionState, setActionState] = React.useState<ActionState | null>(null)
   const [actionReason, setActionReason] = React.useState("")
   const [claimPeriod, setClaimPeriod] = React.useState(defaultPeriod())
@@ -215,11 +217,6 @@ export function GstWorkspacePage() {
   const exceptionsQuery = useQuery({
     queryKey: ["gst", "exceptions", period],
     queryFn: () => listGstExceptions(accessToken, { period, status: "all", limit: 15 }),
-    enabled: accessToken.length > 0,
-  })
-  const importsQuery = useQuery({
-    queryKey: ["gst", "imports", period],
-    queryFn: () => listExternalGstImports(accessToken, { period, limit: 15 }),
     enabled: accessToken.length > 0,
   })
   const reportingRunsQuery = useQuery({
@@ -269,18 +266,6 @@ export function GstWorkspacePage() {
     enabled: accessToken.length > 0 && Boolean(filingDetailId),
   })
 
-  const importMutation = useMutation({
-    mutationFn: (payload: ExternalGstImportPayload) =>
-      importExternalGstRecords(accessToken, payload),
-    onSuccess: async (result) => {
-      await invalidateGstQueries(queryClient)
-      setImportOpen(false)
-      toast.success("GST import completed", {
-        description: `${result.imported} rows imported, ${result.autoMatch.matched} matched.`,
-      })
-    },
-    onError: (error) => toast.error(getErrorMessage(error)),
-  })
   const exportReconciliationMutation = useMutation({
     mutationFn: () => exportGstReconciliation(accessToken, commonQuery),
     onSuccess: downloadCsvExport,
@@ -498,17 +483,6 @@ export function GstWorkspacePage() {
 
   return (
     <main className="flex min-w-0 flex-1 flex-col gap-4 p-3 pt-4 sm:p-4 lg:gap-5 lg:p-6 lg:pt-5">
-      <Link
-        href="/dashboard"
-        className={cn(
-          buttonVariants({ variant: "ghost", size: "sm" }),
-          "h-8 w-fit gap-2 px-2 text-muted-foreground"
-        )}
-      >
-        <ArrowLeftIcon className="size-4" />
-        Back to overview
-      </Link>
-
       <section className="overflow-hidden rounded-2xl border border-border bg-card text-card-foreground">
         <div className="grid lg:grid-cols-[minmax(0,1fr)_24rem]">
           <div className="p-4 sm:p-5">
@@ -527,8 +501,7 @@ export function GstWorkspacePage() {
                 GST reconciliation
               </h1>
               <p className="max-w-xl text-sm leading-5 text-muted-foreground">
-                Match purchase GST with imported GSTR-2B rows, review exceptions,
-                and control ITC claims.
+                Review purchase GST, resolve exceptions, and control ITC claims.
               </p>
             </div>
           </div>
@@ -541,7 +514,7 @@ export function GstWorkspacePage() {
                 <div className="min-w-0">
                   <p className="text-sm font-medium">Month-end flow</p>
                   <p className="text-xs text-muted-foreground">
-                    Import GSTR-2B, fix mismatches, then claim only reviewed ITC.
+                    Review generated GST data, fix mismatches, then claim only reviewed ITC.
                   </p>
                 </div>
               </div>
@@ -581,9 +554,6 @@ export function GstWorkspacePage() {
             </TabsTrigger>
             <TabsTrigger value="exceptions" className="min-w-0 rounded-none bg-transparent px-2 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 data-[state=active]:shadow-none">
               Exceptions
-            </TabsTrigger>
-            <TabsTrigger value="imports" className="min-w-0 rounded-none bg-transparent px-2 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 data-[state=active]:shadow-none">
-              Imports
             </TabsTrigger>
           </TabsList>
           <div className="flex flex-wrap items-center gap-2">
@@ -642,10 +612,6 @@ export function GstWorkspacePage() {
                 </Button>
               </>
             ) : null}
-            <Button size="sm" className="h-8 gap-2 bg-blue-600 text-white hover:bg-blue-700" onClick={() => setImportOpen(true)}>
-              <FileUpIcon className="size-4" />
-              Import GSTR-2B
-            </Button>
           </div>
         </div>
 
@@ -751,22 +717,7 @@ export function GstWorkspacePage() {
           />
         </TabsContent>
 
-        <TabsContent value="imports" className="m-0">
-          <ImportsList
-            loading={importsQuery.isLoading}
-            imports={importsQuery.data?.imports ?? []}
-            onImport={() => setImportOpen(true)}
-          />
-        </TabsContent>
       </Tabs>
-
-      <ImportDialog
-        open={importOpen}
-        period={period}
-        loading={importMutation.isPending}
-        onOpenChange={setImportOpen}
-        onImport={(payload) => importMutation.mutate(payload)}
-      />
 
       <FilingDetailDialog
         open={Boolean(filingDetailId)}
@@ -1615,8 +1566,8 @@ function ReportEmpty({ title, description }: { title: string; description: strin
 function RunStatusBadge({ status }: { status: GstReportingRun["status"] }) {
   const tone =
     status === "FILED" || status === "SUBMITTED" || status === "READY_FOR_SUBMISSION" || status === "LOCKED" ? "bg-blue-600 text-white"
-    : status === "CA_APPROVED" || status === "READY_FOR_CA_REVIEW" ? "border-transparent bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-    : "border-transparent bg-amber-500/10 text-amber-700 dark:text-amber-300"
+      : status === "CA_APPROVED" || status === "READY_FOR_CA_REVIEW" ? "border-transparent bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+        : "border-transparent bg-amber-500/10 text-amber-700 dark:text-amber-300"
 
   return <Badge className={tone}>{formatEnum(status)}</Badge>
 }
@@ -1709,7 +1660,7 @@ function ReconciliationTable({
           </EmptyMedia>
           <EmptyTitle>No GST records found</EmptyTitle>
           <EmptyDescription>
-            Posted purchase bills will appear here. Import GSTR-2B rows to start matching.
+            Posted purchase bills and generated GST data will appear here for matching.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
@@ -1801,35 +1752,55 @@ function ItcActionButtons({
 }) {
   const status = row.record.itcStatus
 
+  const menuTrigger = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      className="ml-auto aria-expanded:bg-muted"
+      aria-label={`Open ITC actions for ${row.record.invoiceNumber}`}
+    />
+  )
+
   if (status === "NOT_REVIEWED" || status === "DEFERRED") {
     return (
-      <>
-        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => onAction({ type: "eligible", row })}>
-          Eligible
-        </Button>
-        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => onAction({ type: "defer", row })}>
-          Defer
-        </Button>
-        <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => onAction({ type: "reject", row })}>
-          Reject
-        </Button>
-      </>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={menuTrigger}>
+          <MoreHorizontalIcon className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" sideOffset={6}>
+          <DropdownMenuItem onClick={() => onAction({ type: "eligible", row })}>Mark eligible</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onAction({ type: "defer", row })}>Defer ITC</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onClick={() => onAction({ type: "reject", row })}>Reject ITC</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     )
   }
 
   if (status === "ELIGIBLE" || status === "PARTIALLY_ELIGIBLE") {
     return (
-      <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => onAction({ type: "claim", row })}>
-        Claim
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={menuTrigger}>
+          <MoreHorizontalIcon className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" sideOffset={6}>
+          <DropdownMenuItem onClick={() => onAction({ type: "claim", row })}>Claim ITC</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     )
   }
 
   if (status === "CLAIMED") {
     return (
-      <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => onAction({ type: "reverse", row })}>
-        Reverse
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={menuTrigger}>
+          <MoreHorizontalIcon className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" sideOffset={6}>
+          <DropdownMenuItem variant="destructive" onClick={() => onAction({ type: "reverse", row })}>Reverse claim</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     )
   }
 
@@ -1897,136 +1868,6 @@ function ExceptionList({
   )
 }
 
-function ImportsList({
-  imports,
-  loading,
-  onImport,
-}: {
-  imports: Array<{ id: string; fileName: string; period: string; source: string; recordCount: number; importedAt: string }>
-  loading: boolean
-  onImport: () => void
-}) {
-  if (loading) {
-    return <TableSkeleton />
-  }
-
-  if (imports.length === 0) {
-    return (
-      <Empty className="mx-4 my-6 min-h-72 border">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <FileUpIcon className="size-4" />
-          </EmptyMedia>
-          <EmptyTitle>No GSTR-2B imports yet</EmptyTitle>
-          <EmptyDescription>
-            Import normalized rows from your GST portal export to begin reconciliation.
-          </EmptyDescription>
-        </EmptyHeader>
-        <EmptyContent>
-          <Button className="bg-blue-600 text-white hover:bg-blue-700" onClick={onImport}>
-            Import GSTR-2B
-          </Button>
-        </EmptyContent>
-      </Empty>
-    )
-  }
-
-  return (
-    <div className="max-h-[30rem] overflow-auto">
-      <Table className="table-fixed text-xs">
-        <TableHeader className="sticky top-0 z-10 bg-muted/95">
-          <TableRow>
-            <TableHead>File</TableHead>
-            <TableHead className="w-28">Period</TableHead>
-            <TableHead className="w-28">Source</TableHead>
-            <TableHead className="w-24 text-right">Rows</TableHead>
-            <TableHead className="w-32">Imported</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {imports.map((item) => (
-            <TableRow key={item.id}>
-              <TableCell className="truncate font-medium">{item.fileName}</TableCell>
-              <TableCell>{item.period}</TableCell>
-              <TableCell>{formatEnum(item.source)}</TableCell>
-              <TableCell className="text-right font-mono">{item.recordCount}</TableCell>
-              <TableCell>{formatDate(item.importedAt)}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  )
-}
-
-function ImportDialog({
-  open,
-  period,
-  loading,
-  onOpenChange,
-  onImport,
-}: {
-  open: boolean
-  period: string
-  loading: boolean
-  onOpenChange: (open: boolean) => void
-  onImport: (payload: ExternalGstImportPayload) => void
-}) {
-  const [fileName, setFileName] = React.useState("gstr-2b-normalized.csv")
-  const [rawText, setRawText] = React.useState(sampleCsv)
-  const parsed = React.useMemo(() => parseImportText(rawText), [rawText])
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Import GSTR-2B records</DialogTitle>
-          <DialogDescription>
-            Paste normalized CSV or JSON rows. GSTfy keeps imported values separate
-            from book values.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-3">
-          <div className="grid gap-3 sm:grid-cols-[12rem_minmax(0,1fr)]">
-            <Input value={period} disabled aria-label="Import period" />
-            <Input value={fileName} onChange={(event) => setFileName(event.target.value)} placeholder="File name" />
-          </div>
-          <Textarea
-            value={rawText}
-            onChange={(event) => setRawText(event.target.value)}
-            className="min-h-60 font-mono text-xs"
-            placeholder="supplierGstin,supplierName,documentNumber,documentDate,taxableValue,cgst,sgst,igst,cess"
-          />
-          <div className="rounded-xl border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
-            {parsed.error ? (
-              <span className="text-destructive">{parsed.error}</span>
-            ) : (
-              <span>{parsed.records.length} rows ready to import.</span>
-            )}
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button
-            className="bg-blue-600 text-white hover:bg-blue-700"
-            disabled={loading || Boolean(parsed.error) || parsed.records.length === 0}
-            onClick={() =>
-              onImport({
-                source: "gstr_2b",
-                period,
-                fileName,
-                records: parsed.records,
-              })
-            }
-          >
-            {loading ? <Spinner /> : "Import and match"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 function ActionDialog({
   state,
   reason,
@@ -2091,7 +1932,7 @@ function DecisionSafetyPanel({ row }: { row: ReconciliationRow }) {
   const remainingClaimable =
     row.record.itcStatus === "ELIGIBLE" || row.record.itcStatus === "PARTIALLY_ELIGIBLE" ?
       eligible
-    : 0
+      : 0
 
   return (
     <div className="grid gap-2 rounded-2xl border border-border bg-muted/20 p-3 text-sm">
@@ -2163,9 +2004,9 @@ function GstMetric({
 function MatchBadge({ status }: { status: ReconciliationStatus }) {
   const tone =
     status === "MATCHED" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-    : status === "NOT_MATCHED" ? "bg-muted text-muted-foreground"
-    : status === "BOOKS_ONLY" || status === "EXTERNAL_ONLY" ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-    : "bg-red-500/10 text-red-700 dark:text-red-300"
+      : status === "NOT_MATCHED" ? "bg-muted text-muted-foreground"
+        : status === "BOOKS_ONLY" || status === "EXTERNAL_ONLY" ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+          : "bg-red-500/10 text-red-700 dark:text-red-300"
 
   return <Badge className={cn("border-transparent", tone)}>{formatEnum(status)}</Badge>
 }
@@ -2174,9 +2015,9 @@ function ItcBadge({ status }: { status: ItcStatus }) {
   const tone =
     status === "CLAIMED" || status === "ELIGIBLE" || status === "PARTIALLY_ELIGIBLE" ?
       "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-    : status === "DEFERRED" || status === "NOT_REVIEWED" ?
-      "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-    : "bg-red-500/10 text-red-700 dark:text-red-300"
+      : status === "DEFERRED" || status === "NOT_REVIEWED" ?
+        "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+        : "bg-red-500/10 text-red-700 dark:text-red-300"
 
   return <Badge className={cn("border-transparent", tone)}>{formatEnum(status)}</Badge>
 }
@@ -2185,11 +2026,11 @@ function FilingStatusBadge({ status }: { status: GstFilingStatus }) {
   const tone =
     status === "FILED" || status === "ACCEPTED" ?
       "border-transparent bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-    : status === "READY_FOR_SUBMISSION" || status === "SUBMITTED" || status === "PROCESSING" || status === "SUBMITTING" ?
-      "border-transparent bg-blue-500/10 text-blue-700 dark:text-blue-300"
-    : status === "REJECTED" || status === "FAILED" || status === "CANCELLED" ?
-      "border-transparent bg-red-500/10 text-red-700 dark:text-red-300"
-    : "border-transparent bg-amber-500/10 text-amber-700 dark:text-amber-300"
+      : status === "READY_FOR_SUBMISSION" || status === "SUBMITTED" || status === "PROCESSING" || status === "SUBMITTING" ?
+        "border-transparent bg-blue-500/10 text-blue-700 dark:text-blue-300"
+        : status === "REJECTED" || status === "FAILED" || status === "CANCELLED" ?
+          "border-transparent bg-red-500/10 text-red-700 dark:text-red-300"
+          : "border-transparent bg-amber-500/10 text-amber-700 dark:text-amber-300"
 
   return <Badge className={cn("max-w-full truncate", tone)}>{formatEnum(status)}</Badge>
 }
@@ -2197,8 +2038,8 @@ function FilingStatusBadge({ status }: { status: GstFilingStatus }) {
 function SeverityBadge({ severity }: { severity: string }) {
   const tone =
     severity === "HIGH" ? "bg-red-500/10 text-red-700 dark:text-red-300"
-    : severity === "LOW" ? "bg-muted text-muted-foreground"
-    : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+      : severity === "LOW" ? "bg-muted text-muted-foreground"
+        : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
 
   return <Badge className={cn("border-transparent", tone)}>{formatEnum(severity)}</Badge>
 }
@@ -2211,63 +2052,6 @@ function TableSkeleton() {
       ))}
     </div>
   )
-}
-
-function parseImportText(value: string): {
-  records: ExternalGstImportPayload["records"]
-  error: string | null
-} {
-  const trimmed = value.trim()
-
-  if (!trimmed) {
-    return { records: [], error: null }
-  }
-
-  try {
-    if (trimmed.startsWith("[")) {
-      const parsed = JSON.parse(trimmed) as ExternalGstImportPayload["records"]
-      return {
-        records: parsed.map(normalizeImportRecord),
-        error: null,
-      }
-    }
-
-    const [headerLine, ...rowLines] = trimmed.split(/\r?\n/).filter(Boolean)
-    const headers = headerLine.split(",").map((header) => header.trim())
-    const records = rowLines.map((line) => {
-      const cells = line.split(",").map((cell) => cell.trim())
-      const record: Record<string, string> = {}
-      headers.forEach((header, index) => {
-        record[header] = cells[index] ?? ""
-      })
-
-      return normalizeImportRecord(record)
-    })
-
-    return { records, error: null }
-  } catch (error) {
-    return { records: [], error: getErrorMessage(error) }
-  }
-}
-
-function normalizeImportRecord(record: Record<string, unknown>) {
-  const normalized = {
-    supplierGstin: String(record.supplierGstin ?? "").trim().toUpperCase(),
-    supplierName: String(record.supplierName ?? "").trim() || null,
-    documentNumber: String(record.documentNumber ?? "").trim(),
-    documentDate: String(record.documentDate ?? "").trim(),
-    taxableValue: String(record.taxableValue ?? "0").trim(),
-    cgst: String(record.cgst ?? "0").trim(),
-    sgst: String(record.sgst ?? "0").trim(),
-    igst: String(record.igst ?? "0").trim(),
-    cess: String(record.cess ?? "0").trim(),
-  }
-
-  if (!normalized.supplierGstin || !normalized.documentNumber || !normalized.documentDate) {
-    throw new Error("Each row needs supplierGstin, documentNumber, and documentDate.")
-  }
-
-  return normalized
 }
 
 function getActionCopy(state: ActionState | null) {
@@ -2368,6 +2152,3 @@ function canCancelFilingRun(status: GstFilingStatus) {
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong."
 }
-
-const sampleCsv =
-  "supplierGstin,supplierName,documentNumber,documentDate,taxableValue,cgst,sgst,igst,cess\n33ABCDE1234F1Z5,Example Supplier,INV-001,2026-08-17,10000,900,900,0,0"

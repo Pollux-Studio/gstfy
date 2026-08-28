@@ -4,7 +4,6 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -62,62 +61,64 @@ export function OverviewRevenueChart({
 }) {
   return (
     <div className="h-full min-h-[260px] w-full min-w-0 overflow-hidden [&_.recharts-layer:focus]:outline-none [&_.recharts-layer]:outline-none [&_.recharts-surface_*:focus-visible]:outline-none [&_.recharts-surface_*:focus]:outline-none [&_.recharts-surface:focus-visible]:outline-none [&_.recharts-surface:focus]:outline-none [&_.recharts-surface]:outline-none [&_.recharts-wrapper:focus-visible]:outline-none [&_.recharts-wrapper:focus]:outline-none [&_.recharts-wrapper]:outline-none">
-      <ResponsiveContainer width="100%" height="100%" debounce={80}>
-        <AreaChart
-          accessibilityLayer={false}
-          data={data}
-          margin={{ top: 16, right: 8, left: -18, bottom: 12 }}
-        >
-          <defs>
-            <CrosshatchPattern />
-          </defs>
-          <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.5} />
-          <XAxis
-            dataKey="month"
-            axisLine={false}
-            tickLine={false}
-            tickMargin={10}
-            height={34}
-            fontSize={11}
-            padding={{ left: 8, right: 8 }}
+      <AreaChart
+        accessibilityLayer={false}
+        className="h-full min-h-[260px] w-full min-w-0"
+        data={data}
+        margin={{ top: 16, right: 8, left: -18, bottom: 12 }}
+        responsive
+        style={{ width: "100%", height: "100%", minHeight: 260, minWidth: 0 }}
+        throttleDelay={80}
+      >
+        <defs>
+          <CrosshatchPattern />
+        </defs>
+        <CartesianGrid vertical={false} strokeDasharray="3 3" strokeOpacity={0.5} />
+        <XAxis
+          dataKey="month"
+          axisLine={false}
+          tickLine={false}
+          tickMargin={10}
+          height={34}
+          fontSize={11}
+          padding={{ left: 8, right: 8 }}
+        />
+        <YAxis
+          axisLine={false}
+          tickLine={false}
+          tickMargin={4}
+          width={48}
+          fontSize={11}
+          tickFormatter={(value) => compactFormatter.format(value)}
+        />
+        <Tooltip
+          cursor={{ stroke: "hsl(var(--border))", strokeDasharray: "3 3" }}
+          contentStyle={{
+            borderRadius: 12,
+            border: "1px solid hsl(var(--border))",
+            background: "var(--card)",
+            color: "var(--card-foreground)",
+            fontSize: 12,
+            padding: "8px 10px",
+          }}
+          formatter={(value) =>
+            typeof value === "number" ? formatCurrency(value) : String(value ?? "")
+          }
+        />
+        {revenueSeries.map((series) => (
+          <Area
+            key={series.key}
+            dataKey={series.key}
+            name={series.label}
+            type="monotone"
+            fill={`url(#dashboard-revenue-crosshatch-${series.key})`}
+            fillOpacity={0.48}
+            stroke={series.color}
+            strokeWidth={1.4}
+            activeDot={{ r: 3 }}
           />
-          <YAxis
-            axisLine={false}
-            tickLine={false}
-            tickMargin={4}
-            width={48}
-            fontSize={11}
-            tickFormatter={(value) => compactFormatter.format(value)}
-          />
-          <Tooltip
-            cursor={{ stroke: "hsl(var(--border))", strokeDasharray: "3 3" }}
-            contentStyle={{
-              borderRadius: 12,
-              border: "1px solid hsl(var(--border))",
-              background: "var(--card)",
-              color: "var(--card-foreground)",
-              fontSize: 12,
-              padding: "8px 10px",
-            }}
-            formatter={(value) =>
-              typeof value === "number" ? formatCurrency(value) : String(value ?? "")
-            }
-          />
-          {revenueSeries.map((series) => (
-            <Area
-              key={series.key}
-              dataKey={series.key}
-              name={series.label}
-              type="monotone"
-              fill={`url(#dashboard-revenue-crosshatch-${series.key})`}
-              fillOpacity={0.48}
-              stroke={series.color}
-              strokeWidth={1.4}
-              activeDot={{ r: 3 }}
-            />
-          ))}
-        </AreaChart>
-      </ResponsiveContainer>
+        ))}
+      </AreaChart>
     </div>
   )
 }

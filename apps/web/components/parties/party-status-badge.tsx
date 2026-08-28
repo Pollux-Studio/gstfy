@@ -15,9 +15,9 @@ export function PartyStatusBadge({
   const statusClassName =
     status === "active" ?
       "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-    : status === "inactive" ?
-      "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-    : "bg-muted text-muted-foreground"
+      : status === "inactive" ?
+        "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+        : "bg-muted text-muted-foreground"
 
   return (
     <Badge

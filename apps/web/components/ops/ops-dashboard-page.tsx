@@ -205,7 +205,7 @@ export function OpsDashboardPage() {
                     "gap-1.5 bg-background",
                     overview.server.redisConfigured ?
                       "text-emerald-700 dark:text-emerald-300"
-                    : "text-amber-700 dark:text-amber-300"
+                      : "text-amber-700 dark:text-amber-300"
                   )}
                 >
                   <BoxesIcon className="size-3.5" />
@@ -232,7 +232,7 @@ export function OpsDashboardPage() {
             >
               {overviewQuery.isFetching || logsQuery.isFetching || queueQuery.isFetching ?
                 <Spinner />
-              : <RefreshCwIcon className="size-4" />}
+                : <RefreshCwIcon className="size-4" />}
               Refresh
             </Button>
             <Button
@@ -278,17 +278,17 @@ export function OpsDashboardPage() {
                 detail={
                   overview.migrations.checksumMismatches > 0 ?
                     `${overview.migrations.checksumMismatches} checksum mismatch`
-                  : `${overview.migrations.pending} pending`
+                    : `${overview.migrations.pending} pending`
                 }
                 tone={
                   overview.migrations.checksumMismatches > 0 ||
-                  overview.migrations.pending > 0 ?
+                    overview.migrations.pending > 0 ?
                     "amber"
-                  : "green"
+                    : "green"
                 }
               />
             </>
-          : <OpsMetricsSkeleton />}
+            : <OpsMetricsSkeleton />}
         </div>
       </section>
 
@@ -605,7 +605,7 @@ function QueueTable({
                   >
                     {retryPendingId === job.id ?
                       <Spinner />
-                    : <RotateCcwIcon className="size-4" />}
+                      : <RotateCcwIcon className="size-4" />}
                   </Button>
                 </div>
               </TableCell>
@@ -650,41 +650,41 @@ function JobEventsPanel({
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
-      : isLoading ?
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, index) => (
-            <Skeleton key={index} className="h-16 rounded-xl" />
-          ))}
-        </div>
-      : events.length === 0 ?
-        <Empty className="min-h-[20rem] border-0 p-4">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Clock3Icon />
-            </EmptyMedia>
-            <EmptyTitle>No events recorded</EmptyTitle>
-            <EmptyDescription>
-              The job exists, but no lifecycle events have been persisted yet.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      : <div className="space-y-2">
-          {events.map((event) => (
-            <div key={event.id} className="rounded-xl border border-border bg-background p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{formatEventType(event.eventType)}</p>
-                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                    {event.message ?? "No message."}
-                  </p>
+        : isLoading ?
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Skeleton key={index} className="h-16 rounded-xl" />
+            ))}
+          </div>
+          : events.length === 0 ?
+            <Empty className="min-h-[20rem] border-0 p-4">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Clock3Icon />
+                </EmptyMedia>
+                <EmptyTitle>No events recorded</EmptyTitle>
+                <EmptyDescription>
+                  The job exists, but no lifecycle events have been persisted yet.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+            : <div className="space-y-2">
+              {events.map((event) => (
+                <div key={event.id} className="rounded-xl border border-border bg-background p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{formatEventType(event.eventType)}</p>
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                        {event.message ?? "No message."}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-[11px] text-muted-foreground">
+                      {formatTime(event.createdAt)}
+                    </span>
+                  </div>
                 </div>
-                <span className="shrink-0 text-[11px] text-muted-foreground">
-                  {formatTime(event.createdAt)}
-                </span>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
       }
     </aside>
   )

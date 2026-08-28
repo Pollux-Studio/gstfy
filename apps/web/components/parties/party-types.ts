@@ -117,9 +117,9 @@ export type PartyFormState = {
 
 type PartyScalarErrorKey =
   | Exclude<
-      keyof PartyFormState,
-      "gstRegistrations" | "addresses" | "contacts" | "bankAccounts"
-    >
+    keyof PartyFormState,
+    "gstRegistrations" | "addresses" | "contacts" | "bankAccounts"
+  >
   | "roles"
 
 export type PartyFormErrors = Partial<Record<PartyScalarErrorKey, string>> & {
@@ -237,10 +237,10 @@ export const roleFilterOptions: ReadonlyArray<{
   value: PartyRole | "all"
   label: string
 }> = [
-  { value: "all", label: "All roles" },
-  { value: "customer", label: "Customers" },
-  { value: "supplier", label: "Suppliers" },
-]
+    { value: "all", label: "All roles" },
+    { value: "customer", label: "Customers" },
+    { value: "supplier", label: "Suppliers" },
+  ]
 
 export const statusFilterOptions: ReadonlyArray<{
   value: PartyStatus | "all"
@@ -251,67 +251,67 @@ export const gstRegistrationTypeOptions: ReadonlyArray<{
   value: PartyGstRegistration["registrationType"]
   label: string
 }> = [
-  { value: "gst", label: "GST" },
-  { value: "composition", label: "Composition" },
-  { value: "uin", label: "UIN" },
-]
+    { value: "gst", label: "GST" },
+    { value: "composition", label: "Composition" },
+    { value: "uin", label: "UIN" },
+  ]
 
 export const gstRegistrationStatusOptions: ReadonlyArray<{
   value: PartyGstRegistration["status"]
   label: string
 }> = [
-  { value: "active", label: "Active" },
-  { value: "inactive", label: "Inactive" },
-  { value: "cancelled", label: "Cancelled" },
-  { value: "suspended", label: "Suspended" },
-  { value: "archived", label: "Archived" },
-]
+    { value: "active", label: "Active" },
+    { value: "inactive", label: "Inactive" },
+    { value: "cancelled", label: "Cancelled" },
+    { value: "suspended", label: "Suspended" },
+    { value: "archived", label: "Archived" },
+  ]
 
 export const addressTypeOptions: ReadonlyArray<{
   value: PartyAddress["addressType"]
   label: string
 }> = [
-  { value: "registered", label: "Registered" },
-  { value: "billing", label: "Billing" },
-  { value: "shipping", label: "Shipping" },
-  { value: "office", label: "Office" },
-  { value: "warehouse", label: "Warehouse" },
-  { value: "other", label: "Other" },
-]
+    { value: "registered", label: "Registered" },
+    { value: "billing", label: "Billing" },
+    { value: "shipping", label: "Shipping" },
+    { value: "office", label: "Office" },
+    { value: "warehouse", label: "Warehouse" },
+    { value: "other", label: "Other" },
+  ]
 
 export const contactRoleOptions: ReadonlyArray<{
   value: NonNullable<PartyContact["contactRole"]>
   label: string
 }> = [
-  { value: "billing_contact", label: "Billing contact" },
-  { value: "sales_contact", label: "Sales contact" },
-  { value: "purchase_contact", label: "Purchase contact" },
-]
+    { value: "billing_contact", label: "Billing contact" },
+    { value: "sales_contact", label: "Sales contact" },
+    { value: "purchase_contact", label: "Purchase contact" },
+  ]
 
 export const contactStatusOptions: ReadonlyArray<{
   value: PartyContact["status"]
   label: string
 }> = [
-  { value: "active", label: "Active" },
-  { value: "inactive", label: "Inactive" },
-]
+    { value: "active", label: "Active" },
+    { value: "inactive", label: "Inactive" },
+  ]
 
 export const bankAccountTypeOptions: ReadonlyArray<{
   value: NonNullable<PartyBankAccount["accountType"]>
   label: string
 }> = [
-  { value: "current", label: "Current" },
-  { value: "savings", label: "Savings" },
-  { value: "od", label: "Overdraft" },
-  { value: "cash_credit", label: "Cash credit" },
-  { value: "other", label: "Other" },
-]
+    { value: "current", label: "Current" },
+    { value: "savings", label: "Savings" },
+    { value: "od", label: "Overdraft" },
+    { value: "cash_credit", label: "Cash credit" },
+    { value: "other", label: "Other" },
+  ]
 
 export const bankAccountStatusOptions: ReadonlyArray<{
   value: PartyBankAccount["status"]
   label: string
 }> = [
-  { value: "active", label: "Active" },
-  { value: "inactive", label: "Inactive" },
-  { value: "archived", label: "Archived" },
-]
+    { value: "active", label: "Active" },
+    { value: "inactive", label: "Inactive" },
+    { value: "archived", label: "Archived" },
+  ]

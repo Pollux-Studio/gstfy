@@ -150,7 +150,7 @@ export function MoneyDetailPage({
                     "Account",
                     document.cashBankAccountSnapshot ?
                       `${document.cashBankAccountSnapshot.accountCode} · ${document.cashBankAccountSnapshot.accountName}`
-                    : "Not available",
+                      : "Not available",
                   ],
                   ["Voucher", document.voucherId ?? "Draft not posted"],
                 ]}

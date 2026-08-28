@@ -1030,7 +1030,21 @@ export function SettingsPage() {
           >
             <form onSubmit={businessForm.handleSubmit((values) => businessMutation.mutate(values))}>
               <div className="space-y-6">
-                <div className="space-y-5">
+                <section className="space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                      <BadgeCheckIcon className="size-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-medium">
+                        {t("settings.business.registrationIdentity.title")}
+                      </h3>
+                      <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                        {t("settings.business.registrationIdentity.description")}
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="grid gap-3 sm:grid-cols-2">
                     <ReadOnlyDetail
                       className="sm:col-span-2"
@@ -1045,6 +1059,9 @@ export function SettingsPage() {
                       label={t("settings.business.fields.state")}
                       value={businessStateMeta?.name ?? data.registration.stateCode}
                     />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     <ReadOnlyDetail
                       label={t("settings.business.fields.gstin")}
                       value={data.registration.gstin}
@@ -1056,20 +1073,23 @@ export function SettingsPage() {
                       mono
                     />
                     <ReadOnlyDetail
-                      label={t("settings.business.fields.constitution")}
-                      value={formatTitleCase(data.business.constitution)}
-                    />
-                    <ReadOnlyDetail
-                      label={t("settings.business.fields.taxpayerType")}
-                      value={formatTitleCase(data.registration.taxpayerType)}
-                    />
-                    <ReadOnlyDetail
                       label={t("settings.business.fields.effectiveRegistrationDate")}
                       value={
                         data.registration.registrationDate ?
                           formatDate(data.registration.registrationDate)
                         : t("settings.common.notAdded")
                       }
+                    />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <ReadOnlyDetail
+                      label={t("settings.business.fields.constitution")}
+                      value={formatTitleCase(data.business.constitution)}
+                    />
+                    <ReadOnlyDetail
+                      label={t("settings.business.fields.taxpayerType")}
+                      value={formatTitleCase(data.registration.taxpayerType)}
                     />
                   </div>
 
@@ -1427,7 +1447,7 @@ export function SettingsPage() {
                       </Field>
                     </div>
                   </FieldGroup>
-                </div>
+                </section>
 
                 <div className="space-y-4 border-t border-border pt-5">
                   <section className="space-y-4">

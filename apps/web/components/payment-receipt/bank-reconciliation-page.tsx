@@ -418,7 +418,7 @@ export function BankReconciliationPage() {
                   placeholder={
                     activeBankTab === "register" ?
                       "Search document, party, reference"
-                    : "Search statement line or reference"
+                      : "Search statement line or reference"
                   }
                 />
               </div>
@@ -549,7 +549,7 @@ export function BankReconciliationPage() {
                                 "truncate text-[11px] capitalize",
                                 item.documentType === "receipt" ?
                                   "text-emerald-700 dark:text-emerald-300"
-                                : "text-red-700 dark:text-red-300"
+                                  : "text-red-700 dark:text-red-300"
                               )}
                             >
                               {item.documentType}
@@ -568,7 +568,7 @@ export function BankReconciliationPage() {
                               "w-[14%] text-right font-mono tabular-nums",
                               item.documentType === "receipt" ?
                                 "text-emerald-700 dark:text-emerald-300"
-                              : "text-red-700 dark:text-red-300"
+                                : "text-red-700 dark:text-red-300"
                             )}
                           >
                             {formatCurrency(item.amount)}
@@ -870,7 +870,7 @@ function StatementLinesTable({
                   "w-[12%] capitalize",
                   line.direction === "credit" ?
                     "text-emerald-700 dark:text-emerald-300"
-                  : "text-red-700 dark:text-red-300"
+                    : "text-red-700 dark:text-red-300"
                 )}
               >
                 {line.direction}
@@ -881,7 +881,7 @@ function StatementLinesTable({
                   "w-[14%] text-right font-mono tabular-nums",
                   line.direction === "credit" ?
                     "text-emerald-700 dark:text-emerald-300"
-                  : "text-red-700 dark:text-red-300"
+                    : "text-red-700 dark:text-red-300"
                 )}
               >
                 {formatCurrency(line.amount)}
@@ -1021,11 +1021,11 @@ function BankOverviewMetric({
       className={cn(
         "rounded-2xl border bg-background p-3",
         tone === "positive" &&
-          "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/60 dark:bg-emerald-950/20",
+        "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/60 dark:bg-emerald-950/20",
         tone === "warning" &&
-          "border-amber-200 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/20",
+        "border-amber-200 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/20",
         tone === "info" &&
-          "border-blue-200 bg-blue-50/60 dark:border-blue-900/60 dark:bg-blue-950/20"
+        "border-blue-200 bg-blue-50/60 dark:border-blue-900/60 dark:bg-blue-950/20"
       )}
     >
       <div className="flex items-center justify-between gap-3">
@@ -1256,7 +1256,7 @@ function getBankItemStatus(item: BankReconciliationItem) {
 
 function getDocumentHref(item: BankReconciliationItem) {
   return item.documentType === "receipt" ?
-      `/receipts/${item.documentId}`
+    `/receipts/${item.documentId}`
     : `/payments/${item.documentId}`
 }
 

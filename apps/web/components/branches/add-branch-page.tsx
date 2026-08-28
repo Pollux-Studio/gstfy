@@ -395,7 +395,7 @@ export function AddBranchPage() {
       const location =
         valuesToSubmit.locationMode === "existing" ?
           await resolveSelectedLocation(valuesToSubmit.existingLocationId, locations)
-        : await createLocation(
+          : await createLocation(
             {
               name: valuesToSubmit.branchName.trim(),
               locationCode: valuesToSubmit.branchCode.trim().toUpperCase(),
@@ -562,7 +562,7 @@ export function AddBranchPage() {
       notes:
         existingWarehouse ?
           `Dev branch linked to ${existingWarehouse.name}.`
-        : "Dev branch with a new central warehouse for testing.",
+          : "Dev branch with a new central warehouse for testing.",
     }
 
     for (const [fieldName, fieldValue] of Object.entries(dummyValues) as Array<
@@ -859,7 +859,7 @@ function BranchLocationStep({
               "rounded-2xl border p-4 text-left transition-colors",
               locationMode === mode ?
                 "border-foreground bg-muted/40"
-              : "border-border hover:bg-muted/20"
+                : "border-border hover:bg-muted/20"
             )}
           >
             <div className="mb-3 flex size-9 items-center justify-center rounded-xl border bg-background text-muted-foreground">
@@ -869,7 +869,7 @@ function BranchLocationStep({
             <p className="mt-1 text-sm text-muted-foreground">
               {mode === "create" ?
                 "Add a new address for this branch."
-              : "Reuse an existing business location."}
+                : "Reuse an existing business location."}
             </p>
           </button>
         ))}
@@ -1109,7 +1109,7 @@ function WarehouseStep({
               "rounded-2xl border p-4 text-left transition-colors",
               warehouseMode === mode ?
                 "border-foreground bg-muted/40"
-              : "border-border hover:bg-muted/20"
+                : "border-border hover:bg-muted/20"
             )}
           >
             <div className="mb-3 flex size-9 items-center justify-center rounded-xl border bg-background text-muted-foreground">
@@ -1119,9 +1119,9 @@ function WarehouseStep({
             <p className="mt-1 text-sm text-muted-foreground">
               {mode === "none" ?
                 "Use this for sales offices or branches that do not hold stock."
-              : mode === "create" ?
-                "Create a warehouse at this same location and link it as default."
-              : "Link this branch to a central or shared warehouse."}
+                : mode === "create" ?
+                  "Create a warehouse at this same location and link it as default."
+                  : "Link this branch to a central or shared warehouse."}
             </p>
           </button>
         ))}
@@ -1250,7 +1250,7 @@ function AssignUsersStep({
     onSelectedUserIdsChange(
       selectedUserIds.includes(userId) ?
         selectedUserIds.filter((id) => id !== userId)
-      : [...selectedUserIds, userId]
+        : [...selectedUserIds, userId]
     )
   }
 
@@ -1288,7 +1288,7 @@ function AssignUsersStep({
                 "rounded-2xl border p-4 text-left transition-colors",
                 isSelected ?
                   "border-foreground bg-muted/40"
-                : "border-border hover:bg-muted/20"
+                  : "border-border hover:bg-muted/20"
               )}
             >
               <div className="flex items-start justify-between gap-3">
@@ -1330,17 +1330,17 @@ function ReviewStep({
 }) {
   const warehouseValue =
     values.warehouseMode === "none" ? "No dedicated warehouse"
-    : values.warehouseMode === "create" ? values.warehouseName || "New warehouse"
-    : warehouse ? `${warehouse.name} (${warehouse.warehouseCode})`
-    : "Existing warehouse not selected"
+      : values.warehouseMode === "create" ? values.warehouseName || "New warehouse"
+        : warehouse ? `${warehouse.name} (${warehouse.warehouseCode})`
+          : "Existing warehouse not selected"
   const locationValue =
     values.locationMode === "existing" && location ?
       formatLocationOption(location)
-    : `${values.city || values.district || "City not added"}, ${stateName}`
+      : `${values.city || values.district || "City not added"}, ${stateName}`
   const userValue =
     selectedUsers.length > 0 ?
       selectedUsers.map((user) => user.name).join(", ")
-    : "No users assigned"
+      : "No users assigned"
 
   return (
     <FieldGroup>
@@ -1355,9 +1355,8 @@ function ReviewStep({
         <SummaryItem
           icon={<StoreIcon className="size-4" />}
           label="Branch"
-          value={`${values.branchName || "Not added"} • ${
-            values.branchType ? branchTypeLabels[values.branchType] : "Retail store"
-          }`}
+          value={`${values.branchName || "Not added"} • ${values.branchType ? branchTypeLabels[values.branchType] : "Retail store"
+            }`}
         />
         <SummaryItem
           icon={<MapPinIcon className="size-4" />}
@@ -1427,11 +1426,11 @@ function BranchStepIndicator({ currentStep }: { currentStep: BranchStep }) {
                 className={cn(
                   "flex size-6 items-center justify-center rounded-full border text-xs font-medium transition-colors",
                   isComplete &&
-                    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
+                  "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300",
                   isCurrent && "border-foreground bg-foreground text-background",
                   !isCurrent &&
-                    !isComplete &&
-                    "border-border bg-background text-muted-foreground"
+                  !isComplete &&
+                  "border-border bg-background text-muted-foreground"
                 )}
               >
                 {isComplete ? <CheckIcon className="size-3.5" /> : index + 1}

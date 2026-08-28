@@ -82,7 +82,7 @@ export function CaReferralCodesPage() {
     getNextPageParam: (lastPage) =>
       lastPage.invitesPagination.hasMore ?
         lastPage.invitesPagination.page + 1
-      : undefined,
+        : undefined,
     enabled: accessToken.length > 0 && userId.length > 0,
     staleTime: 1000 * 60 * 3,
   })
@@ -98,10 +98,10 @@ export function CaReferralCodesPage() {
           clientName: formState.clientName.trim(),
           ...(formState.clientEmail.trim() ?
             { clientEmail: formState.clientEmail.trim() }
-          : {}),
+            : {}),
           ...(formState.clientGstin.trim() ?
             { clientGstin: formState.clientGstin.trim().toUpperCase() }
-          : {}),
+            : {}),
         },
         accessToken
       ),
@@ -377,16 +377,16 @@ export function CaReferralCodesPage() {
                       </TableCell>
                     </TableRow>
                   ))
-                : (
-                  <TableRow>
-                    <TableCell
-                      colSpan={6}
-                      className="h-24 text-center text-muted-foreground"
-                    >
-                      No referral codes generated yet.
-                    </TableCell>
-                  </TableRow>
-                )}
+                  : (
+                    <TableRow>
+                      <TableCell
+                        colSpan={6}
+                        className="h-24 text-center text-muted-foreground"
+                      >
+                        No referral codes generated yet.
+                      </TableCell>
+                    </TableRow>
+                  )}
               </TableBody>
             </Table>
           </div>

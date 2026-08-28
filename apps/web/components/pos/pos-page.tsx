@@ -266,7 +266,7 @@ function ProtectedPosPage({
   const canAccessPos =
     currentUserQuery.data ?
       canAccessBusinessPath("/pos", currentUserQuery.data, session.tenant?.id)
-    : false
+      : false
 
   React.useEffect(() => {
     if (!currentUserQuery.data || canAccessPos) {
@@ -409,9 +409,9 @@ function PosCounterPage({
   const allBranches = branchRecords.length > 0 ? branchRecords : fallbackBranches
   const accessibleBranches =
     canSwitchAllBranches ? allBranches
-    : userRecord ?
-      allBranches.filter((branch) => userRecord.branchIds.includes(branch.id))
-    : []
+      : userRecord ?
+        allBranches.filter((branch) => userRecord.branchIds.includes(branch.id))
+        : []
   const selectedBranchId =
     branchId ||
     userRecord?.primaryBranchId ||
@@ -423,15 +423,15 @@ function PosCounterPage({
   const branchWarehouseIds =
     "warehouses" in (selectedBranch ?? {}) ?
       selectedBranch?.warehouses?.map((warehouse) => warehouse.warehouseId) ?? []
-    : []
+      : []
   const branchWarehouses =
     branchWarehouseIds.length > 0 ?
       allWarehouses.filter((warehouse) => branchWarehouseIds.includes(warehouse.id))
-    : allWarehouses
+      : allWarehouses
   const defaultBranchWarehouseId =
     "warehouses" in (selectedBranch ?? {}) ?
       selectedBranch?.warehouses?.find((warehouse) => warehouse.isDefault)?.warehouseId ?? ""
-    : ""
+      : ""
   const selectedWarehouseId =
     warehouseId ||
     defaultBranchWarehouseId ||
@@ -484,9 +484,9 @@ function PosCounterPage({
       toast.success(
         invoice.status === "posted" ?
           `Sales bill ${invoice.invoiceNumber} posted.`
-        : invoice.status === "quotation" ?
-          `Quotation ${invoice.invoiceNumber} saved.`
-        : `Draft ${invoice.invoiceNumber} saved.`
+          : invoice.status === "quotation" ?
+            `Quotation ${invoice.invoiceNumber} saved.`
+            : `Draft ${invoice.invoiceNumber} saved.`
       )
       setCart([])
       setPaymentAmount("")
@@ -536,7 +536,7 @@ function PosCounterPage({
               referenceNumber: null,
             },
           ]
-        : [],
+          : [],
     }
   }
 
@@ -559,7 +559,7 @@ function PosCounterPage({
         return current.map((line) =>
           line.key === existingLine.key ?
             { ...line, quantity: String(Number(line.quantity || 0) + 1) }
-          : line
+            : line
         )
       }
 
@@ -637,8 +637,8 @@ function PosCounterPage({
 
   const checkoutActionLabel =
     billStatus === "posted" ? "Complete bill"
-    : billStatus === "quotation" ? "Save quotation"
-    : "Save draft"
+      : billStatus === "quotation" ? "Save quotation"
+        : "Save draft"
 
   return (
     <main className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
@@ -665,7 +665,7 @@ function PosCounterPage({
                 "gap-1.5",
                 registerState === "open" ?
                   "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-                : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+                  : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
               )}
             >
               <span className="size-1.5 rounded-full bg-current" />
@@ -876,7 +876,7 @@ function PosCounterPage({
                 "grid gap-2 sm:items-end",
                 billStatus === "posted" ?
                   "sm:grid-cols-[8rem_9rem_minmax(0,1fr)_auto]"
-                : "sm:grid-cols-[8rem_minmax(0,1fr)_auto]"
+                  : "sm:grid-cols-[8rem_minmax(0,1fr)_auto]"
               )}
             >
               <Field>
@@ -907,30 +907,30 @@ function PosCounterPage({
               </Field>
               {billStatus === "posted" ? (
                 <Field>
-                <FieldLabel>Payment mode</FieldLabel>
-                <Select
-                  value={paymentMode}
-                  onValueChange={(value) => {
-                    if (value) {
-                      setPaymentMode(value as PaymentMode)
-                    }
-                  }}
-                >
-                  <SelectTrigger className="h-8 w-full bg-background">
-                    <SelectDisplayValue
-                      value={paymentMode}
-                      options={paymentModeOptions}
-                      placeholder="Mode"
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {paymentModeOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <FieldLabel>Payment mode</FieldLabel>
+                  <Select
+                    value={paymentMode}
+                    onValueChange={(value) => {
+                      if (value) {
+                        setPaymentMode(value as PaymentMode)
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-8 w-full bg-background">
+                      <SelectDisplayValue
+                        value={paymentMode}
+                        options={paymentModeOptions}
+                        placeholder="Mode"
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {paymentModeOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Field>
               ) : null}
               {billStatus === "posted" ? (
@@ -1600,11 +1600,11 @@ function estimateLine(line: CartLine) {
   const taxable =
     isTaxable && line.taxMode === "INCLUSIVE" && gstRate > 0 ?
       gross / (1 + gstRate / 100)
-    : gross
+      : gross
   const tax =
     !isTaxable ? 0
-    : line.taxMode === "INCLUSIVE" ? gross - taxable
-    : taxable * (gstRate / 100)
+      : line.taxMode === "INCLUSIVE" ? gross - taxable
+        : taxable * (gstRate / 100)
   const total = line.taxMode === "INCLUSIVE" || !isTaxable ? gross : taxable + tax
 
   return { taxable, tax, total }

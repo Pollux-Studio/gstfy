@@ -221,7 +221,7 @@ function MoneyMetric({
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       {loading ?
         <Skeleton className="mt-2 h-6 w-28" />
-      : <p
+        : <p
           className={cn(
             "mt-2 truncate font-mono text-lg font-semibold",
             tone === "positive" && "text-emerald-700 dark:text-emerald-300",

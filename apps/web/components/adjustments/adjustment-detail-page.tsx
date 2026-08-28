@@ -191,9 +191,9 @@ function AdjustedLinesTable({ adjustment }: { adjustment: AdjustmentDetail }) {
               <TableCell className="text-right font-mono">
                 {formatCurrency(
                   Number(line.cgstAmount) +
-                    Number(line.sgstAmount) +
-                    Number(line.igstAmount) +
-                    Number(line.cessAmount)
+                  Number(line.sgstAmount) +
+                  Number(line.igstAmount) +
+                  Number(line.cessAmount)
                 )}
               </TableCell>
               <TableCell className="text-right font-mono">
@@ -223,7 +223,7 @@ function SettlementTable({ adjustment }: { adjustment: AdjustmentDetail }) {
           text={
             Number(adjustment.excessCreditAmount || 0) > 0 ?
               "No open receivable/payable was found. This adjustment is tracked as excess credit for refund or future settlement."
-            : "No receivable/payable settlement effect is recorded for this draft or value state."
+              : "No receivable/payable settlement effect is recorded for this draft or value state."
           }
         />
       </div>
@@ -280,7 +280,7 @@ function SettlementSnapshot({
   const previouslySettled =
     effect ?
       Number(effect.entrySettledAmount) + Number(effect.entryExcessSettledAmount)
-    : 0
+      : 0
   const rows = [
     ["Original document", effect ? formatCurrency(effect.entryOriginalAmount) : "Not linked"],
     ["Adjustment", formatCurrency(adjustment.grandTotal)],
@@ -401,8 +401,8 @@ function DetailCard({ title, rows }: { title: string; rows: Array<[string, strin
 function StatusBadge({ status }: { status: AdjustmentDetail["status"] }) {
   const className =
     status === "posted" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-    : status === "reversed" ? "bg-red-500/10 text-red-700 dark:text-red-300"
-    : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+      : status === "reversed" ? "bg-red-500/10 text-red-700 dark:text-red-300"
+        : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
 
   return (
     <Badge variant="outline" className={className}>

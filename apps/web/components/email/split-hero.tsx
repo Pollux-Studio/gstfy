@@ -2084,11 +2084,11 @@ export interface SplitHeroProps {
   slant?: "up" | "down";
   overlayContent?: boolean;
   variant?:
-    | Parameters<typeof __OverlaySplitHero>[0]["variant"]
-    | Parameters<typeof __ContainedSplitHero>[0]["variant"]
-    | Parameters<typeof __FullBleedSplitHero>[0]["variant"]
-    | Parameters<typeof __OverlayContentHero>[0]["variant"]
-    | Parameters<typeof __SlantedSplitHero>[0]["variant"];
+  | Parameters<typeof __OverlaySplitHero>[0]["variant"]
+  | Parameters<typeof __ContainedSplitHero>[0]["variant"]
+  | Parameters<typeof __FullBleedSplitHero>[0]["variant"]
+  | Parameters<typeof __OverlayContentHero>[0]["variant"]
+  | Parameters<typeof __SlantedSplitHero>[0]["variant"];
 }
 
 const heroContentValues = (content: HeroContent | undefined) => {

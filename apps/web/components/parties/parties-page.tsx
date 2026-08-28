@@ -423,7 +423,7 @@ export function PartiesPage() {
     setSelectedPartyIds((currentPartyIds) =>
       currentPartyIds.includes(party.id) ?
         currentPartyIds.filter((partyId) => partyId !== party.id)
-      : [...currentPartyIds, party.id]
+        : [...currentPartyIds, party.id]
     )
   }
 
@@ -594,8 +594,8 @@ export function PartiesPage() {
               className={cn(
                 selectedParties.length > 0 && "grid grid-rows-[auto_minmax(0,1fr)]",
                 selectedParties.length > 0 &&
-                  shouldConstrainPartiesTable &&
-                  "h-[35rem] overflow-hidden"
+                shouldConstrainPartiesTable &&
+                "h-[35rem] overflow-hidden"
               )}
             >
               {selectedParties.length > 0 ? (
@@ -654,7 +654,7 @@ export function PartiesPage() {
                   "app-scrollbar overflow-y-auto overflow-x-hidden",
                   selectedParties.length > 0 && shouldConstrainPartiesTable ?
                     "min-h-0"
-                  : "max-h-[35rem]"
+                    : "max-h-[35rem]"
                 )}
               >
                 <Table className="w-full table-fixed text-[11px] sm:text-xs [&_td]:min-w-0 [&_td]:overflow-hidden [&_td]:px-2 [&_td]:py-2 [&_th]:h-8 [&_th]:min-w-0 [&_th]:px-2">
@@ -1072,8 +1072,7 @@ export function PartiesPage() {
             >
               {bulkArchiveMutation.isPending ?
                 <Spinner />
-              : `Archive ${selectedArchivableParties.length} part${
-                  selectedArchivableParties.length === 1 ? "y" : "ies"
+                : `Archive ${selectedArchivableParties.length} part${selectedArchivableParties.length === 1 ? "y" : "ies"
                 }`}
             </Button>
           </DialogFooter>
@@ -1126,8 +1125,8 @@ function SortablePartiesTableHead({
   const isActive = sortBy === sortKey
   const SortIcon =
     !isActive ? ArrowUpDownIcon
-    : sortDir === "asc" ? ArrowUpIcon
-    : ArrowDownIcon
+      : sortDir === "asc" ? ArrowUpIcon
+        : ArrowDownIcon
 
   return (
     <TableHead>
@@ -1205,7 +1204,7 @@ function PartiesTopMetric({
           className={cn(
             "flex size-6 items-center justify-center rounded-md border border-border text-muted-foreground",
             tone === "success" &&
-              "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+            "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
           )}
         >
           {icon}

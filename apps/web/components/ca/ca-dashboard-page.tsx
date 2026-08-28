@@ -340,13 +340,13 @@ export function CaDashboardPage() {
                     </TableCell>
                   </TableRow>
                 ))
-              : (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                    Add clients to start preparing GST filing extracts.
-                  </TableCell>
-                </TableRow>
-              )}
+                : (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                      Add clients to start preparing GST filing extracts.
+                    </TableCell>
+                  </TableRow>
+                )}
             </TableBody>
           </Table>
         </div>
@@ -409,9 +409,9 @@ function FocusItem({
           className={
             tone === "success" ?
               "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-            : tone === "warning" ?
-              "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
-            : "bg-background"
+              : tone === "warning" ?
+                "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+                : "bg-background"
           }
         >
           {value}

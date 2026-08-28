@@ -138,12 +138,12 @@ export function createFormFromParty(
   const primaryAddress =
     "addresses" in party ?
       party.addresses.find((address) => address.isPrimary) ?? party.addresses[0] ?? null
-    : null
+      : null
   const primaryContact =
     party.primaryContact ??
     ("contacts" in party ?
       party.contacts.find((contact) => contact.isPrimary) ?? party.contacts[0] ?? null
-    : null)
+      : null)
   const customerProfile = "customerProfile" in party ? party.customerProfile : null
   const supplierProfile = "supplierProfile" in party ? party.supplierProfile : null
   const gstRegistrations =
@@ -151,31 +151,31 @@ export function createFormFromParty(
       party.gstRegistrations
         .filter((registration) => registration.status !== "archived")
         .map(createGstRegistrationFormFromPartyRegistration)
-    : party.primaryGstRegistration ?
-      [createGstRegistrationFormFromPartyRegistration(party.primaryGstRegistration)]
-    : []
+      : party.primaryGstRegistration ?
+        [createGstRegistrationFormFromPartyRegistration(party.primaryGstRegistration)]
+        : []
   const addresses =
     "addresses" in party ?
       party.addresses
         .filter((address) => address.isActive)
         .map(createAddressFormFromPartyAddress)
-    : primaryAddress ?
-      [createAddressFormFromPartyAddress(primaryAddress)]
-    : []
+      : primaryAddress ?
+        [createAddressFormFromPartyAddress(primaryAddress)]
+        : []
   const contacts =
     "contacts" in party ?
       party.contacts
         .filter((contact) => contact.status !== "inactive")
         .map(createContactFormFromPartyContact)
-    : primaryContact ?
-      [createContactFormFromPartyContact(primaryContact)]
-    : []
+      : primaryContact ?
+        [createContactFormFromPartyContact(primaryContact)]
+        : []
   const bankAccounts =
     "bankAccounts" in party ?
       party.bankAccounts
         .filter((bankAccount) => bankAccount.status !== "archived")
         .map(createBankAccountFormFromPartyBankAccount)
-    : []
+      : []
 
   return {
     ...emptyForm,
@@ -1269,7 +1269,7 @@ function findMatchingAddress(
     addresses.find(
       (address) =>
         normalizeNullable(address.addressLine1) ===
-          normalizeComparable(formAddress.addressLine1) &&
+        normalizeComparable(formAddress.addressLine1) &&
         normalizeNullable(address.pincode) === normalizeComparable(formAddress.pincode)
     ) ?? addresses.find((address) => address.isPrimary) ?? addresses[0] ?? null
   )

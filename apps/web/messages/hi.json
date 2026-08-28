@@ -431,6 +431,10 @@
     "business": {
       "title": "Business details",
       "description": "Registration identity locked रहती है। Contact details और principal place of business यहां update कर सकते हैं।",
+      "registrationIdentity": {
+        "title": "Registered business identity",
+        "description": "ये verified registration records हैं और इन्हें यहां edit नहीं किया जा सकता।"
+      },
       "fields": {
         "legalBusinessName": "Legal business name",
         "tradeName": "Trade name",

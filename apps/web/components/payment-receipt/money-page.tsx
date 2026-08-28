@@ -154,17 +154,17 @@ const unallocatedTreatmentOptions: Array<{
   label: string
   description: string
 }> = [
-  {
-    value: "advance",
-    label: "Record as advance",
-    description: "Use when this is known advance money from the party.",
-  },
-  {
-    value: "unallocated",
-    label: "Keep unapplied",
-    description: "Use when the remittance is not yet identified or confirmed.",
-  },
-]
+    {
+      value: "advance",
+      label: "Record as advance",
+      description: "Use when this is known advance money from the party.",
+    },
+    {
+      value: "unallocated",
+      label: "Keep unapplied",
+      description: "Use when the remittance is not yet identified or confirmed.",
+    },
+  ]
 
 const statusOptions = [
   { value: "all", label: "All status" },
@@ -214,11 +214,11 @@ export function MoneyDocumentsPage({ mode }: { mode: MoneyMode }) {
       }
 
       const response = await listPayments(accessToken, {
-          search,
-          status,
-          paymentMethod,
-          page: pageParam,
-          limit: tablePageSize,
+        search,
+        status,
+        paymentMethod,
+        page: pageParam,
+        limit: tablePageSize,
       })
       return { documents: response.payments, pagination: response.pagination }
     },
@@ -325,7 +325,7 @@ export function MoneyDocumentsPage({ mode }: { mode: MoneyMode }) {
     mutationFn: () =>
       mode === "receipt" ?
         exportReceipts(accessToken, { search, status, paymentMethod })
-      : exportPayments(accessToken, { search, status, paymentMethod }),
+        : exportPayments(accessToken, { search, status, paymentMethod }),
     onSuccess: downloadCsv,
     onError: (error) => toast.error(getErrorMessage(error)),
   })
@@ -380,7 +380,7 @@ export function MoneyDocumentsPage({ mode }: { mode: MoneyMode }) {
             <p className="text-xs text-muted-foreground">
               {mode === "receipt" ?
                 "Customer collections, allocations, and pending unapplied amounts."
-              : "Supplier payments, allocations, and pending unapplied amounts."}
+                : "Supplier payments, allocations, and pending unapplied amounts."}
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -393,7 +393,7 @@ export function MoneyDocumentsPage({ mode }: { mode: MoneyMode }) {
                 placeholder={
                   mode === "receipt" ?
                     "Search receipt or customer"
-                  : "Search payment or supplier"
+                    : "Search payment or supplier"
                 }
               />
             </div>
@@ -553,7 +553,7 @@ export function MoneyDocumentsPage({ mode }: { mode: MoneyMode }) {
                         className={
                           Number(document.unallocatedAmount) > 0 ?
                             "text-amber-700 dark:text-amber-300"
-                          : "text-muted-foreground"
+                            : "text-muted-foreground"
                         }
                       />
                       <TableCell className="w-[9%]">
@@ -753,7 +753,7 @@ export function OutstandingPage({ mode }: { mode: OutstandingMode }) {
           page: pageParam,
           limit: tablePageSize,
         })
-      : listPayables(accessToken, {
+        : listPayables(accessToken, {
           search,
           status,
           page: pageParam,
@@ -801,12 +801,12 @@ export function OutstandingPage({ mode }: { mode: OutstandingMode }) {
 
       const firstValue =
         sortKey === "original" ? first.originalAmount
-        : sortKey === "settled" ? first.settledAmount
-        : first.outstandingAmount
+          : sortKey === "settled" ? first.settledAmount
+            : first.outstandingAmount
       const secondValue =
         sortKey === "original" ? second.originalAmount
-        : sortKey === "settled" ? second.settledAmount
-        : second.outstandingAmount
+          : sortKey === "settled" ? second.settledAmount
+            : second.outstandingAmount
 
       return (Number(firstValue) - Number(secondValue)) * direction
     })
@@ -815,7 +815,7 @@ export function OutstandingPage({ mode }: { mode: OutstandingMode }) {
     mutationFn: () =>
       mode === "receivable" ?
         exportReceivables(accessToken, { search, status })
-      : exportPayables(accessToken, { search, status }),
+        : exportPayables(accessToken, { search, status }),
     onSuccess: downloadCsv,
     onError: (error) => toast.error(getErrorMessage(error)),
   })
@@ -1016,7 +1016,7 @@ export function OutstandingPage({ mode }: { mode: OutstandingMode }) {
                         className={
                           mode === "receivable" ?
                             "w-[12%] text-emerald-700 dark:text-emerald-300"
-                          : "w-[12%] text-red-700 dark:text-red-300"
+                            : "w-[12%] text-red-700 dark:text-red-300"
                         }
                       />
                       <OutstandingAmountCell
@@ -1024,7 +1024,7 @@ export function OutstandingPage({ mode }: { mode: OutstandingMode }) {
                         className={
                           Number(entry.outstandingAmount) > 0 ?
                             "w-[13%] text-amber-700 dark:text-amber-300"
-                          : "w-[13%] text-muted-foreground"
+                            : "w-[13%] text-muted-foreground"
                         }
                       />
                       <TableCell className="w-[8%]">
@@ -1056,7 +1056,7 @@ export function OutstandingPage({ mode }: { mode: OutstandingMode }) {
                             >
                               {mode === "receivable" ?
                                 <ArrowDownLeftIcon className="text-muted-foreground" />
-                              : <ArrowUpRightIcon className="text-muted-foreground" />}
+                                : <ArrowUpRightIcon className="text-muted-foreground" />}
                               <span>{mode === "receivable" ? "Record receipt" : "Record payment"}</span>
                             </DropdownMenuItem>
                           </DropdownMenuContent>
@@ -1136,7 +1136,7 @@ function MoneyCreateDialog({
           status: "all",
           limit: 50,
         })
-      : listPayables(accessToken, {
+        : listPayables(accessToken, {
           partyId: form.partyId,
           status: "all",
           limit: 50,
@@ -1181,7 +1181,7 @@ function MoneyCreateDialog({
       const created =
         mode === "receipt" ?
           await createReceipt(accessToken, payload)
-        : await createPayment(accessToken, payload)
+          : await createPayment(accessToken, payload)
       const documentId =
         "receipt" in created ? created.receipt.id : created.payment.id
 
@@ -1495,7 +1495,7 @@ function MoneyHeader({
             <Badge variant="outline" className="gap-1.5 bg-background">
               {isReceipt ?
                 <ArrowDownLeftIcon className="size-3.5" />
-              : <ArrowUpRightIcon className="size-3.5" />}
+                : <ArrowUpRightIcon className="size-3.5" />}
               {isReceipt ? "Money in" : "Money out"}
             </Badge>
             <Badge
@@ -1504,7 +1504,7 @@ function MoneyHeader({
                 "gap-1.5",
                 isReceipt ?
                   "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-                : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+                  : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
               )}
             >
               <span className="size-1.5 rounded-full bg-current" />
@@ -1518,7 +1518,7 @@ function MoneyHeader({
             <p className="max-w-xl text-sm leading-5 text-muted-foreground">
               {isReceipt ?
                 "Track customer payments received against sales invoices and keep unapplied money visible."
-              : "Track supplier payments made against purchase bills and keep unapplied money visible."}
+                : "Track supplier payments made against purchase bills and keep unapplied money visible."}
             </p>
             <Button
               onClick={onCreate}
@@ -1607,7 +1607,7 @@ function MoneyOverviewMetric({
       </div>
       {loading ?
         <Skeleton className={cn("mt-2 h-5", compact ? "w-20" : "w-28")} />
-      : <p
+        : <p
           className={cn(
             "mt-2 truncate font-mono font-semibold",
             compact ? "text-sm" : "text-lg",
@@ -1642,7 +1642,7 @@ function OutstandingHeader({
             <Badge variant="outline" className="gap-1.5 bg-background">
               {isReceivable ?
                 <ArrowDownLeftIcon className="size-3.5" />
-              : <ArrowUpRightIcon className="size-3.5" />}
+                : <ArrowUpRightIcon className="size-3.5" />}
               {isReceivable ? "Receivables" : "Payables"}
             </Badge>
             <Badge
@@ -1651,7 +1651,7 @@ function OutstandingHeader({
                 "gap-1.5",
                 isReceivable ?
                   "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
-                : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+                  : "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
               )}
             >
               <span className="size-1.5 rounded-full bg-current" />
@@ -1665,7 +1665,7 @@ function OutstandingHeader({
             <p className="max-w-xl text-sm leading-5 text-muted-foreground">
               {isReceivable ?
                 "Track unpaid customer invoices, part payments, and pending collection work."
-              : "Track unpaid supplier bills, part payments, and pending payout work."}
+                : "Track unpaid supplier bills, part payments, and pending payout work."}
             </p>
           </div>
         </div>
@@ -1718,13 +1718,13 @@ function OutstandingStatusBadge({ status }: { status: string }) {
   const statusClassName =
     status === "open" ?
       "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300"
-    : status === "partially_settled" ?
-      "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
-    : status === "settled" ?
-      "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300"
-    : status === "cancelled" ?
-      "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
-    : "border-border bg-muted/40 text-muted-foreground"
+      : status === "partially_settled" ?
+        "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+        : status === "settled" ?
+          "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300"
+          : status === "cancelled" ?
+            "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+            : "border-border bg-muted/40 text-muted-foreground"
 
   return (
     <Badge variant="outline" className={cn("capitalize", statusClassName)}>
@@ -1746,7 +1746,7 @@ function EmptyMoneyState({ mode, onCreate }: { mode: MoneyMode; onCreate: () => 
         <EmptyDescription>
           {isReceipt ?
             "Record customer money received and allocate it to open invoices, advances, or unapplied receipts."
-          : "Record supplier money paid and allocate it to open bills, advances, or unapplied payments."}
+            : "Record supplier money paid and allocate it to open bills, advances, or unapplied payments."}
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
@@ -1772,7 +1772,7 @@ function EmptyOutstandingState({ mode }: { mode: OutstandingMode }) {
         <EmptyDescription>
           {isReceivable ?
             "Receivables appear automatically when posted sales invoices still have customer dues."
-          : "Payables appear automatically when posted purchase bills still have supplier dues."}
+            : "Payables appear automatically when posted purchase bills still have supplier dues."}
         </EmptyDescription>
       </EmptyHeader>
     </Empty>

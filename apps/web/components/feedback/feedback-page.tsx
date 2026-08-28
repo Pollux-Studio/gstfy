@@ -45,61 +45,61 @@ type SurveyStepId = "category" | "feeling" | "effort" | "feedback";
 const surveySteps: Array<{
   id: SurveyStepId;
 }> = [
-  {
-    id: "category",
-  },
-  {
-    id: "feeling",
-  },
-  {
-    id: "effort",
-  },
-  {
-    id: "feedback",
-  },
-];
+    {
+      id: "category",
+    },
+    {
+      id: "feeling",
+    },
+    {
+      id: "effort",
+    },
+    {
+      id: "feedback",
+    },
+  ];
 
 const categoryOptions: Array<{
   value: FeedbackCategory;
   emoji: string;
 }> = [
-  {
-    value: "ease_of_use",
-    emoji: "✨",
-  },
-  {
-    value: "billing_pos",
-    emoji: "🧾",
-  },
-  {
-    value: "gst_filing",
-    emoji: "✅",
-  },
-  {
-    value: "inventory",
-    emoji: "📦",
-  },
-  {
-    value: "payments",
-    emoji: "💸",
-  },
-  {
-    value: "performance",
-    emoji: "⚡",
-  },
-  {
-    value: "bug",
-    emoji: "🐞",
-  },
-  {
-    value: "feature_request",
-    emoji: "💡",
-  },
-  {
-    value: "other",
-    emoji: "📝",
-  },
-];
+    {
+      value: "ease_of_use",
+      emoji: "✨",
+    },
+    {
+      value: "billing_pos",
+      emoji: "🧾",
+    },
+    {
+      value: "gst_filing",
+      emoji: "✅",
+    },
+    {
+      value: "inventory",
+      emoji: "📦",
+    },
+    {
+      value: "payments",
+      emoji: "💸",
+    },
+    {
+      value: "performance",
+      emoji: "⚡",
+    },
+    {
+      value: "bug",
+      emoji: "🐞",
+    },
+    {
+      value: "feature_request",
+      emoji: "💡",
+    },
+    {
+      value: "other",
+      emoji: "📝",
+    },
+  ];
 
 const ratingOptions = [
   { value: 1, emoji: "😣" },
@@ -196,7 +196,7 @@ export function FeedbackPage() {
   const submittedFeedback =
     feedbackStatus && !feedbackStatus.canSubmit ?
       feedbackStatus.latestFeedback
-    : null;
+      : null;
   const mutation = useMutation({
     mutationFn: () => {
       const session = getStoredAuthSession();
