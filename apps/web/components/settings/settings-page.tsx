@@ -21,6 +21,7 @@ import {
   ImageIcon,
   KeyRoundIcon,
   PrinterIcon,
+  PlugZapIcon,
   ReceiptTextIcon,
   RefreshCwIcon,
   SaveIcon,
@@ -89,6 +90,7 @@ import {
   updateGstRateSettings,
   updateInvoiceSettings,
   updatePrinterSettings,
+  testIrp5Connection,
   uploadBusinessLogo,
   uploadInvoiceLogo,
   verifyBusinessCaReferral,
@@ -633,6 +635,16 @@ export function SettingsPage() {
     },
   })
 
+  const irp5ConnectionMutation = useMutation({
+    mutationFn: () => testIrp5Connection(accessToken),
+    onSuccess: (response) => {
+      toast.success(`IRP5 ${response.environment} connection is working.`)
+    },
+    onError: (mutationError) => {
+      toast.error(getErrorMessage(mutationError, "Unable to connect to IRP5."))
+    },
+  })
+
   const businessLogoMutation = useMutation({
     mutationFn: (file: File) => uploadBusinessLogo(file, accessToken),
     onSuccess: (nextSettings) => {
@@ -1092,6 +1104,36 @@ export function SettingsPage() {
                       value={formatTitleCase(data.registration.taxpayerType)}
                     />
                   </div>
+
+                  <section className="flex flex-col gap-3 rounded-xl border border-border bg-muted/20 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-2.5">
+                      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-background text-muted-foreground">
+                        <PlugZapIcon className="size-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-medium">E-invoice sandbox connection</h3>
+                        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                          Test IRP5 access with the approved sandbox GSTIN
+                          <span className="ml-1 font-mono">33HXUPP8249C1Z2</span>.
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      disabled={!canEditBusiness || irp5ConnectionMutation.isPending}
+                      onClick={() => irp5ConnectionMutation.mutate()}
+                    >
+                      {irp5ConnectionMutation.isPending ? (
+                        <Spinner />
+                      ) : (
+                        <PlugZapIcon className="size-3.5" />
+                      )}
+                      Test connection
+                    </Button>
+                  </section>
 
                   <BusinessLogoPanel
                     title={t("settings.business.workspaceLogo.title")}

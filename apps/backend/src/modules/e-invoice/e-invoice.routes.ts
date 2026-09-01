@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm"
 import type { FastifyInstance } from "fastify"
 
+import { getEnv } from "../../config/env.js"
 import { db } from "../../db/client.js"
 import {
   adjustmentDocumentLines,
@@ -33,7 +34,12 @@ import {
 } from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
 import { requirePrimaryBusinessAccess } from "../businesses/business-access.js"
+import { enqueueAutomationJob } from "../automation/automation.queue.js"
 import { getEInvoiceProviderAdapter } from "./e-invoice.adapters.js"
+import {
+  Irp5AuthenticationError,
+  Irp5Client,
+} from "./irp5/irp5.client.js"
 import {
   assertEInvoiceStatusTransition,
   buildEInvoiceOperationRequestHash,
@@ -46,8 +52,8 @@ import {
   validateCanonicalEInvoicePayload,
   type CanonicalEInvoicePayload,
   type EInvoiceEligibilityResult,
-  type EInvoiceMockMode,
   type EInvoicePartySnapshot,
+  type EInvoiceProviderResult,
   type EInvoiceSourceDocumentType,
   type EInvoiceSubmissionStatus,
   type EInvoiceValidationResult,
@@ -59,6 +65,7 @@ import {
   eInvoiceEligibilityQuerySchema,
   eInvoiceRecordParamsSchema,
   generateEInvoiceSchema,
+  eInvoiceProviderAuthTestSchema,
   listEInvoiceRecordsQuerySchema,
   type CreateEInvoiceRecordInput,
   type ListEInvoiceRecordsQueryInput,
@@ -98,6 +105,38 @@ type SourceContext = {
 }
 
 export async function registerEInvoiceRoutes(app: FastifyInstance) {
+  app.post("/e-invoices/provider/auth-test", async (request) => {
+    const access = await requirePrimaryBusinessAccess(request)
+    await assertCanUseEInvoice(access, "edit")
+    const body = eInvoiceProviderAuthTestSchema.parse(request.body)
+
+    if (getEnv().EINVOICE_PROVIDER !== "irp5") {
+      throw new HttpError(409, "IRP5 is not the configured e-invoice provider.")
+    }
+
+    try {
+      await new Irp5Client().testAuthentication(body.gstin)
+    } catch (error) {
+      if (error instanceof Irp5AuthenticationError) {
+        throw new HttpError(502, error.message, {
+          providerStatus: error.providerResponse.Status ?? null,
+          data: error.providerResponse.Data ?? null,
+          errorDetails: error.providerResponse.ErrorDetails ?? null,
+          infoDtls: error.providerResponse.InfoDtls ?? null,
+        })
+      }
+
+      throw error
+    }
+
+    return {
+      provider: "irp5",
+      environment: getEnv().EINVOICE_ENVIRONMENT,
+      gstin: body.gstin,
+      authenticated: true,
+    }
+  })
+
   app.get("/e-invoices", async (request) => {
     const access = await requirePrimaryBusinessAccess(request)
     await assertCanUseEInvoice(access, "view")
@@ -176,7 +215,7 @@ export async function registerEInvoiceRoutes(app: FastifyInstance) {
       `e-invoice-generate:${id}`,
       idempotencyKey,
       body,
-      async () => generateEInvoice(access, id, body.mockMode)
+      async () => submitEInvoice(access, id)
     )
   })
 
@@ -214,7 +253,10 @@ export async function registerEInvoiceRoutes(app: FastifyInstance) {
       `e-invoice-retry:${id}`,
       idempotencyKey,
       body,
-      async () => ({ eInvoice: await retryEInvoice(access, id, body.reason) })
+      async () => {
+        const retried = await retryEInvoice(access, id, body.reason)
+        return submitEInvoice(access, retried.id)
+      }
     )
   })
 
@@ -233,7 +275,7 @@ export async function registerEInvoiceRoutes(app: FastifyInstance) {
       `e-invoice-cancel:${id}`,
       idempotencyKey,
       body,
-      async () => cancelEInvoice(access, id, body.reason, body.mockMode)
+      async () => cancelEInvoice(access, id, body.reason)
     )
   })
 
@@ -254,7 +296,7 @@ export async function registerEInvoiceRoutes(app: FastifyInstance) {
 
 export async function processEInvoiceAutomation(
   access: BusinessAccess,
-  input: { sourceDocumentType: string; sourceDocumentId: string }
+  input: { sourceDocumentType: string; sourceDocumentId: string; eInvoiceId?: string | null }
 ) {
   if (!isEInvoiceSourceDocumentType(input.sourceDocumentType)) {
     return {
@@ -279,10 +321,12 @@ export async function processEInvoiceAutomation(
     }
   }
 
-  let record = await createEInvoiceRecord(access, {
-    sourceDocumentType: input.sourceDocumentType,
-    sourceDocumentId: input.sourceDocumentId,
-  })
+  let record = input.eInvoiceId ?
+    await requireEInvoiceRecord(access.business.id, input.eInvoiceId)
+    : await createEInvoiceRecord(access, {
+      sourceDocumentType: input.sourceDocumentType,
+      sourceDocumentId: input.sourceDocumentId,
+    })
 
   if (record.submissionStatus === "IRN_GENERATED") {
     return {
@@ -316,6 +360,17 @@ export async function processEInvoiceAutomation(
     }
   }
 
+  if (record.submissionStatus === "SUBMITTING") {
+    const generated = await generateEInvoice(access, record.id)
+
+    return {
+      status: "completed",
+      eInvoiceId: generated.eInvoice.id,
+      submissionStatus: generated.eInvoice.submissionStatus,
+      irn: generated.eInvoice.irn,
+    }
+  }
+
   if (record.submissionStatus !== "READY" && record.submissionStatus !== "FAILED") {
     return {
       status: "skipped",
@@ -325,7 +380,7 @@ export async function processEInvoiceAutomation(
     }
   }
 
-  const generated = await generateEInvoice(access, record.id, "MOCK_GENERATE")
+  const generated = await generateEInvoice(access, record.id)
 
   if (canRetryEInvoiceTechnically(generated.eInvoice.submissionStatus)) {
     throw new Error(generated.eInvoice.errorMessage ?? "E-invoice provider request failed.")
@@ -392,6 +447,7 @@ async function createEInvoiceRecord(
       partyGstin: source.partyGstin,
       eligibilityStatus: eligibility.status,
       submissionStatus,
+      providerName: requireConfiguredEInvoiceProvider(),
       payloadSchemaVersion: payload.schemaVersion,
       payloadHash: validation.payloadHash,
       validationResult: validation,
@@ -459,15 +515,11 @@ async function validateEInvoiceRecord(access: BusinessAccess, id: string) {
   return { eInvoice: updated, validation }
 }
 
-async function generateEInvoice(
-  access: BusinessAccess,
-  id: string,
-  mockMode: EInvoiceMockMode
-) {
+async function generateEInvoice(access: BusinessAccess, id: string) {
   const record = await requireEInvoiceRecord(access.business.id, id)
   const transition = assertEInvoiceStatusTransition(
     record.submissionStatus,
-    ["READY", "FAILED"],
+    ["READY", "FAILED", "SUBMITTING"],
     "generate IRN"
   )
 
@@ -511,19 +563,54 @@ async function generateEInvoice(
 
   const adapter = getEInvoiceProviderAdapter(record.providerName)
   const providerPayload = toProviderPayload(payload)
-  const providerValidation = adapter.validate(payload)
+  const providerValidation = await adapter.validate(payload)
   const submittedAt = new Date()
-  const submitResult = adapter.generateIRN({
-    mode: mockMode,
-    payload,
-    payloadHash: validation.payloadHash,
-  })
+  let submitResult: EInvoiceProviderResult
+
+  try {
+    submitResult = await adapter.generateIRN({
+      payload,
+      payloadHash: validation.payloadHash,
+    })
+  } catch (error) {
+    const providerError = toProviderExceptionPayload(error)
+    const [failed] = await db
+      .update(eInvoiceRecords)
+      .set({
+        submissionStatus: "FAILED",
+        providerMode: null,
+        payloadSchemaVersion: validation.schemaVersion,
+        payloadHash: validation.payloadHash,
+        validationResult: validation,
+        errorCode: providerError.code,
+        errorMessage: providerError.message,
+        rawExternalResponse: providerError,
+        externalResponseReceivedAt: new Date(),
+        submittedAt,
+        submittedBy: access.userId,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(eInvoiceRecords.businessId, access.business.id), eq(eInvoiceRecords.id, id)))
+      .returning()
+
+    if (failed) {
+      await upsertPayload(access, failed, "provider", payload.schemaVersion, providerPayload)
+      await upsertPayload(access, failed, "response", payload.schemaVersion, providerError)
+      await insertStatusEvent(access, failed, record.submissionStatus, "EINV_SUBMISSION_FAILED", {
+        providerValidation,
+        providerError,
+      })
+      await insertAuditLog(access, failed.id, "EINV_SUBMISSION_FAILED", record, failed, null)
+    }
+
+    throw new HttpError(502, providerError.message)
+  }
   const nextStatus = submitResult.status
   const [updated] = await db
     .update(eInvoiceRecords)
     .set({
       submissionStatus: nextStatus,
-      providerMode: mockMode,
+      providerMode: null,
       providerReference: submitResult.providerReference,
       payloadSchemaVersion: validation.schemaVersion,
       payloadHash: validation.payloadHash,
@@ -534,7 +621,9 @@ async function generateEInvoice(
       signedInvoiceReference: submitResult.signedInvoiceReference,
       signedQrCode: submitResult.signedQrCode,
       rawResponseReference:
-        submitResult.providerReference ? `mock://response/${submitResult.providerReference}` : null,
+        submitResult.providerReference ?
+          `${record.providerName}://response/${submitResult.providerReference}`
+        : null,
       errorCode: submitResult.errorCode,
       errorMessage: submitResult.errorMessage,
       rawExternalResponse: submitResult.rawResponse,
@@ -562,6 +651,99 @@ async function generateEInvoice(
   return { eInvoice: updated, validation }
 }
 
+async function submitEInvoice(access: BusinessAccess, id: string) {
+  const record = await requireEInvoiceRecord(access.business.id, id)
+
+  if (record.providerName !== "irp5") {
+    throw new HttpError(
+      409,
+      "This e-invoice record was not prepared for IRP5. Prepare a new e-invoice record after configuring IRP5."
+    )
+  }
+
+  if (!getEnv().REDIS_URL || !getEnv().QUEUE_WORKER_ENABLED) {
+    throw new HttpError(
+      503,
+      "IRP5 e-invoice submission requires the Redis-backed automation worker."
+    )
+  }
+
+  const transition = assertEInvoiceStatusTransition(
+    record.submissionStatus,
+    ["READY", "FAILED"],
+    "queue IRN generation"
+  )
+
+  if (!transition.valid) {
+    if (shouldRecoverExistingEInvoiceSubmission({
+      status: record.submissionStatus,
+      providerReference: record.providerReference,
+      irn: record.irn,
+    })) {
+      return { eInvoice: record, recovered: true, queued: false }
+    }
+
+    throw new HttpError(409, transition.message ?? "E-invoice cannot be queued.")
+  }
+
+  const [queuedRecord] = await db
+    .update(eInvoiceRecords)
+    .set({
+      submissionStatus: "SUBMITTING",
+      providerMode: null,
+      errorCode: null,
+      errorMessage: null,
+      rawExternalResponse: null,
+      externalResponseReceivedAt: null,
+      submittedAt: null,
+      submittedBy: null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(eInvoiceRecords.businessId, access.business.id), eq(eInvoiceRecords.id, id)))
+    .returning()
+
+  if (!queuedRecord) {
+    throw new HttpError(404, "E-invoice record not found.")
+  }
+
+  await insertStatusEvent(access, queuedRecord, record.submissionStatus, "EINV_QUEUED", {
+    provider: record.providerName,
+  })
+  const queueResult = await enqueueAutomationJob({
+    businessId: access.business.id,
+    jobType: "einvoice.generate",
+    sourceType: record.sourceDocumentType,
+    sourceId: record.sourceDocumentId,
+    payload: {
+      sourceDocumentType: record.sourceDocumentType,
+      sourceDocumentId: record.sourceDocumentId,
+      eInvoiceId: record.id,
+    },
+    createdBy: access.userId,
+    forceRequeue: true,
+  })
+
+  if (!queueResult.queueAdded) {
+    const [readyRecord] = await db
+      .update(eInvoiceRecords)
+      .set({
+        submissionStatus: "READY",
+        errorCode: "EINV_QUEUE_UNAVAILABLE",
+        errorMessage: "IRP5 generation could not be queued. Please retry after the queue worker is available.",
+        updatedAt: new Date(),
+      })
+      .where(and(eq(eInvoiceRecords.businessId, access.business.id), eq(eInvoiceRecords.id, id)))
+      .returning()
+
+    throw new HttpError(
+      503,
+      readyRecord?.errorMessage ?? "IRP5 generation could not be queued."
+    )
+  }
+
+  return { eInvoice: queuedRecord, queued: true }
+}
+
 async function pollEInvoiceStatus(access: BusinessAccess, id: string) {
   const record = await requireEInvoiceRecord(access.business.id, id)
   const transition = assertEInvoiceStatusTransition(
@@ -574,12 +756,40 @@ async function pollEInvoiceStatus(access: BusinessAccess, id: string) {
     throw new HttpError(409, transition.message ?? "E-invoice status cannot be polled.")
   }
 
+  if (!record.irn && !record.providerReference) {
+    const [failedRecord] = await db
+      .update(eInvoiceRecords)
+      .set({
+        submissionStatus: "FAILED",
+        errorCode: "EINV_NO_PROVIDER_REFERENCE",
+        errorMessage: "No IRN or provider reference was received. Retry generation.",
+        updatedAt: new Date(),
+      })
+      .where(and(eq(eInvoiceRecords.businessId, access.business.id), eq(eInvoiceRecords.id, id)))
+      .returning()
+
+    if (failedRecord) {
+      await insertStatusEvent(
+        access,
+        failedRecord,
+        record.submissionStatus,
+        "EINV_SUBMISSION_FAILED",
+        { reason: "No IRN or provider reference was received." }
+      )
+    }
+
+    throw new HttpError(
+      409,
+      "IRP5 status cannot be checked because no IRN or provider reference was received. Retry generation."
+    )
+  }
+
   const adapter = getEInvoiceProviderAdapter(record.providerName)
-  const statusResult = adapter.getStatus({
+  const statusResult = await adapter.getStatus({
     currentStatus: record.submissionStatus as EInvoiceSubmissionStatus,
-    mode: record.providerMode as EInvoiceMockMode | null,
     providerReference: record.providerReference,
     irn: record.irn,
+    gstin: await getEInvoiceGstin(record.gstRegistrationId),
   })
   const [updated] = await db
     .update(eInvoiceRecords)
@@ -622,7 +832,7 @@ async function retryEInvoice(
 ) {
   const record = await requireEInvoiceRecord(access.business.id, id)
 
-  if (!canRetryEInvoiceTechnically(record.submissionStatus)) {
+  if (!canRetryEInvoice(record)) {
     throw new HttpError(409, "Only failed e-invoice operations can be retried.")
   }
 
@@ -635,6 +845,8 @@ async function retryEInvoice(
       attemptNumber: record.attemptNumber + 1,
       errorCode: null,
       errorMessage: null,
+      rawExternalResponse: null,
+      externalResponseReceivedAt: null,
       updatedAt: new Date(),
     })
     .where(and(eq(eInvoiceRecords.businessId, access.business.id), eq(eInvoiceRecords.id, id)))
@@ -650,11 +862,40 @@ async function retryEInvoice(
   return updated
 }
 
+function isRecoverableIrp5DecryptionFailure(record: EInvoiceRecord) {
+  if (record.providerName !== "irp5" || record.irn || record.providerReference) {
+    return false
+  }
+
+  const rawResponse = record.rawExternalResponse
+  if (!rawResponse || typeof rawResponse !== "object" || Array.isArray(rawResponse)) {
+    return false
+  }
+
+  const errorDetails = (rawResponse as Record<string, unknown>).ErrorDetails
+  return Array.isArray(errorDetails) && errorDetails.some((error) =>
+    error && typeof error === "object" && !Array.isArray(error) &&
+    (error as Record<string, unknown>).ErrorCode === "1090"
+  )
+}
+
+function canRetryEInvoice(record: EInvoiceRecord) {
+  if (canRetryEInvoiceTechnically(record.submissionStatus)) {
+    return true
+  }
+
+  return (
+    record.providerName === "irp5" &&
+    !record.irn &&
+    !record.providerReference &&
+    (record.submissionStatus === "SUBMITTING" || record.submissionStatus === "PROCESSING")
+  )
+}
+
 async function cancelEInvoice(
   access: BusinessAccess,
   id: string,
-  reason: string,
-  mockMode: EInvoiceMockMode
+  reason: string
 ) {
   const record = await requireEInvoiceRecord(access.business.id, id)
   const transition = assertEInvoiceStatusTransition(
@@ -676,17 +917,17 @@ async function cancelEInvoice(
   }
 
   const adapter = getEInvoiceProviderAdapter(record.providerName)
-  const cancelResult = adapter.cancelIRN({
-    mode: mockMode,
+  const cancelResult = await adapter.cancelIRN({
     providerReference: record.providerReference,
     irn: record.irn,
     reason,
+    gstin: await getEInvoiceGstin(record.gstRegistrationId),
   })
   const [updated] = await db
     .update(eInvoiceRecords)
     .set({
       submissionStatus: cancelResult.status,
-      providerMode: mockMode,
+      providerMode: null,
       errorCode: cancelResult.errorCode,
       errorMessage: cancelResult.errorMessage,
       rawExternalResponse: cancelResult.rawResponse,
@@ -1217,7 +1458,31 @@ async function requireEInvoiceRecord(businessId: string, id: string) {
     throw new HttpError(404, "E-invoice record not found.")
   }
 
+  if (record.submissionStatus === "SUBMITTING" && isRecoverableIrp5DecryptionFailure(record)) {
+    const [recovered] = await db
+      .update(eInvoiceRecords)
+      .set({
+        submissionStatus: "FAILED",
+        errorCode: "1090",
+        errorMessage: "Request decryption failed. Retry generation.",
+        updatedAt: new Date(),
+      })
+      .where(and(eq(eInvoiceRecords.businessId, businessId), eq(eInvoiceRecords.id, id)))
+      .returning()
+
+    return recovered ?? record
+  }
+
   return record
+}
+
+async function getEInvoiceGstin(gstRegistrationId: string) {
+  const registration = await db.query.gstRegistrations.findFirst({
+    where: eq(gstRegistrations.id, gstRegistrationId),
+    columns: { gstin: true },
+  })
+
+  return registration?.gstin
 }
 
 async function runEInvoiceIdempotency<T>(
@@ -1355,6 +1620,19 @@ function initialSubmissionStatus(
   return "ELIGIBLE"
 }
 
+function requireConfiguredEInvoiceProvider() {
+  const provider = getEnv().EINVOICE_PROVIDER
+
+  if (provider !== "irp5") {
+    throw new HttpError(
+      409,
+      "IRP5 e-invoice provider is not configured. Configure IRP5 before preparing e-invoices."
+    )
+  }
+
+  return provider
+}
+
 function toProviderPayload(payload: CanonicalEInvoicePayload) {
   return {
     version: payload.schemaVersion,
@@ -1414,10 +1692,11 @@ function eventMessage(eventType: string, status: string) {
   const labels: Record<string, string> = {
     EINV_ELIGIBILITY_CHECKED: "E-invoice eligibility checked.",
     EINV_VALIDATED: "E-invoice payload validated.",
-    EINV_SUBMITTED: "E-invoice submitted to the configured adapter.",
-    EINV_STATUS_UPDATED: "E-invoice status updated from the adapter.",
+    EINV_SUBMITTED: "E-invoice submitted to IRP.",
+    EINV_SUBMISSION_FAILED: "IRP submission failed.",
+    EINV_STATUS_UPDATED: "E-invoice status updated from IRP.",
     EINV_RETRY: "E-invoice retry requested.",
-    EINV_CANCELLED: "E-invoice cancelled through the configured adapter.",
+    EINV_CANCELLED: "E-invoice cancelled through IRP.",
     EINV_CANCEL_FAILED: "E-invoice cancellation failed.",
   }
 
@@ -1454,6 +1733,27 @@ function toJsonObject(value: unknown): Record<string, unknown> {
   }
 
   return value as Record<string, unknown>
+}
+
+function toProviderExceptionPayload(error: unknown) {
+  if (error instanceof HttpError) {
+    return {
+      code: `HTTP_${error.statusCode}`,
+      message: error.message,
+    }
+  }
+
+  if (error instanceof Error) {
+    return {
+      code: error.name || "IRP5_REQUEST_ERROR",
+      message: error.message || "IRP5 request failed.",
+    }
+  }
+
+  return {
+    code: "IRP5_REQUEST_ERROR",
+    message: "IRP5 request failed.",
+  }
 }
 
 function escapeLikeTerm(value: string) {

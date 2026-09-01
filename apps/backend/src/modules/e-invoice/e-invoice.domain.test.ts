@@ -1,7 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
 
-import { mockEInvoiceProviderAdapter } from "./e-invoice.adapters.js"
 import {
   assertEInvoiceStatusTransition,
   buildEInvoiceOperationRequestHash,
@@ -102,33 +101,6 @@ test("operation hash ignores idempotency key", () => {
   assert.equal(left, right)
 })
 
-test("mock adapter generates IRN and signed QR metadata", () => {
-  const payload = buildPayload()
-  const payloadHash = hashCanonicalEInvoicePayload(payload)
-  const result = mockEInvoiceProviderAdapter.generateIRN({
-    mode: "MOCK_GENERATE",
-    payload,
-    payloadHash,
-  })
-
-  assert.equal(result.status, "IRN_GENERATED")
-  assert.equal(result.irn?.length, 64)
-  assert.ok(result.ackNumber?.startsWith("ACK-"))
-  assert.ok(result.signedQrCode)
-})
-
-test("mock adapter supports processing status recovery", () => {
-  const result = mockEInvoiceProviderAdapter.getStatus({
-    currentStatus: "PROCESSING",
-    mode: "MOCK_PROCESSING",
-    providerReference: "MOCK-EINV-INV1-123",
-    irn: null,
-  })
-
-  assert.equal(result.status, "IRN_GENERATED")
-  assert.ok(result.irn)
-})
-
 test("status transition guard rejects cancellation before IRN", () => {
   const transition = assertEInvoiceStatusTransition("READY", ["IRN_GENERATED"], "cancel")
 
@@ -144,7 +116,7 @@ test("existing provider reference is recoverable", () => {
   assert.equal(
     shouldRecoverExistingEInvoiceSubmission({
       status: "PROCESSING",
-      providerReference: "MOCK-1",
+      providerReference: "IRP5-REFERENCE-1",
       irn: null,
     }),
     true

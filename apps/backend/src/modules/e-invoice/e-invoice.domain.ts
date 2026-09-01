@@ -24,18 +24,10 @@ export const eInvoiceSubmissionStatuses = [
   "CANCELLED",
   "CANCELLATION_FAILED",
 ] as const
-export const eInvoiceMockModes = [
-  "MOCK_GENERATE",
-  "MOCK_PROCESSING",
-  "MOCK_REJECT",
-  "MOCK_TIMEOUT",
-  "MOCK_CANCEL_FAIL",
-] as const
 
 export type EInvoiceSourceDocumentType = (typeof eInvoiceSourceDocumentTypes)[number]
 export type EInvoiceEligibilityStatus = (typeof eInvoiceEligibilityStatuses)[number]
 export type EInvoiceSubmissionStatus = (typeof eInvoiceSubmissionStatuses)[number]
-export type EInvoiceMockMode = (typeof eInvoiceMockModes)[number]
 
 export type EInvoiceIssue = {
   code: string
@@ -265,7 +257,8 @@ export function checkEInvoiceEligibility(input: {
     return {
       status: "ALREADY_GENERATED",
       reasonCode: "IRN_ALREADY_GENERATED",
-      reason: "An IRN is already generated for this source document.",
+      reason:
+        "This document already has an IRN. The GST e-invoice system allows only one IRN for the same document.",
       warnings: [],
     }
   }
@@ -340,7 +333,8 @@ export function checkEInvoiceEligibility(input: {
     warnings: [
       {
         code: "TURNOVER_RULE_CONFIGURABLE",
-        message: "AATO threshold eligibility remains configurable and must be enforced when provider credentials are enabled.",
+        message:
+          "E-invoice turnover setting is not confirmed for this business. Confirm the e-invoice requirement in Settings before using live IRN generation.",
         severity: "warning",
       },
     ],

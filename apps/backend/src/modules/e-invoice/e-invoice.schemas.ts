@@ -1,7 +1,6 @@
 import { z } from "zod"
 
 import {
-  eInvoiceMockModes,
   eInvoiceSourceDocumentTypes,
   eInvoiceSubmissionStatuses,
 } from "./e-invoice.domain.js"
@@ -69,14 +68,16 @@ export const eInvoiceActionSchema = z.object({
 })
 
 export const generateEInvoiceSchema = z.object({
-  mockMode: z.enum(eInvoiceMockModes).optional().default("MOCK_GENERATE"),
   idempotencyKey: idempotencyKeySchema.optional(),
-})
+}).strict()
 
 export const cancelEInvoiceSchema = z.object({
   reason: z.string().trim().min(3).max(500),
-  mockMode: z.enum(eInvoiceMockModes).optional().default("MOCK_GENERATE"),
   idempotencyKey: idempotencyKeySchema.optional(),
+}).strict()
+
+export const eInvoiceProviderAuthTestSchema = z.object({
+  gstin: z.string().trim().toUpperCase().regex(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/),
 })
 
 export type CreateEInvoiceRecordInput = z.infer<typeof createEInvoiceRecordSchema>

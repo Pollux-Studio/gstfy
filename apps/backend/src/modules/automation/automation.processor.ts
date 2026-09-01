@@ -89,6 +89,7 @@ async function runAutomationProcessor(job: AutomationJobRecord) {
     return processEInvoiceAutomation(access, {
       sourceDocumentType,
       sourceDocumentId,
+      eInvoiceId: getPayloadString(job.payload, "eInvoiceId"),
     })
   }
 

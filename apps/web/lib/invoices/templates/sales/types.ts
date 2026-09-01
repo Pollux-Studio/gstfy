@@ -19,4 +19,5 @@ export type SalesInvoiceTemplateProps = {
   seller: SalesInvoiceBusinessInfo | null
   template: InvoiceTemplateOption
   watermarkText?: string | null
+  signedQrCodeDataUrl?: string | null
 }

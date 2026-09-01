@@ -7,6 +7,7 @@ import {
   type SalesInvoiceTemplateCode,
 } from "@/lib/invoices/templates/sales"
 import type { SalesInvoiceDetail } from "@/lib/sales/api"
+import { createSignedQrDataUrl } from "@/lib/invoices/signed-qr"
 
 export type { SalesInvoiceBusinessInfo }
 
@@ -21,12 +22,14 @@ export async function renderSalesInvoicePdf(
   options: RenderSalesInvoicePdfOptions = {}
 ) {
   const template = getSalesInvoiceTemplate(options.templateCode)
+  const signedQrCodeDataUrl = await createSignedQrDataUrl(invoice.eInvoice?.signedQrCode)
   const bytes = await render(
     createSalesInvoiceTemplate({
       invoice,
       seller: options.seller ?? null,
       template,
       watermarkText: options.watermarkText ?? null,
+      signedQrCodeDataUrl,
     }),
     {
       size: "a4",

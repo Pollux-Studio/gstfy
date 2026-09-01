@@ -95,6 +95,16 @@ export type SalesInvoiceDetail = SalesInvoice & {
     amount: string
     referenceNumber: string | null
   }>
+  eInvoice?: {
+    id: string
+    submissionStatus: string
+    irn: string | null
+    ackNumber: string | null
+    ackDate: string | null
+    signedQrCode: string | null
+    signedInvoiceReference: string | null
+    rawExternalResponse: unknown
+  } | null
 }
 
 export type PaginationMeta = {

@@ -176,6 +176,19 @@ export function getSettings(accessToken: string) {
   })
 }
 
+export function testIrp5Connection(accessToken: string) {
+  return apiRequest<{
+    provider: "irp5"
+    environment: "sandbox" | "production"
+    gstin: string
+    authenticated: true
+  }>("/e-invoices/provider/auth-test", {
+    method: "POST",
+    accessToken,
+    body: { gstin: "33HXUPP8249C1Z2" },
+  })
+}
+
 export function updateBusinessDetails(
   payload: UpdateBusinessDetailsPayload,
   accessToken: string

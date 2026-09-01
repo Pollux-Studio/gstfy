@@ -34,6 +34,7 @@ export type AutomationQueueInput = {
   createdBy?: string | null
   priority?: number
   maxAttempts?: number
+  forceRequeue?: boolean
 }
 
 export type AutomationLogger = {

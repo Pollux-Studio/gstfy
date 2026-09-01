@@ -28,6 +28,7 @@ export function createReferenceSalesInvoiceTemplate({
   seller,
   template,
   watermarkText,
+  signedQrCodeDataUrl,
 }: SalesInvoiceTemplateProps) {
   const taxRows = getTaxRows(invoice)
   const totalQuantity = invoice.lines.reduce(
@@ -66,6 +67,9 @@ export function createReferenceSalesInvoiceTemplate({
       >
         <InvoiceWatermark text={watermarkText} />
         <HeaderGrid invoice={invoice} seller={seller} />
+        {signedQrCodeDataUrl ?
+          <SignedQrBlock dataUrl={signedQrCodeDataUrl} invoice={invoice} />
+        : null}
 
         <ItemsTable
           dense={template.sourcePage === 7 || template.sourcePage === 3}
@@ -83,6 +87,43 @@ export function createReferenceSalesInvoiceTemplate({
       </section>
       <ComputerGeneratedNote />
     </main>
+  )
+}
+
+function SignedQrBlock({
+  dataUrl,
+  invoice,
+}: {
+  dataUrl: string
+  invoice: SalesInvoiceDetail
+}) {
+  return (
+    <section
+      style={{
+        alignItems: "center",
+        borderTop: `1px solid ${border}`,
+        display: "flex",
+        gap: 9,
+        padding: "7px 10px",
+      }}
+    >
+      <PdfImage
+        src={dataUrl}
+        alt="IRP5 signed e-invoice QR code"
+        style={{ height: 76, width: 76 }}
+      />
+      <div>
+        <p style={{ fontWeight: 700, margin: 0 }}>IRP5 signed e-invoice QR</p>
+        <p style={{ color: muted, margin: "3px 0 0" }}>
+          Scan to verify this invoice
+        </p>
+        {invoice.eInvoice?.irn ?
+          <p style={{ fontFamily: "monospace", fontSize: 7, margin: "3px 0 0" }}>
+            IRN: {invoice.eInvoice.irn}
+          </p>
+        : null}
+      </div>
+    </section>
   )
 }
 

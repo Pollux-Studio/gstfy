@@ -19,12 +19,6 @@ export type EInvoiceEligibilityStatus =
   | "NOT_ELIGIBLE"
   | "BLOCKED"
   | "ALREADY_GENERATED"
-export type EInvoiceMockMode =
-  | "MOCK_GENERATE"
-  | "MOCK_PROCESSING"
-  | "MOCK_REJECT"
-  | "MOCK_TIMEOUT"
-  | "MOCK_CANCEL_FAIL"
 
 export type EInvoiceRecord = {
   id: string
@@ -41,7 +35,7 @@ export type EInvoiceRecord = {
   submissionStatus: EInvoiceSubmissionStatus
   attemptNumber: number
   providerName: string
-  providerMode: EInvoiceMockMode | null
+  providerMode: string | null
   providerReference: string | null
   payloadSchemaVersion: string | null
   payloadHash: string | null
@@ -51,6 +45,7 @@ export type EInvoiceRecord = {
   signedInvoiceReference: string | null
   signedQrCode: string | null
   rawResponseReference: string | null
+  rawExternalResponse: unknown
   validationResult: EInvoiceValidationResult | Record<string, unknown>
   errorCode: string | null
   errorMessage: string | null
@@ -183,13 +178,13 @@ export function createEInvoiceRecord(
   payload: {
     sourceDocumentType: EInvoiceSourceDocumentType
     sourceDocumentId: string
-    idempotencyKey: string
+    idempotencyKey?: string
   }
 ) {
   return apiRequest<{ eInvoice: EInvoiceRecord }>("/e-invoices", {
     method: "POST",
     accessToken,
-    body: payload,
+    body: withIdempotency(payload),
   })
 }
 
@@ -206,15 +201,18 @@ export function validateEInvoice(accessToken: string, eInvoiceId: string) {
 
 export function generateEInvoice(
   accessToken: string,
-  eInvoiceId: string,
-  mockMode: EInvoiceMockMode = "MOCK_GENERATE"
+  eInvoiceId: string
 ) {
-  return apiRequest<{ eInvoice: EInvoiceRecord; validation?: EInvoiceValidationResult }>(
+  return apiRequest<{
+    eInvoice: EInvoiceRecord
+    validation?: EInvoiceValidationResult
+    queued?: boolean
+  }>(
     `/e-invoices/${eInvoiceId}/generate`,
     {
       method: "POST",
       accessToken,
-      body: withIdempotency({ mockMode }),
+      body: withIdempotency(),
     }
   )
 }
@@ -228,7 +226,7 @@ export function pollEInvoiceStatus(accessToken: string, eInvoiceId: string) {
 }
 
 export function retryEInvoice(accessToken: string, eInvoiceId: string, reason: string) {
-  return apiRequest<{ eInvoice: EInvoiceRecord }>(`/e-invoices/${eInvoiceId}/retry`, {
+  return apiRequest<{ eInvoice: EInvoiceRecord; queued?: boolean }>(`/e-invoices/${eInvoiceId}/retry`, {
     method: "POST",
     accessToken,
     body: withIdempotency({ reason }),
@@ -238,13 +236,12 @@ export function retryEInvoice(accessToken: string, eInvoiceId: string, reason: s
 export function cancelEInvoice(
   accessToken: string,
   eInvoiceId: string,
-  reason: string,
-  mockMode: EInvoiceMockMode = "MOCK_GENERATE"
+  reason: string
 ) {
   return apiRequest<{ eInvoice: EInvoiceRecord }>(`/e-invoices/${eInvoiceId}/cancel`, {
     method: "POST",
     accessToken,
-    body: withIdempotency({ reason, mockMode }),
+    body: withIdempotency({ reason }),
   })
 }
 

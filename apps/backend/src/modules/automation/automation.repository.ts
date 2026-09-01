@@ -89,6 +89,36 @@ export async function createOrReuseAutomationJob(input: AutomationQueueInput) {
   })
 
   if (existing) {
+    if (
+      input.forceRequeue &&
+      existing.status !== "running"
+    ) {
+      const [updated] = await db
+        .update(automationJobs)
+        .set({
+          status: "queued",
+          priority: input.priority ?? existing.priority,
+          maxAttempts,
+          runAfter: new Date(),
+          failedAt: null,
+          lockedAt: null,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+          payload,
+          result: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(automationJobs.id, existing.id))
+        .returning()
+
+      if (updated) {
+        await recordAutomationEvent(updated, "requeued", "Automation job was explicitly requeued.", {
+          source: "force_requeue",
+        })
+        return updated
+      }
+    }
+
     if (existing.status === "failed" || existing.status === "retry_scheduled") {
       const [updated] = await db
         .update(automationJobs)

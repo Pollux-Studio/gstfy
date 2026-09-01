@@ -6,6 +6,7 @@ import {
   salesInvoiceLines,
   salesInvoicePayments,
   salesInvoices,
+  eInvoiceRecords,
 } from "../../db/schema/index.js"
 import { HttpError } from "../../utils/http-error.js"
 import { enqueuePostedDocumentAutomation } from "../automation/automation.triggers.js"
@@ -371,7 +372,7 @@ async function getSalesInvoiceDetail(businessId: string, invoiceId: string) {
     throw new HttpError(404, "Sales invoice not found.")
   }
 
-  const [lines, payments] = await Promise.all([
+  const [lines, payments, eInvoice] = await Promise.all([
     db
       .select()
       .from(salesInvoiceLines)
@@ -381,12 +382,30 @@ async function getSalesInvoiceDetail(businessId: string, invoiceId: string) {
       .select()
       .from(salesInvoicePayments)
       .where(eq(salesInvoicePayments.salesInvoiceId, invoiceId)),
+    db.query.eInvoiceRecords.findFirst({
+      where: and(
+        eq(eInvoiceRecords.businessId, businessId),
+        eq(eInvoiceRecords.sourceDocumentType, "sales_invoice"),
+        eq(eInvoiceRecords.sourceDocumentId, invoiceId),
+      ),
+      columns: {
+        id: true,
+        submissionStatus: true,
+        irn: true,
+        ackNumber: true,
+        ackDate: true,
+        signedQrCode: true,
+        signedInvoiceReference: true,
+        rawExternalResponse: true,
+      },
+    }),
   ])
 
   return {
     ...invoice,
     lines,
     payments,
+    eInvoice: eInvoice ?? null,
   }
 }
 

@@ -24,7 +24,7 @@ export async function enqueueAutomationJob(
   const jobRecord = await createOrReuseAutomationJob(input)
 
   if (jobRecord.status === "completed" || jobRecord.status === "skipped") {
-    return jobRecord
+    return { ...jobRecord, queueAdded: true }
   }
 
   const queueInstance = getAutomationQueue(logger)
@@ -39,25 +39,12 @@ export async function enqueueAutomationJob(
       },
       "automation job persisted without redis queue"
     )
-    return jobRecord
+    return { ...jobRecord, queueAdded: false }
   }
 
   try {
-    await queueInstance.add(
-      jobRecord.jobType,
-      { jobId: jobRecord.id },
-      {
-        jobId: jobRecord.id,
-        attempts: jobRecord.maxAttempts,
-        backoff: {
-          type: "exponential",
-          delay: getEnv().QUEUE_BACKOFF_BASE_MS,
-        },
-        priority: jobRecord.priority,
-        removeOnComplete: 1_000,
-        removeOnFail: 5_000,
-      }
-    )
+    await addAutomationBullJob(queueInstance, jobRecord)
+    return { ...jobRecord, queueAdded: true }
   } catch (error: unknown) {
     logger?.warn(
       {
@@ -66,9 +53,8 @@ export async function enqueueAutomationJob(
       },
       "automation job persisted but could not be added to redis queue"
     )
+    return { ...jobRecord, queueAdded: false }
   }
-
-  return jobRecord
 }
 
 export async function requeueDueAutomationJobs(logger?: AutomationLogger) {
@@ -83,21 +69,7 @@ export async function requeueDueAutomationJobs(logger?: AutomationLogger) {
 
   for (const job of jobs) {
     try {
-      await queueInstance.add(
-        job.jobType,
-        { jobId: job.id },
-        {
-          jobId: job.id,
-          attempts: job.maxAttempts,
-          backoff: {
-            type: "exponential",
-            delay: getEnv().QUEUE_BACKOFF_BASE_MS,
-          },
-          priority: job.priority,
-          removeOnComplete: 1_000,
-          removeOnFail: 5_000,
-        }
-      )
+      await addAutomationBullJob(queueInstance, job)
       queued += 1
     } catch (error: unknown) {
       logger?.warn(
@@ -158,4 +130,42 @@ function getAutomationQueue(logger?: AutomationLogger) {
   })
 
   return queue
+}
+
+async function addAutomationBullJob(
+  queueInstance: Queue<AutomationJobData>,
+  jobRecord: {
+    id: string
+    jobType: string
+    maxAttempts: number
+    priority: number
+  }
+) {
+  const existingBullJob = await queueInstance.getJob(jobRecord.id)
+
+  if (existingBullJob) {
+    const state = await existingBullJob.getState()
+
+    if (state === "failed" || state === "completed") {
+      await existingBullJob.remove()
+    } else {
+      return
+    }
+  }
+
+  await queueInstance.add(
+    jobRecord.jobType,
+    { jobId: jobRecord.id },
+    {
+      jobId: jobRecord.id,
+      attempts: jobRecord.maxAttempts,
+      backoff: {
+        type: "exponential",
+        delay: getEnv().QUEUE_BACKOFF_BASE_MS,
+      },
+      priority: jobRecord.priority,
+      removeOnComplete: 1_000,
+      removeOnFail: 5_000,
+    }
+  )
 }

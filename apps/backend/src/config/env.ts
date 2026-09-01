@@ -115,7 +115,7 @@ const envSchema = z.object({
   R2_ENDPOINT: z
     .string()
     .url()
-    .default("https://62f0623e68314aa04e47174412fdf9e2.r2.cloudflarestorage.com"),
+    .default("test"),
   R2_BUCKET_NAME: z.string().default("gstfy"),
   R2_PUBLIC_BASE_URL: z.string().url().optional(),
   R2_FORCE_PATH_STYLE: envBoolean(true),
@@ -126,6 +126,16 @@ const envSchema = z.object({
   QUEUE_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
   QUEUE_BACKOFF_BASE_MS: z.coerce.number().int().positive().default(2_000),
   OPS_ADMIN_EMAILS: z.string().default(""),
+  EINVOICE_PROVIDER: z.literal("irp5").optional(),
+  EINVOICE_ENVIRONMENT: z.enum(["sandbox", "production"]).default("sandbox"),
+  EINVOICE_LIVE_ENABLED: envBoolean(false),
+  IRP5_BASE_URL: envOptionalUrl(),
+  IRP5_CLIENT_ID: z.string().optional(),
+  IRP5_CLIENT_SECRET: z.string().optional(),
+  IRP5_USERNAME: z.string().optional(),
+  IRP5_PASSWORD: z.string().optional(),
+  IRP5_APP_KEY: z.string().optional(),
+  IRP5_PUBLIC_KEY: z.string().optional(),
 }).superRefine((env, ctx) => {
   if (
     env.NODE_ENV === "production" &&
@@ -166,6 +176,46 @@ const envSchema = z.object({
       message: "REDIS_URL is required when QUEUE_WORKER_ENABLED is true.",
     })
   }
+
+  const irp5Values = [
+    env.IRP5_BASE_URL,
+    env.IRP5_CLIENT_ID,
+    env.IRP5_CLIENT_SECRET,
+    env.IRP5_USERNAME,
+    env.IRP5_PASSWORD,
+    env.IRP5_APP_KEY,
+    env.IRP5_PUBLIC_KEY,
+  ]
+  const hasAnyIrp5Config = irp5Values.some(Boolean)
+  const hasCompleteIrp5Config = irp5Values.every(Boolean)
+
+  if (env.EINVOICE_PROVIDER === "irp5" && !hasCompleteIrp5Config) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["IRP5_BASE_URL"],
+      message: "Complete IRP5 configuration is required when EINVOICE_PROVIDER is irp5.",
+    })
+  }
+
+  if (hasAnyIrp5Config && !hasCompleteIrp5Config) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["IRP5_BASE_URL"],
+      message: "IRP5 credentials must be configured together.",
+    })
+  }
+
+  if (
+    env.EINVOICE_PROVIDER === "irp5" &&
+    env.EINVOICE_ENVIRONMENT === "production" &&
+    !env.EINVOICE_LIVE_ENABLED
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["EINVOICE_LIVE_ENABLED"],
+      message: "EINVOICE_LIVE_ENABLED must be true for production e-invoice operations.",
+    })
+  }
 })
 
 export type AppEnv = z.infer<typeof envSchema>
@@ -192,7 +242,10 @@ function loadLocalEnv() {
     loadedPaths.add(candidate)
     const contents = readFileSync(candidate, "utf8")
 
-    for (const line of contents.split(/\r?\n/)) {
+    const lines = contents.split(/\r?\n/)
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const line = lines[lineIndex] ?? ""
       const trimmedLine = line.trim()
 
       if (!trimmedLine || trimmedLine.startsWith("#")) {
@@ -206,7 +259,29 @@ function loadLocalEnv() {
       }
 
       const key = trimmedLine.slice(0, separatorIndex).trim()
-      const value = normalizeEnvValue(trimmedLine.slice(separatorIndex + 1))
+      let rawValue = trimmedLine.slice(separatorIndex + 1).trim()
+      const quote = rawValue[0]
+
+      if (
+        (quote === '"' || quote === "'") &&
+        !rawValue.endsWith(quote)
+      ) {
+        const valueLines = [rawValue]
+
+        while (lineIndex + 1 < lines.length) {
+          lineIndex += 1
+          const nextLine = lines[lineIndex] ?? ""
+          valueLines.push(nextLine)
+
+          if (nextLine.trimEnd().endsWith(quote)) {
+            break
+          }
+        }
+
+        rawValue = valueLines.join("\n")
+      }
+
+      const value = normalizeEnvValue(rawValue)
 
       if (!key || value === "" || process.env[key] !== undefined) {
         continue
