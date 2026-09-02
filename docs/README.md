@@ -35,6 +35,7 @@ Each engine folder contains the domain spec, implementation summary, and fix not
 |---|---|
 | [core-engine](engine/core/) | Core voucher and transaction posting engine |
 | [foundation-fixes](engine/foundation/) | Organization foundation fixes (GST registrations, branches, financial years) |
+| [tenant-subdomain](engine/tenant-subdomain.md) | Tenant-based subdomain system — backend resolution, frontend routing, workspace URLs |
 
 ### Domain Engines
 
@@ -56,3 +57,75 @@ Each engine folder contains the domain spec, implementation summary, and fix not
 | [gst-reporting](engine/gst-reporting/) | GST reporting, filing review, and compliance layer |
 | [gst-filing](engine/gst-filing/) | GST filing integration — statutory submission boundary |
 | [e-invoice](engine/e-invoice/) | E-invoice and IRN integration (IRP5) |
+
+---
+
+## Apps
+
+Standalone applications within the Gstfy monorepo. Each app is independently deployable and has its own documentation.
+
+### Status App
+
+| Document | Description |
+|---|---|
+| [status-app-spec](apps/status-app/status-app-spec.md) | Full production specification for the GSTfy Status App |
+
+The Status App is a publicly accessible, independently deployable status and incident-management platform at `status.gstfy.in`. It must remain available even when the main Gstfy application is down.
+
+#### Folder Structure
+
+```text
+gstfy/
+├── apps/
+│   ├── web/                    ← Main Gstfy web app (Next.js)
+│   ├── backend/                ← Main Gstfy API (Fastify)
+│   └── status/                 ← Status App (independent)
+│       ├── web/                ← Status public + admin UI (Next.js)
+│       ├── api/                ← Status API (Fastify)
+│       └── workers/            ← Background workers
+│           ├── monitoring/     ← Uptime checks, multi-region
+│           ├── incident-engine/ ← Failure aggregation, incident lifecycle
+│           └── notifications/  ← Email, webhook, Slack, Teams
+├── packages/
+│   ├── ui/                     ← Shared UI components
+│   ├── status-db/              ← Status App database schema (Drizzle)
+│   ├── status-types/           ← Shared TypeScript types
+│   └── status-config/          ← Shared configuration
+└── docs/
+    └── apps/
+        └── status-app/
+            └── status-app-spec.md
+```
+
+#### Status App Routes
+
+```text
+Public:
+  /                              ← Status dashboard
+  /services/:slug                ← Service detail page
+  /incidents/:slug               ← Incident detail page
+  /maintenance/:slug             ← Maintenance detail page
+  /subscribe                     ← Subscription management
+  /rss.xml                       ← RSS feed
+  /atom.xml                      ← Atom feed
+  /api/v1/status                 ← Public status API
+  /api/v1/services               ← Services list
+  /api/v1/incidents              ← Incidents list
+  /api/v1/maintenance            ← Maintenance list
+  /api/v1/badge                  ← Status badge
+  /widget.js                     ← Embeddable widget
+  /health                        ← Health check
+
+Admin:
+  /admin                         ← Admin overview
+  /admin/services                ← Service management
+  /admin/monitors                ← Monitor configuration
+  /admin/incidents               ← Incident management
+  /admin/maintenance             ← Maintenance scheduling
+  /admin/subscribers             ← Subscriber management
+  /admin/notifications           ← Notification history
+  /admin/dependencies            ← Dependency mapping
+  /admin/metrics                 ← Metrics dashboard
+  /admin/audit-logs              ← Audit trail
+  /admin/settings                ← System settings
+```

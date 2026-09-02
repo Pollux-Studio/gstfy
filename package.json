@@ -4,6 +4,11 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
+    "dev:status-api": "pnpm --filter @gstfy/status-api dev",
+    "dev:status-workers": "pnpm --filter @gstfy/status-workers dev",
+    "build:status-api": "pnpm --filter @gstfy/status-api build",
+    "build:status-workers": "pnpm --filter @gstfy/status-workers build",
+    "test:status-api": "pnpm --filter @gstfy/status-api test",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types"
